@@ -219,7 +219,7 @@
     /* Center Rotary Knob Container */
     .rotary-panel {
       text-align: center;
-      padding: 16px 12px;
+      padding: 14px 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -230,21 +230,16 @@
       letter-spacing: 0.1em;
       color: #8E95A5;
       text-transform: uppercase;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     .rotary-stage {
       position: relative;
-      width: 170px;
-      height: 170px;
+      width: 210px;
+      height: 185px;
       display: flex;
       justify-content: center;
       align-items: center;
-    }
-    .knob-graduations {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      border: 2px dashed rgba(255, 153, 0, 0.25);
+      margin: 0 auto;
     }
     .knob-grad-val {
       position: absolute;
@@ -252,21 +247,26 @@
       font-weight: 800;
       font-family: 'JetBrains Mono', monospace;
       color: #6B7280;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: color 0.2s ease, text-shadow 0.2s ease;
     }
     .knob-grad-val.active-target {
       color: #FF9900;
-      text-shadow: 0 0 8px rgba(255, 153, 0, 0.6);
+      text-shadow: 0 0 10px rgba(255, 153, 0, 0.7);
     }
-    .g-6a  { top: 22px; left: 16px; }
-    .g-8a  { top: 2px;  left: 74px; }
-    .g-10a { top: 22px; right: 16px; }
-    .g-12a { top: 76px; right: 2px; }
-    .g-16a { bottom: 20px; right: 22px; }
+    .g-6a  { left: 30px;  top: 122px; }
+    .g-8a  { left: 40px;  top: 50px;  }
+    .g-10a { left: 105px; top: 16px;  }
+    .g-12a { left: 170px; top: 50px;  }
+    .g-16a { left: 180px; top: 122px; }
 
     /* The Iconic Heavy Rotary Knob */
     .rotary-knob-heavy {
-      width: 124px;
-      height: 124px;
+      width: 118px;
+      height: 118px;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, #353B4B 0%, #151820 70%);
       box-shadow: 0 14px 28px rgba(0,0,0,0.9), inset 0 2px 3px rgba(255,255,255,0.25), 0 0 0 6px #242936;
@@ -276,11 +276,12 @@
       justify-content: center;
       cursor: grab;
       user-select: none;
+      z-index: 5;
       transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
     }
     .knob-marker-line {
       position: absolute;
-      top: 8px;
+      top: 6px;
       width: 4px;
       height: 16px;
       background: #FF9900;
@@ -288,8 +289,8 @@
       box-shadow: 0 0 10px #FF9900, 0 0 20px rgba(255, 153, 0, 0.5);
     }
     .knob-center-core {
-      width: 60px;
-      height: 60px;
+      width: 58px;
+      height: 58px;
       border-radius: 50%;
       background: #111317;
       border: 2px solid #2E3442;
@@ -297,11 +298,12 @@
       align-items: center;
       justify-content: center;
       color: #FF9900;
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 900;
       font-family: 'JetBrains Mono', monospace;
       text-shadow: 0 0 10px rgba(255, 153, 0, 0.6);
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
     }
 
     .rotary-caption {
@@ -462,12 +464,11 @@
           <div class="tactile-face rotary-panel">
             <div class="rotary-panel-label">SELECTABLE CHARGE CURRENT</div>
             <div class="rotary-stage">
-              <div class="knob-graduations"></div>
-              <span class="knob-grad-val g-6a" id="g1-6">6A</span>
-              <span class="knob-grad-val g-8a" id="g1-8">8A</span>
-              <span class="knob-grad-val g-10a active-target" id="g1-10">10A</span>
-              <span class="knob-grad-val g-12a" id="g1-12">12A</span>
-              <span class="knob-grad-val g-16a" id="g1-16">16A</span>
+              <span class="knob-grad-val g-6a" id="g1-6" onclick="setKnob1(6)">6A</span>
+              <span class="knob-grad-val g-8a" id="g1-8" onclick="setKnob1(8)">8A</span>
+              <span class="knob-grad-val g-10a active-target" id="g1-10" onclick="setKnob1(10)">10A</span>
+              <span class="knob-grad-val g-12a" id="g1-12" onclick="setKnob1(12)">12A</span>
+              <span class="knob-grad-val g-16a" id="g1-16" onclick="setKnob1(16)">16A</span>
 
               <div class="rotary-knob-heavy" id="knob-1" onclick="stepKnob1()">
                 <div class="knob-marker-line"></div>
@@ -654,21 +655,28 @@
 
   <script>
     const ampValues = [6, 8, 10, 12, 16];
-    const knobAngles = { 6: -60, 8: -25, 10: 10, 12: 52, 16: 95 };
+    const knobAngles = { 6: -110, 8: -55, 10: 0, 12: 55, 16: 110 };
+
+    function setKnob1(v) {
+      idx1 = ampValues.indexOf(v);
+      const ang = knobAngles[v];
+      document.getElementById('knob-1').style.transform = `rotate(${ang}deg)`;
+      const valEl = document.getElementById('knob-val-1');
+      valEl.style.transform = `rotate(${-ang}deg)`;
+      valEl.innerText = `${v}A`;
+      const kw = ((218.4 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-1').innerText = `OUTPUT: ${kw} kW ACTIVE`;
+      ampValues.forEach(val => {
+        const el = document.getElementById(`g1-${val}`);
+        if (el) el.classList.toggle('active-target', val === v);
+      });
+    }
 
     // Knob 1
     let idx1 = 2; // 10A
     function stepKnob1() {
       idx1 = (idx1 + 1) % ampValues.length;
-      const v = ampValues[idx1];
-      document.getElementById('knob-1').style.transform = `rotate(${knobAngles[v]}deg)`;
-      document.getElementById('knob-val-1').innerText = `${v}A`;
-      const kw = ((218.4 * v) / 1000).toFixed(2);
-      document.getElementById('kw-cap-1').innerText = `OUTPUT: ${kw} kW ACTIVE`;
-      [6, 8, 10, 12, 16].forEach(val => {
-        const el = document.getElementById(`g1-${val}`);
-        if (el) el.classList.toggle('active-target', val === v);
-      });
+      setKnob1(ampValues[idx1]);
     }
 
     // Knob 2
@@ -676,8 +684,11 @@
     function stepKnob2() {
       idx2 = (idx2 + 1) % ampValues.length;
       const v = ampValues[idx2];
-      document.getElementById('knob-2').style.transform = `rotate(${knobAngles[v]}deg)`;
-      document.getElementById('knob-val-2').innerText = `${v}A`;
+      const ang = knobAngles[v];
+      document.getElementById('knob-2').style.transform = `rotate(${ang}deg)`;
+      const valEl = document.getElementById('knob-val-2');
+      valEl.style.transform = `rotate(${-ang}deg)`;
+      valEl.innerText = `${v}A`;
       const kw = ((218.4 * v) / 1000).toFixed(2);
       document.getElementById('kw-cap-2').innerText = `OUTPUT: ${kw} kW ACTIVE`;
     }
@@ -687,8 +698,11 @@
     function stepKnob3() {
       idx3 = (idx3 + 1) % ampValues.length;
       const v = ampValues[idx3];
-      document.getElementById('knob-3').style.transform = `rotate(${knobAngles[v]}deg)`;
-      document.getElementById('knob-val-3').innerText = `${v}A`;
+      const ang = knobAngles[v];
+      document.getElementById('knob-3').style.transform = `rotate(${ang}deg)`;
+      const valEl = document.getElementById('knob-val-3');
+      valEl.style.transform = `rotate(${-ang}deg)`;
+      valEl.innerText = `${v}A`;
       const kw = ((218.4 * v) / 1000).toFixed(2);
       document.getElementById('kw-cap-3').innerText = `OUTPUT: ${kw} kW ACTIVE`;
 

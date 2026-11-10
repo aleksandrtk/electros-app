@@ -1,6 +1,7 @@
 package ua.org.electros.app.ui.dashboard
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -343,17 +344,14 @@ private fun StudioRotaryKnobCard(
     isLimitEnabled: Boolean,
     onAmperageSelected: (Int) -> Unit
 ) {
-    val stops = listOf(6, 8, 10, 12, 16, 20, 25, 32)
+    val stops = listOf(6, 8, 10, 12, 16)
     val view = LocalView.current
 
     val currentIndex = stops.indexOf(selectedAmperes).takeIf { it >= 0 } ?: 2 // default 10A
 
-    // Angles from -135 deg to +135 deg (270 degree span)
-    val startAngle = -135f
-    val sweepAngle = 270f
-    val stepAngle = sweepAngle / (stops.size - 1)
-
-    fun angleForIndex(idx: Int) = startAngle + (idx * stepAngle)
+    // Symmetrical 220-degree arc: -110° (6A), -55° (8A), 0° (10A), +55° (12A), +110° (16A)
+    val stopAngles = listOf(-110f, -55f, 0f, 55f, 110f)
+    fun angleForIndex(idx: Int) = stopAngles[idx.coerceIn(0, stopAngles.lastIndex)]
     val targetAngle = angleForIndex(currentIndex)
 
     val animatedAngle by animateFloatAsState(
@@ -384,12 +382,12 @@ private fun StudioRotaryKnobCard(
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Dial Stage (Knob + Outer Graduations)
+            // Dial Stage (Knob + Outer Graduations) - 210dp wide with ample margin
             Box(
                 modifier = Modifier
-                    .size(200.dp)
+                    .size(210.dp)
                     .pointerInput(stops) {
                         detectDragGestures { change, _ ->
                             change.consume()
@@ -418,20 +416,20 @@ private fun StudioRotaryKnobCard(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Background graduation tick marks
+                // Background graduation tick marks aligned to each stop
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val center = Offset(size.width / 2f, size.height / 2f)
-                    val outerRadius = size.width / 2f - 8.dp.toPx()
+                    val outerRadius = 88.dp.toPx()
                     val tickLength = 10.dp.toPx()
 
                     stops.indices.forEach { idx ->
-                        val a = angleForIndex(idx) - 90f
+                        val a = angleForIndex(idx)
                         val rad = Math.toRadians(a.toDouble())
-                        val cosVal = cos(rad).toFloat()
                         val sinVal = sin(rad).toFloat()
+                        val cosVal = cos(rad).toFloat()
 
-                        val pStart = Offset(center.x + outerRadius * cosVal, center.y + outerRadius * sinVal)
-                        val pEnd = Offset(center.x + (outerRadius - tickLength) * cosVal, center.y + (outerRadius - tickLength) * sinVal)
+                        val pStart = Offset(center.x + (outerRadius - tickLength) * sinVal, center.y - (outerRadius - tickLength) * cosVal)
+                        val pEnd = Offset(center.x + outerRadius * sinVal, center.y - outerRadius * cosVal)
 
                         val isCurrent = idx == currentIndex
                         drawLine(
@@ -445,11 +443,11 @@ private fun StudioRotaryKnobCard(
 
                 // Surrounding text graduation markers
                 stops.forEachIndexed { idx, stop ->
-                    val a = angleForIndex(idx) - 90f
+                    val a = angleForIndex(idx)
                     val rad = Math.toRadians(a.toDouble())
-                    val labelRadius = 84.dp
-                    val offsetX = (labelRadius.value * cos(rad)).dp
-                    val offsetY = (labelRadius.value * sin(rad)).dp
+                    val labelRadius = 78.dp
+                    val offsetX = (labelRadius.value * sin(rad)).dp
+                    val offsetY = (-labelRadius.value * cos(rad)).dp
                     val isCurrent = idx == currentIndex
 
                     Text(
@@ -467,10 +465,10 @@ private fun StudioRotaryKnobCard(
                     )
                 }
 
-                // The Heavy Knob itself (126dp)
+                // The Heavy Knob itself (118dp)
                 Box(
                     modifier = Modifier
-                        .size(126.dp)
+                        .size(118.dp)
                         .shadow(16.dp, CircleShape)
                         .clip(CircleShape)
                         .background(
@@ -505,7 +503,7 @@ private fun StudioRotaryKnobCard(
                         )
                     }
 
-                    // Center Recessed Core Display
+                    // Center Recessed Core Display (Non-rotating, smoothly changing)
                     Box(
                         modifier = Modifier
                             .size(62.dp)
@@ -514,13 +512,29 @@ private fun StudioRotaryKnobCard(
                             .border(2.dp, StudioScreenBorder, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "${selectedAmperes}A",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = AmberNixie
-                        )
+                        AnimatedContent(
+                            targetState = selectedAmperes,
+                            transitionSpec = {
+                                if (targetState > initialState) {
+                                    (slideInVertically { height -> height } + fadeIn()).togetherWith(
+                                        slideOutVertically { height -> -height } + fadeOut()
+                                    )
+                                } else {
+                                    (slideInVertically { height -> -height } + fadeIn()).togetherWith(
+                                        slideOutVertically { height -> height } + fadeOut()
+                                    )
+                                }
+                            },
+                            label = "amperageOdometerAnim"
+                        ) { amp ->
+                            Text(
+                                text = "${amp}A",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace,
+                                color = AmberNixie
+                            )
+                        }
                     }
                 }
             }
