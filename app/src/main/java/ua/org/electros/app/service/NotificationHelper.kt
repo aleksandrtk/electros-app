@@ -121,5 +121,29 @@ class NotificationHelper(private val context: Context) {
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
     }
+
+    fun showBalancingAlert(oldAmperes: Int, newAmperes: Int, voltage: Int) {
+        val action = if (newAmperes < oldAmperes) "знижено" else "підвищено"
+        val icon = if (newAmperes < oldAmperes) android.R.drawable.stat_sys_warning else android.R.drawable.ic_lock_idle_charging
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("⚡ Балансування навантаження (DLB)")
+            .setContentText("Струм $action: $oldAmperes А → $newAmperes А (напруга мережі: $voltage В)")
+            .setSmallIcon(icon)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_ALERT + 1, builder.build())
+    }
+
+    fun showConnectionLostAlert(currentAmperes: Int) {
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("⚠️ Зв'язок зі станцією втрачено!")
+            .setContentText("Станція утримує струм $currentAmperes А. За відсутності інтернету балансування тимчасово призупинено.")
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_ALERT + 2, builder.build())
+    }
 }
 

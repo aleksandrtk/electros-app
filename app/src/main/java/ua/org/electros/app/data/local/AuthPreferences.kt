@@ -63,6 +63,26 @@ class AuthPreferences(context: Context) {
         get() = prefs.getBoolean("KEY_STOP_AT_TARIFF", false)
         set(value) = prefs.edit().putBoolean("KEY_STOP_AT_TARIFF", value).apply()
 
+    var isVoltageBalancingEnabled: Boolean
+        get() = prefs.getBoolean("KEY_VOLTAGE_BALANCING_ENABLED", true)
+        set(value) = prefs.edit().putBoolean("KEY_VOLTAGE_BALANCING_ENABLED", value).apply()
+
+    var voltageLowThreshold: Int
+        get() = prefs.getInt("KEY_VOLTAGE_LOW_THRESHOLD", 185)
+        set(value) = prefs.edit().putInt("KEY_VOLTAGE_LOW_THRESHOLD", value).apply()
+
+    var voltageHighThreshold: Int
+        get() = prefs.getInt("KEY_VOLTAGE_HIGH_THRESHOLD", 205)
+        set(value) = prefs.edit().putInt("KEY_VOLTAGE_HIGH_THRESHOLD", value).apply()
+
+    var voltageMaxAmperage: Int
+        get() = prefs.getInt("KEY_VOLTAGE_MAX_AMPERAGE", 12)
+        set(value) = prefs.edit().putInt("KEY_VOLTAGE_MAX_AMPERAGE", value).apply()
+
+    var voltageMinAmperage: Int
+        get() = prefs.getInt("KEY_VOLTAGE_MIN_AMPERAGE", 6)
+        set(value) = prefs.edit().putInt("KEY_VOLTAGE_MIN_AMPERAGE", value).apply()
+
     fun hasValidCredentials(): Boolean {
         return deviceSerial.isNotBlank() && internetPassword.isNotBlank()
     }

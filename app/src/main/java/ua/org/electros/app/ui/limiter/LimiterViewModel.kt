@@ -17,7 +17,11 @@ data class LimiterUiState(
     val stopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
     val isStopAtTariffBoundaryEnabled: Boolean = false,
-    val isScheduleSaved: Boolean = false
+    val isScheduleSaved: Boolean = false,
+    val isVoltageBalancingEnabled: Boolean = true,
+    val voltageLowThreshold: Int = 185,
+    val voltageHighThreshold: Int = 205,
+    val voltageMaxAmperage: Int = 12
 )
 
 class LimiterViewModel(
@@ -33,7 +37,11 @@ class LimiterViewModel(
             startTime = authPreferences.scheduleStartTime,
             stopTime = authPreferences.scheduleStopTime,
             isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
-            isStopAtTariffBoundaryEnabled = authPreferences.stopAtTariffBoundary
+            isStopAtTariffBoundaryEnabled = authPreferences.stopAtTariffBoundary,
+            isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
+            voltageLowThreshold = authPreferences.voltageLowThreshold,
+            voltageHighThreshold = authPreferences.voltageHighThreshold,
+            voltageMaxAmperage = authPreferences.voltageMaxAmperage
         )
     )
     val uiState: StateFlow<LimiterUiState> = _uiState.asStateFlow()
@@ -86,5 +94,28 @@ class LimiterViewModel(
             }
             _uiState.value = _uiState.value.copy(isScheduleSaved = true)
         }
+    }
+
+    fun toggleVoltageBalancing(enabled: Boolean) {
+        authPreferences.isVoltageBalancingEnabled = enabled
+        _uiState.value = _uiState.value.copy(isVoltageBalancingEnabled = enabled)
+    }
+
+    fun setVoltageLowThreshold(threshold: Int) {
+        val clamped = threshold.coerceIn(160, 200)
+        authPreferences.voltageLowThreshold = clamped
+        _uiState.value = _uiState.value.copy(voltageLowThreshold = clamped)
+    }
+
+    fun setVoltageHighThreshold(threshold: Int) {
+        val clamped = threshold.coerceIn(195, 230)
+        authPreferences.voltageHighThreshold = clamped
+        _uiState.value = _uiState.value.copy(voltageHighThreshold = clamped)
+    }
+
+    fun setVoltageMaxAmperage(amperage: Int) {
+        val clamped = amperage.coerceIn(6, 16)
+        authPreferences.voltageMaxAmperage = clamped
+        _uiState.value = _uiState.value.copy(voltageMaxAmperage = clamped)
     }
 }

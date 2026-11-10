@@ -12,9 +12,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ua.org.electros.app.ElectrosApplication
+import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.data.repository.ChargeRepository
 import ua.org.electros.app.domain.accumulator.EnergyAccumulator
+import ua.org.electros.app.domain.balancing.VoltageLoadBalancer
 import ua.org.electros.app.domain.statemachine.ChargingStateMachine
 import ua.org.electros.app.domain.statemachine.StateEvent
 
@@ -24,22 +26,34 @@ class ChargeMonitorService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default + serviceJob)
 
     private lateinit var repository: ChargeRepository
+    private lateinit var authPreferences: AuthPreferences
     private lateinit var notificationHelper: NotificationHelper
     private lateinit var powerManager: PowerManager
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val stateMachine = ChargingStateMachine(SessionStatus.CHARGING)
+    private val voltageLoadBalancer = VoltageLoadBalancer()
     private var activeSessionId: String? = null
     private var activeTargetKwh: Double = 0.0
     private var lastSampledCounterKwh: Double = 0.0
+    private var lastKnownAmperes: Int = 10
     private var zeroCurrentConsecutiveTicks = 0
+    private var consecutiveFailureTicks = 0
+    private var hasAlertedConnectionLost = false
 
     override fun onCreate() {
         super.onCreate()
         val app = application as ElectrosApplication
         repository = app.repository
+        authPreferences = app.authPreferences
         notificationHelper = NotificationHelper(this)
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+
+        voltageLoadBalancer.isEnabled = authPreferences.isVoltageBalancingEnabled
+        voltageLoadBalancer.lowThresholdV = authPreferences.voltageLowThreshold
+        voltageLoadBalancer.highThresholdV = authPreferences.voltageHighThreshold
+        voltageLoadBalancer.minAmperage = authPreferences.voltageMinAmperage
+        voltageLoadBalancer.maxAmperage = authPreferences.voltageMaxAmperage
 
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -106,6 +120,9 @@ class ChargeMonitorService : Service() {
         val sessionId = activeSessionId ?: return
 
         result.onSuccess { data ->
+            consecutiveFailureTicks = 0
+            hasAlertedConnectionLost = false
+            lastKnownAmperes = data.selectedCurrentAmperes
             val slices = repository.getSlicesForSession(sessionId)
             val latestSlice = slices.lastOrNull()
             val sliceStart = latestSlice?.stationCounterStartKwh ?: data.consumedEnergyKwh
@@ -169,6 +186,22 @@ class ChargeMonitorService : Service() {
                         } else {
                             zeroCurrentConsecutiveTicks = 0
                         }
+
+                        // Dynamic Load Balancing (DLB) by Grid Voltage
+                        if (voltageLoadBalancer.isEnabled && data.isChargingActive) {
+                            val recommendedA = voltageLoadBalancer.evaluate(
+                                currentVoltage = data.voltageCurrent,
+                                currentAmperage = data.selectedCurrentAmperes
+                            )
+                            if (recommendedA != null && recommendedA != data.selectedCurrentAmperes) {
+                                val prevA = data.selectedCurrentAmperes
+                                val updateRes = repository.setAmperage(recommendedA)
+                                if (updateRes.isSuccess) {
+                                    lastKnownAmperes = recommendedA
+                                    notificationHelper.showBalancingAlert(prevA, recommendedA, data.voltageCurrent)
+                                }
+                            }
+                        }
                     }
                     else -> {}
                 }
@@ -184,6 +217,12 @@ class ChargeMonitorService : Service() {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             notificationManager.notify(NotificationHelper.NOTIFICATION_ID_STATUS, notification)
         }.onFailure {
+            consecutiveFailureTicks++
+            if (consecutiveFailureTicks >= 3 && !hasAlertedConnectionLost) {
+                hasAlertedConnectionLost = true
+                notificationHelper.showConnectionLostAlert(lastKnownAmperes)
+            }
+
             if (stateMachine.getState() == SessionStatus.CHARGING) {
                 stateMachine.transition(StateEvent.OutageDetected)
                 repository.handleOutageDetected(sessionId, lastSampledCounterKwh)

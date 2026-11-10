@@ -268,5 +268,174 @@ fun LimiterScreen(
                 }
             }
         }
+
+        // Dynamic Load Balancing (DLB) Card
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "БАЛАНСУВАННЯ НАВАНТАЖЕННЯ (DLB)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = WarningAmber
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Адаптація за напругою мережі",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimaryDark
+                        )
+                    }
+
+                    Switch(
+                        checked = state.isVoltageBalancingEnabled,
+                        onCheckedChange = { viewModel.toggleVoltageBalancing(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimaryDark,
+                            checkedTrackColor = WarningAmber
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (!state.isVoltageBalancingEnabled) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(SurfaceContainerHighDark)
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Вимкнено: станція працює на фіксованому струмі без контролю просадки напруги.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondaryDark
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(SurfaceContainerHighDark)
+                                .padding(14.dp)
+                        ) {
+                            Text(
+                                text = "⚡ Якщо напруга падає < ${state.voltageLowThreshold} В — струм поступово знижується до 6 А. Якщо піднімається > ${state.voltageHighThreshold} В — підвищується до максимум ${state.voltageMaxAmperage} А.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimaryDark,
+                                lineHeight = 18.sp
+                            )
+                        }
+
+                        // Low Voltage Slider (< 185V default)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Поріг зниження струму",
+                                    fontSize = 13.sp,
+                                    color = TextSecondaryDark
+                                )
+                                Text(
+                                    text = "< ${state.voltageLowThreshold} В",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ErrorRed
+                                )
+                            }
+                            Slider(
+                                value = state.voltageLowThreshold.toFloat(),
+                                onValueChange = { viewModel.setVoltageLowThreshold(it.toInt()) },
+                                valueRange = 170f..195f,
+                                steps = 24,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = ErrorRed,
+                                    activeTrackColor = ErrorRed,
+                                    inactiveTrackColor = SurfaceContainerHighestDark
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // High Voltage Slider (> 205V default)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Поріг повернення струму",
+                                    fontSize = 13.sp,
+                                    color = TextSecondaryDark
+                                )
+                                Text(
+                                    text = "> ${state.voltageHighThreshold} В",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryNeonGreen
+                                )
+                            }
+                            Slider(
+                                value = state.voltageHighThreshold.toFloat(),
+                                onValueChange = { viewModel.setVoltageHighThreshold(it.toInt()) },
+                                valueRange = 200f..225f,
+                                steps = 24,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = PrimaryNeonGreen,
+                                    activeTrackColor = PrimaryNeonGreen,
+                                    inactiveTrackColor = SurfaceContainerHighestDark
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Max Amperage Slider (6A - 16A, default 12A)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Максимальний струм розгону",
+                                    fontSize = 13.sp,
+                                    color = TextSecondaryDark
+                                )
+                                Text(
+                                    text = "${state.voltageMaxAmperage} А",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SecondaryCyan
+                                )
+                            }
+                            Slider(
+                                value = state.voltageMaxAmperage.toFloat(),
+                                onValueChange = { viewModel.setVoltageMaxAmperage(it.toInt()) },
+                                valueRange = 8f..16f,
+                                steps = 3,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = SecondaryCyan,
+                                    activeTrackColor = SecondaryCyan,
+                                    inactiveTrackColor = SurfaceContainerHighestDark
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

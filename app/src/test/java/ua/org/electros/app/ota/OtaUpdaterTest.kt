@@ -49,3 +49,4 @@ class OtaUpdaterTest {
         assertThat(OtaUpdater.isValidDownloadUrl("invalid-url")).isFalse()
     }
 }
+

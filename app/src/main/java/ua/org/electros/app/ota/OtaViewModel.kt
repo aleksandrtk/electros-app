@@ -98,3 +98,4 @@ class OtaViewModel : ViewModel() {
         _showUpdateDialog.value = false
     }
 }
+
