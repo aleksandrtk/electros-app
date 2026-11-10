@@ -39,6 +39,10 @@ class AuthPreferences(context: Context) {
         get() = prefs.getFloat("KEY_TARGET_KWH_LIMIT", 15.0f).toDouble()
         set(value) = prefs.edit().putFloat("KEY_TARGET_KWH_LIMIT", value.toFloat()).apply()
 
+    var preferredAmperage: Int
+        get() = prefs.getInt("KEY_PREFERRED_AMPERAGE", 16)
+        set(value) = prefs.edit().putInt("KEY_PREFERRED_AMPERAGE", value).apply()
+
     var isScheduleEnabled: Boolean
         get() = prefs.getBoolean("KEY_SCHEDULE_ENABLED", false)
         set(value) = prefs.edit().putBoolean("KEY_SCHEDULE_ENABLED", value).apply()

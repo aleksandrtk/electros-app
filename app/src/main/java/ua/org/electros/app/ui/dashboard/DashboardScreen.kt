@@ -372,8 +372,12 @@ private fun AmperageSelectorCard(
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
                             .background(if (isSelected) PrimaryNeonGreen else SurfaceContainerHighDark)
+                            .then(
+                                if (!isSelected) Modifier.border(1.dp, OutlineDark, RoundedCornerShape(12.dp))
+                                else Modifier
+                            )
                             .clickable { onAmperageSelected(amp) }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(

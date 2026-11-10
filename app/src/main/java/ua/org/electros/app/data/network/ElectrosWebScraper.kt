@@ -117,11 +117,16 @@ class ElectrosWebScraper(
         val formBuilder = FormBody.Builder()
             .add("action", "set_current")
             .add("current", "$amperes A")
+            .add("current", "$amperes")
+            .add("amperage", "$amperes")
+            .add("amper", "$amperes")
+            .add("tok", "$amperes")
 
         lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
 
         val request = Request.Builder()
             .url("$baseUrl/auth/main.php")
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36")
             .post(formBuilder.build())
             .build()
 
@@ -240,10 +245,26 @@ class ElectrosWebScraper(
 
         // Selected Amperes dropdown
         var selectedA = 16
-        val selectedOpt = doc.select("select option[selected]")
-        if (selectedOpt.isNotEmpty()) {
-            val optText = selectedOpt.text()
-            selectedA = optText.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 16
+        val currentSelect = doc.select("select").firstOrNull {
+            it.parent()?.text()?.contains("струм", ignoreCase = true) == true ||
+            it.attr("name").contains("curr", ignoreCase = true) ||
+            it.attr("name").contains("amp", ignoreCase = true) ||
+            it.attr("name").contains("tok", ignoreCase = true)
+        } ?: doc.select("select").firstOrNull()
+
+        val selectedOpt = currentSelect?.select("option[selected]")?.firstOrNull()
+        if (selectedOpt != null) {
+            val num = selectedOpt.text().replace(Regex("[^0-9]"), "").toIntOrNull()
+                ?: selectedOpt.`val`().replace(Regex("[^0-9]"), "").toIntOrNull()
+            if (num != null && num in 6..32) {
+                selectedA = num
+            }
+        } else {
+            val textMatch = Regex("Оберіть струм[^0-9]*([0-9]+)\\s*A?").find(bodyText)
+            if (textMatch != null) {
+                val num = textMatch.groupValues[1].toIntOrNull()
+                if (num != null && num in 6..32) selectedA = num
+            }
         }
 
         // Measured Current

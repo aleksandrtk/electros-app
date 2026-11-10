@@ -33,7 +33,7 @@ class DashboardViewModel(
     private val authPreferences: AuthPreferences
 ) : ViewModel() {
 
-    private val _selectedAmperes = MutableStateFlow(16)
+    private val _selectedAmperes = MutableStateFlow(authPreferences.preferredAmperage)
     private val _isBusy = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
 
@@ -47,7 +47,6 @@ class DashboardViewModel(
         val isLimitEnabled = authPreferences.isKwhLimitEnabled
         val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
         val isOnline = telemetry?.isOnline == true
-        val isCharging = telemetry?.isChargingActive == true
 
         // If station is completely offline and delivered energy is 0, session is stale
         val effectiveSession = if (activeSession != null && (!isOnline && activeSession.totalKwhDelivered == 0.0)) {
@@ -67,7 +66,7 @@ class DashboardViewModel(
         DashboardUiState(
             telemetry = telemetry,
             activeSession = effectiveSession,
-            selectedAmperes = if (telemetry != null) telemetry.selectedCurrentAmperes else amperes,
+            selectedAmperes = amperes,
             isKwhLimitEnabled = isLimitEnabled,
             targetQuotaKwh = quota,
             totalDeliveredKwh = delivered,
@@ -78,7 +77,7 @@ class DashboardViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = DashboardUiState()
+        initialValue = DashboardUiState(selectedAmperes = authPreferences.preferredAmperage)
     )
 
     init {
@@ -96,6 +95,7 @@ class DashboardViewModel(
 
     fun onAmperageSelected(amperes: Int) {
         _selectedAmperes.value = amperes
+        authPreferences.preferredAmperage = amperes
         viewModelScope.launch {
             repository.setAmperage(amperes)
             repository.fetchLatestTelemetry()
