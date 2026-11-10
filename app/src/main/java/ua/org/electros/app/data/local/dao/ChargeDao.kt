@@ -30,6 +30,9 @@ interface ChargeDao {
     @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING') ORDER BY startedAt DESC LIMIT 1")
     fun observeActiveSession(): Flow<ChargeSessionEntity?>
 
+    @Query("UPDATE charge_sessions SET status = 'CANCELLED', completedAt = :currentTime WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING')")
+    suspend fun cancelAllActiveSessions(currentTime: Long = System.currentTimeMillis())
+
     @Query("SELECT * FROM charge_sessions ORDER BY startedAt DESC")
     fun getAllSessions(): Flow<List<ChargeSessionEntity>>
 

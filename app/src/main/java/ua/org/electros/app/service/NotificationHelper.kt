@@ -78,17 +78,26 @@ class NotificationHelper(private val context: Context) {
         )
 
         val progress = if (targetKwh > 0.0) ((deliveredKwh / targetKwh) * 100).toInt() else 0
+        val contentText = if (targetKwh > 0.0) {
+            "Заряджено %.1f з %.0f кВт⋅год (%d%%)".format(deliveredKwh, targetKwh, progress)
+        } else {
+            "Заряджено %.1f кВт⋅год (без ліміту)".format(deliveredKwh)
+        }
 
-        return NotificationCompat.Builder(context, CHANNEL_ID_CHARGING)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_CHARGING)
             .setContentTitle("Electros: %.1f кВт • %s".format(powerKw, statusText))
-            .setContentText("Заряджено %.1f з %.1f кВт⋅год (%d%%)".format(deliveredKwh, targetKwh, progress))
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
-            .setProgress(100, progress, false)
             .addAction(android.R.drawable.ic_media_pause, "Зупинити", stopPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+
+        if (targetKwh > 0.0) {
+            builder.setProgress(100, progress, false)
+        }
+
+        return builder.build()
     }
 
     fun showOutageAlert(retainedKwh: Double) {

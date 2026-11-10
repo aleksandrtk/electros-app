@@ -44,25 +44,31 @@ class DashboardViewModel(
         _isBusy,
         _errorMessage
     ) { telemetry, activeSession, amperes, busy, error ->
-        val delivered = activeSession?.totalKwhDelivered ?: (telemetry?.consumedEnergyKwh ?: 0.0)
-        val isOutage = activeSession?.status == SessionStatus.OUTAGE_DETECTED ||
-                activeSession?.status == SessionStatus.OUTAGE_STABILIZING ||
-                (telemetry != null && !telemetry.isOnline)
-
         val isLimitEnabled = authPreferences.isKwhLimitEnabled
-        val quota = if (activeSession != null) {
-            activeSession.targetKwh
-        } else if (isLimitEnabled) {
-            authPreferences.targetKwhLimit
+        val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
+        val isOnline = telemetry?.isOnline == true
+        val isCharging = telemetry?.isChargingActive == true
+
+        // If station is completely offline and delivered energy is 0, session is stale
+        val effectiveSession = if (activeSession != null && (!isOnline && activeSession.totalKwhDelivered == 0.0)) {
+            null
         } else {
-            0.0
+            activeSession
         }
+
+        val delivered = effectiveSession?.totalKwhDelivered ?: 0.0
+
+        val isOutage = effectiveSession != null &&
+                effectiveSession.totalKwhDelivered > 0.0 &&
+                (effectiveSession.status == SessionStatus.OUTAGE_DETECTED ||
+                        effectiveSession.status == SessionStatus.OUTAGE_STABILIZING ||
+                        !isOnline)
 
         DashboardUiState(
             telemetry = telemetry,
-            activeSession = activeSession,
+            activeSession = effectiveSession,
             selectedAmperes = if (telemetry != null) telemetry.selectedCurrentAmperes else amperes,
-            isKwhLimitEnabled = isLimitEnabled || (activeSession != null && activeSession.targetKwh > 0.0),
+            isKwhLimitEnabled = isLimitEnabled,
             targetQuotaKwh = quota,
             totalDeliveredKwh = delivered,
             isOutageActive = isOutage,
@@ -77,6 +83,9 @@ class DashboardViewModel(
 
     init {
         refreshTelemetry()
+        viewModelScope.launch {
+            repository.cancelStaleSessionsIfOffline()
+        }
     }
 
     fun refreshTelemetry() {

@@ -51,6 +51,12 @@ class ChargeRepository(
         val result = scraper.fetchTelemetry()
         result.onSuccess { data ->
             _telemetryState.value = data
+            if (!data.isOnline) {
+                val active = chargeDao.getActiveSession()
+                if (active != null && active.totalKwhDelivered == 0.0) {
+                    chargeDao.cancelAllActiveSessions()
+                }
+            }
         }
         return result
     }
@@ -97,17 +103,18 @@ class ChargeRepository(
             lastSampledKwh = lastCounter,
             reason = SliceEndReason.MANUAL_STOP
         )
-
-        val activeSession = chargeDao.getSessionById(sessionId)
-        if (activeSession != null) {
-            chargeDao.updateSession(
-                activeSession.copy(
-                    status = SessionStatus.CANCELLED,
-                    completedAt = System.currentTimeMillis()
-                )
-            )
-        }
+        chargeDao.cancelAllActiveSessions()
         return stopResult
+    }
+
+    suspend fun cancelStaleSessionsIfOffline() {
+        val telemetry = _telemetryState.value
+        if (telemetry != null && !telemetry.isOnline) {
+            val active = chargeDao.getActiveSession()
+            if (active != null && active.totalKwhDelivered == 0.0) {
+                chargeDao.cancelAllActiveSessions()
+            }
+        }
     }
 
     suspend fun setAmperage(amperes: Int): Result<Unit> {

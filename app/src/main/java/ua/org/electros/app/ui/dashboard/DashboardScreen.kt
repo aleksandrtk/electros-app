@@ -84,6 +84,7 @@ fun DashboardScreen(
         // Action Buttons: Start / Stop
         ActionButtonsRow(
             isCharging = telemetry?.isChargingActive ?: false,
+            hasActiveSession = state.activeSession != null,
             isOnline = telemetry?.isOnline ?: false,
             isBusy = state.isStartingOrStopping,
             onStart = { viewModel.onStartClicked(context) },
@@ -390,6 +391,7 @@ private fun AmperageSelectorCard(
 @Composable
 private fun ActionButtonsRow(
     isCharging: Boolean,
+    hasActiveSession: Boolean,
     isOnline: Boolean,
     isBusy: Boolean,
     onStart: () -> Unit,
@@ -413,7 +415,7 @@ private fun ActionButtonsRow(
 
         Button(
             onClick = onStop,
-            enabled = isCharging && !isBusy,
+            enabled = (isCharging || hasActiveSession) && !isBusy,
             shape = RoundedCornerShape(20.dp),
             colors = ButtonDefaults.buttonColors(containerColor = ErrorRed, contentColor = Color.White),
             modifier = Modifier

@@ -30,7 +30,7 @@ class ChargeMonitorService : Service() {
 
     private val stateMachine = ChargingStateMachine(SessionStatus.CHARGING)
     private var activeSessionId: String? = null
-    private var activeTargetKwh: Double = 30.0
+    private var activeTargetKwh: Double = 0.0
     private var lastSampledCounterKwh: Double = 0.0
     private var zeroCurrentConsecutiveTicks = 0
 
@@ -56,7 +56,7 @@ class ChargeMonitorService : Service() {
         }
 
         activeSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
-        activeTargetKwh = intent?.getDoubleExtra(EXTRA_TARGET_KWH, 30.0) ?: 30.0
+        activeTargetKwh = intent?.getDoubleExtra(EXTRA_TARGET_KWH, 0.0) ?: 0.0
 
         val initialNotification = notificationHelper.buildForegroundNotification(
             powerKw = 0.0,
