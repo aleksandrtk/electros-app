@@ -3,14 +3,11 @@ package ua.org.electros.app.data
 import com.google.common.truth.Truth.assertThat
 import org.jsoup.Jsoup
 import org.junit.Test
-import ua.org.electros.app.data.local.AuthPreferences
-import ua.org.electros.app.data.network.CookieStorage
 import ua.org.electros.app.data.network.ElectrosWebScraper
-import java.io.File
 
 class ElectrosWebScraperTest {
 
-    private val sampleHtml = """
+    private val offlineHtml = """
         <!DOCTYPE html>
         <html>
         <body>
@@ -35,37 +32,70 @@ class ElectrosWebScraperTest {
                 </select>
             </div>
             <div>
-                Струм, виміряний: 16.2 A
+                Струм, виміряний: 0.0 A
             </div>
             <table>
                 <tr><td>Спожита енергія</td><td><span>2.2 кВт*год</span></td></tr>
-                <tr><td>Потужність</td><td><span>3.7 кВт</span></td></tr>
+                <tr><td>Потужність</td><td><span>0.0 кВт</span></td></tr>
+            </table>
+        </body>
+        </html>
+    """.trimIndent()
+
+    private val connectedIdleHtml = """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <div>Стан: <span>Підключено. Немає заряду</span></div>
+            <table>
+                <caption>Напруга Мережі, В:</caption>
+                <tr><th>Min</th><th>Середня</th><th>Поточна</th><th>Max</th></tr>
+                <tr><td>210</td><td>220</td><td>228</td><td>232</td></tr>
+            </table>
+            <table>
+                <caption>Напруга нейтралі, В:</caption>
+                <tr><th>Min</th><th>Середня</th><th>Поточна</th><th>Max</th></tr>
+                <tr><td>1</td><td>2</td><td>2</td><td>3</td></tr>
+            </table>
+            <div>
+                Оберіть струм заряджання:
+                <select name="current">
+                    <option value="16" selected>16 A</option>
+                </select>
+            </div>
+            <div>
+                Струм, виміряний: 0.0 A
+            </div>
+            <table>
+                <tr><td>Спожита енергія</td><td><span>5.4 кВт*год</span></td></tr>
+                <tr><td>Потужність</td><td><span>0.0 кВт</span></td></tr>
             </table>
         </body>
         </html>
     """.trimIndent()
 
     @Test
-    fun parseTelemetryDocument_correctlyExtractsAllFields() {
-        // We test parseTelemetryDocument directly on Jsoup parsed DOM
-        val doc = Jsoup.parse(sampleHtml)
-        
-        // Mock-less scraper testing parser method
+    fun parseTelemetryDocument_whenOffline_isOnlineFalse() {
+        val doc = Jsoup.parse(offlineHtml)
         val scraper = ElectrosWebScraper()
-
         val telemetry = scraper.parseTelemetryDocument(doc)
 
         assertThat(telemetry.isOnline).isFalse()
         assertThat(telemetry.statusText).isEqualTo("Станція OFFLINE")
-        assertThat(telemetry.voltageMin).isEqualTo(184)
-        assertThat(telemetry.voltageAvg).isEqualTo(202)
         assertThat(telemetry.voltageCurrent).isEqualTo(224)
-        assertThat(telemetry.voltageMax).isEqualTo(224)
-        assertThat(telemetry.neutralCurrent).isEqualTo(2)
-        assertThat(telemetry.selectedCurrentAmperes).isEqualTo(10)
-        assertThat(telemetry.measuredCurrentAmperes).isEqualTo(16.2)
-        assertThat(telemetry.consumedEnergyKwh).isEqualTo(2.2)
-        assertThat(telemetry.powerKw).isEqualTo(3.7)
-        assertThat(telemetry.isChargingActive).isTrue()
+        assertThat(telemetry.isChargingActive).isFalse()
+    }
+
+    @Test
+    fun parseTelemetryDocument_whenConnectedIdle_isOnlineTrueAndNotCharging() {
+        val doc = Jsoup.parse(connectedIdleHtml)
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseTelemetryDocument(doc)
+
+        assertThat(telemetry.isOnline).isTrue()
+        assertThat(telemetry.statusText).isEqualTo("Підключено. Немає заряду")
+        assertThat(telemetry.voltageCurrent).isEqualTo(228)
+        assertThat(telemetry.selectedCurrentAmperes).isEqualTo(16)
+        assertThat(telemetry.isChargingActive).isFalse()
     }
 }

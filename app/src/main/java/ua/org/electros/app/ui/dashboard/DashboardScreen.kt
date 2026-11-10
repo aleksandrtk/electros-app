@@ -46,6 +46,7 @@ fun DashboardScreen(
         // Top App Bar
         TopHeader(
             isOnline = telemetry?.isOnline ?: false,
+            statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "Підключено" else "Станція OFFLINE",
             voltage = telemetry?.voltageCurrent ?: 220
         )
 
@@ -94,7 +95,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun TopHeader(isOnline: Boolean, voltage: Int) {
+private fun TopHeader(isOnline: Boolean, statusText: String, voltage: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -117,7 +118,7 @@ private fun TopHeader(isOnline: Boolean, voltage: Int) {
                         .background(if (isOnline) PrimaryNeonGreen else ErrorRed)
                 )
                 Text(
-                    text = if (isOnline) "Гараж • Станція ONLINE" else "Гараж • Станція OFFLINE",
+                    text = "Гараж • $statusText",
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextSecondaryDark
                 )

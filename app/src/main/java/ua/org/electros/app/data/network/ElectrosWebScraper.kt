@@ -184,8 +184,33 @@ class ElectrosWebScraper(
     fun parseTelemetryDocument(doc: Document): TelemetryData {
         val bodyText = doc.body().text()
 
-        val isOnline = !bodyText.contains("Станція OFFLINE") && bodyText.contains("Станція ONLINE")
-        val statusText = if (isOnline) "Станція ONLINE" else "Станція OFFLINE"
+        // Station online/offline parsing
+        val isOffline = bodyText.contains("Станція OFFLINE", ignoreCase = true) ||
+                (bodyText.contains("OFFLINE", ignoreCase = true) && !bodyText.contains("ONLINE", ignoreCase = true))
+
+        var extractedStatus = ""
+        val statusEl = doc.select(":containsOwn(Стан:)").first()
+        if (statusEl != null) {
+            val raw = statusEl.text().substringAfter("Стан:").trim()
+            if (raw.isNotBlank()) {
+                extractedStatus = raw.substringBefore("Напруга").substringBefore("Min").trim()
+            }
+        }
+        if (extractedStatus.isBlank()) {
+            val statusMatcher = Regex("Стан:\\s*([A-Za-zА-Яа-яІіЇїЄє0-9\\s.]+?)(?=Напруга|Min|Оберіть|\\n|$)").find(bodyText)
+            if (statusMatcher != null) {
+                extractedStatus = statusMatcher.groupValues[1].trim()
+            }
+        }
+
+        val isOnline = !isOffline && (extractedStatus.isNotBlank() || bodyText.contains("Напруга Мережі"))
+        val statusText = if (extractedStatus.isNotBlank()) {
+            extractedStatus
+        } else if (isOnline) {
+            "Підключено"
+        } else {
+            "Станція OFFLINE"
+        }
 
         // Grid Voltage row: Min / Середня / Поточна / Max
         var vMin = 220; var vAvg = 220; var vCur = 220; var vMax = 220
@@ -256,7 +281,9 @@ class ElectrosWebScraper(
             }
         }
 
-        val isChargingActive = measuredA > 0.5 || powerKw > 0.1
+        val isChargingActive = !isOffline &&
+                (measuredA > 0.5 || powerKw > 0.1 || statusText.contains("Заряд", ignoreCase = true)) &&
+                !statusText.contains("Немає заряду", ignoreCase = true)
 
         return TelemetryData(
             statusText = statusText,
