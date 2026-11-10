@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ua.org.electros.app.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
@@ -33,62 +35,68 @@ fun DashboardScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(SurfaceDark)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = { viewModel.refreshTelemetry() },
+        modifier = modifier.fillMaxSize()
     ) {
-        val telemetry = state.telemetry
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SurfaceDark)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            val telemetry = state.telemetry
 
-        // Top App Bar
-        TopHeader(
-            isOnline = telemetry?.isOnline ?: false,
-            statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "Підключено" else "Станція OFFLINE",
-            voltage = telemetry?.voltageCurrent ?: 220
-        )
-
-        // Error message banner
-        if (!state.errorMessage.isNullOrBlank()) {
-            ErrorMessageCard(message = state.errorMessage ?: "")
-        }
-
-        // Outage banner (only when session was active) or Offline warning
-        if (state.activeSession != null && state.isOutageActive) {
-            OutageBanner(
-                deliveredKwh = state.totalDeliveredKwh,
-                targetKwh = state.targetQuotaKwh,
-                isLimitEnabled = state.isKwhLimitEnabled
+            // Top App Bar
+            TopHeader(
+                isOnline = telemetry?.isOnline ?: false,
+                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "Підключено" else "Станція OFFLINE",
+                voltage = telemetry?.voltageCurrent ?: 220
             )
-        } else if (telemetry != null && !telemetry.isOnline) {
-            OfflineWarningCard()
+
+            // Error message banner
+            if (!state.errorMessage.isNullOrBlank()) {
+                ErrorMessageCard(message = state.errorMessage ?: "")
+            }
+
+            // Outage banner (only when session was active) or Offline warning
+            if (state.activeSession != null && state.isOutageActive) {
+                OutageBanner(
+                    deliveredKwh = state.totalDeliveredKwh,
+                    targetKwh = state.targetQuotaKwh,
+                    isLimitEnabled = state.isKwhLimitEnabled
+                )
+            } else if (telemetry != null && !telemetry.isOnline) {
+                OfflineWarningCard()
+            }
+
+            // Hero Charging Dial Card
+            HeroDialCard(
+                deliveredKwh = state.totalDeliveredKwh,
+                isKwhLimitEnabled = state.isKwhLimitEnabled,
+                targetKwh = state.targetQuotaKwh,
+                powerKw = telemetry?.powerKw ?: 0.0,
+                currentAmperes = telemetry?.measuredCurrentAmperes ?: 0.0,
+                neutralVolts = telemetry?.neutralCurrent ?: 2
+            )
+
+            // Segmented Amperage Selector
+            AmperageSelectorCard(
+                selectedAmperes = state.selectedAmperes,
+                onAmperageSelected = { viewModel.onAmperageSelected(it) }
+            )
+
+            // Action Buttons: Start / Stop
+            ActionButtonsRow(
+                isCharging = telemetry?.isChargingActive ?: false,
+                isBusy = state.isStartingOrStopping,
+                onStart = { viewModel.onStartClicked(context) },
+                onStop = { viewModel.onStopClicked() }
+            )
         }
-
-        // Hero Charging Dial Card
-        HeroDialCard(
-            deliveredKwh = state.totalDeliveredKwh,
-            isKwhLimitEnabled = state.isKwhLimitEnabled,
-            targetKwh = state.targetQuotaKwh,
-            powerKw = telemetry?.powerKw ?: 0.0,
-            currentAmperes = telemetry?.measuredCurrentAmperes ?: 0.0,
-            neutralVolts = telemetry?.neutralCurrent ?: 2
-        )
-
-        // Segmented Amperage Selector
-        AmperageSelectorCard(
-            selectedAmperes = state.selectedAmperes,
-            onAmperageSelected = { viewModel.onAmperageSelected(it) }
-        )
-
-        // Action Buttons: Start / Stop
-        ActionButtonsRow(
-            isCharging = telemetry?.isChargingActive ?: false,
-            isBusy = state.isStartingOrStopping,
-            onStart = { viewModel.onStartClicked(context) },
-            onStop = { viewModel.onStopClicked() }
-        )
     }
 }
 

@@ -27,6 +27,7 @@ data class DashboardUiState(
     val totalDeliveredKwh: Double = 0.0,
     val isOutageActive: Boolean = false,
     val isStartingOrStopping: Boolean = false,
+    val isRefreshing: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -37,15 +38,21 @@ class DashboardViewModel(
 
     private val _selectedAmperes = MutableStateFlow(authPreferences.preferredAmperage)
     private val _isBusy = MutableStateFlow(false)
+    private val _isRefreshing = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
+
+    private val _operationState = combine(_isBusy, _isRefreshing) { busy, refreshing ->
+        Pair(busy, refreshing)
+    }
 
     val uiState: StateFlow<DashboardUiState> = combine(
         repository.telemetryState,
         repository.observeActiveSession(),
         _selectedAmperes,
-        _isBusy,
+        _operationState,
         _errorMessage
-    ) { telemetry, activeSession, amperes, busy, error ->
+    ) { telemetry, activeSession, amperes, opState, error ->
+        val (busy, refreshing) = opState
         val isLimitEnabled = authPreferences.isKwhLimitEnabled
         val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
         val isOnline = telemetry?.isOnline == true
@@ -76,6 +83,7 @@ class DashboardViewModel(
             totalDeliveredKwh = delivered,
             isOutageActive = isOutage,
             isStartingOrStopping = busy,
+            isRefreshing = refreshing,
             errorMessage = error
         )
     }.stateIn(
@@ -91,16 +99,19 @@ class DashboardViewModel(
     private fun startTelemetryPolling() {
         viewModelScope.launch {
             repository.cancelStaleSessionsIfOffline()
+            repository.fetchLatestTelemetry()
             while (isActive) {
+                delay(60_000L)
                 repository.fetchLatestTelemetry()
-                delay(3000L)
             }
         }
     }
 
     fun refreshTelemetry() {
         viewModelScope.launch {
+            _isRefreshing.value = true
             repository.fetchLatestTelemetry()
+            _isRefreshing.value = false
         }
     }
 
