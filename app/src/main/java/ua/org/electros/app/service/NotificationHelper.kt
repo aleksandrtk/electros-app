@@ -123,16 +123,39 @@ class NotificationHelper(private val context: Context) {
     }
 
     fun showBalancingAlert(oldAmperes: Int, newAmperes: Int, voltage: Int) {
-        val action = if (newAmperes < oldAmperes) "знижено" else "підвищено"
-        val icon = if (newAmperes < oldAmperes) android.R.drawable.stat_sys_warning else android.R.drawable.ic_lock_idle_charging
+        val isLowered = newAmperes < oldAmperes
+        val title = if (isLowered) {
+            "⚡ Струм заряджання знижено!"
+        } else {
+            "⚡ Струм заряджання підвищено"
+        }
+        val text = if (isLowered) {
+            "Просадка напруги ($voltage В). Струм зменшено: $oldAmperes А → $newAmperes А для захисту мережі."
+        } else {
+            "Напруга стабілізувалась ($voltage В). Струм підвищено: $oldAmperes А → $newAmperes А."
+        }
+        val icon = if (isLowered) android.R.drawable.stat_sys_warning else android.R.drawable.ic_lock_idle_charging
+
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            2,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚡ Балансування навантаження (DLB)")
-            .setContentText("Струм $action: $oldAmperes А → $newAmperes А (напруга мережі: $voltage В)")
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(icon)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent)
+            .setPriority(if (isLowered) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
 
-        notificationManager.notify(NOTIFICATION_ID_ALERT + 1, builder.build())
+        val notifId = NOTIFICATION_ID_ALERT + 10 + (System.currentTimeMillis() % 100).toInt()
+        notificationManager.notify(notifId, builder.build())
     }
 
     fun showConnectionLostAlert(currentAmperes: Int) {
