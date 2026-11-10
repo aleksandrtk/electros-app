@@ -32,6 +32,21 @@ class ChargeRepository(
         return chargeDao.getSlicesForSession(sessionId)
     }
 
+    suspend fun login(serial: String, password: String): Result<Unit> {
+        val result = scraper.login(serial, password)
+        if (result.isSuccess) {
+            authPreferences.deviceSerial = serial
+            authPreferences.internetPassword = password
+            fetchLatestTelemetry()
+        }
+        return result
+    }
+
+    fun logout() {
+        authPreferences.clearCredentials()
+        _telemetryState.value = null
+    }
+
     suspend fun fetchLatestTelemetry(): Result<TelemetryData> {
         val result = scraper.fetchTelemetry()
         result.onSuccess { data ->
@@ -41,6 +56,11 @@ class ChargeRepository(
     }
 
     suspend fun startNewSession(targetKwh: Double, amperage: Int): Result<String> {
+        val currentTelemetry = _telemetryState.value
+        if (currentTelemetry != null && !currentTelemetry.isOnline) {
+            return Result.failure(IllegalStateException("Станція вимкнена з розетки (OFFLINE). Підключіть живлення до станції."))
+        }
+
         val sessionId = UUID.randomUUID().toString()
         val session = ChargeSessionEntity(
             id = sessionId,

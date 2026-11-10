@@ -10,7 +10,9 @@ import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.repository.ChargeRepository
 
 data class LimiterUiState(
-    val targetKwh: Double = 30.0,
+    val isKwhLimitEnabled: Boolean = false,
+    val targetKwh: Double = 15.0,
+    val isScheduleEnabled: Boolean = false,
     val startTime: String = "23:00",
     val stopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
@@ -25,24 +27,44 @@ class LimiterViewModel(
 
     private val _uiState = MutableStateFlow(
         LimiterUiState(
+            isKwhLimitEnabled = authPreferences.isKwhLimitEnabled,
+            targetKwh = authPreferences.targetKwhLimit,
+            isScheduleEnabled = authPreferences.isScheduleEnabled,
+            startTime = authPreferences.scheduleStartTime,
+            stopTime = authPreferences.scheduleStopTime,
             isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
             isStopAtTariffBoundaryEnabled = authPreferences.stopAtTariffBoundary
         )
     )
     val uiState: StateFlow<LimiterUiState> = _uiState.asStateFlow()
 
+    fun toggleKwhLimit(enabled: Boolean) {
+        authPreferences.isKwhLimitEnabled = enabled
+        _uiState.value = _uiState.value.copy(isKwhLimitEnabled = enabled)
+    }
+
     fun updateTargetKwh(delta: Double) {
         val current = _uiState.value.targetKwh
-        val updated = (current + delta).coerceIn(5.0, 100.0)
+        val updated = (current + delta).coerceIn(1.0, 100.0)
+        authPreferences.targetKwhLimit = updated
         _uiState.value = _uiState.value.copy(targetKwh = updated)
     }
 
-    fun setExactTargetKwh(quota: Double) {
-        _uiState.value = _uiState.value.copy(targetKwh = quota.coerceIn(5.0, 100.0))
+    fun setTargetKwh(quota: Double) {
+        val clamped = quota.coerceIn(1.0, 100.0)
+        authPreferences.targetKwhLimit = clamped
+        _uiState.value = _uiState.value.copy(targetKwh = clamped)
+    }
+
+    fun toggleSchedule(enabled: Boolean) {
+        authPreferences.isScheduleEnabled = enabled
+        _uiState.value = _uiState.value.copy(isScheduleEnabled = enabled)
     }
 
     fun setScheduleTimes(start: String, stop: String) {
-        _uiState.value = _uiState.value.copy(startTime = start, stopTime = stop)
+        authPreferences.scheduleStartTime = start
+        authPreferences.scheduleStopTime = stop
+        _uiState.value = _uiState.value.copy(startTime = start, stopTime = stop, isScheduleSaved = false)
     }
 
     fun toggleAutoResume(enabled: Boolean) {
@@ -57,9 +79,12 @@ class LimiterViewModel(
 
     fun applyScheduleToStation() {
         viewModelScope.launch {
-            repository.setScheduleTimer(_uiState.value.startTime, _uiState.value.stopTime)
+            if (_uiState.value.isScheduleEnabled) {
+                repository.setScheduleTimer(_uiState.value.startTime, _uiState.value.stopTime)
+            } else {
+                repository.setScheduleTimer("00:00", "00:00")
+            }
             _uiState.value = _uiState.value.copy(isScheduleSaved = true)
         }
     }
 }
-

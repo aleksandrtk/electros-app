@@ -37,3 +37,4 @@ The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
 ## License
 
 MIT License
+

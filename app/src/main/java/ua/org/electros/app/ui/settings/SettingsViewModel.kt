@@ -34,5 +34,12 @@ class SettingsViewModel(
             hasCredentials = authPreferences.hasValidCredentials()
         )
     }
-}
 
+    fun logout() {
+        authPreferences.clearCredentials()
+        _uiState.value = _uiState.value.copy(
+            deviceSerial = "",
+            hasCredentials = false
+        )
+    }
+}

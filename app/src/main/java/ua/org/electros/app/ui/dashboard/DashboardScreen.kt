@@ -1,6 +1,5 @@
 package ua.org.electros.app.ui.dashboard
 
-import android.content.Context
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -42,24 +41,38 @@ fun DashboardScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        val telemetry = state.telemetry
+
         // Top App Bar
         TopHeader(
-            isOnline = state.telemetry?.isOnline ?: false,
-            voltage = state.telemetry?.voltageCurrent ?: 220
+            isOnline = telemetry?.isOnline ?: false,
+            voltage = telemetry?.voltageCurrent ?: 220
         )
 
-        // Outage Alert Banner (Conditional)
-        if (state.isOutageActive) {
-            OutageBanner(deliveredKwh = state.totalDeliveredKwh, targetKwh = state.targetQuotaKwh)
+        // Error message banner
+        if (!state.errorMessage.isNullOrBlank()) {
+            ErrorMessageCard(message = state.errorMessage ?: "")
+        }
+
+        // Outage banner (only when session was active) or Offline warning
+        if (state.activeSession != null && state.isOutageActive) {
+            OutageBanner(
+                deliveredKwh = state.totalDeliveredKwh,
+                targetKwh = state.targetQuotaKwh,
+                isLimitEnabled = state.isKwhLimitEnabled
+            )
+        } else if (telemetry != null && !telemetry.isOnline) {
+            OfflineWarningCard()
         }
 
         // Hero Charging Dial Card
         HeroDialCard(
             deliveredKwh = state.totalDeliveredKwh,
+            isKwhLimitEnabled = state.isKwhLimitEnabled,
             targetKwh = state.targetQuotaKwh,
-            powerKw = state.telemetry?.powerKw ?: 0.0,
-            currentAmperes = state.telemetry?.measuredCurrentAmperes ?: 0.0,
-            neutralVolts = state.telemetry?.neutralCurrent ?: 2
+            powerKw = telemetry?.powerKw ?: 0.0,
+            currentAmperes = telemetry?.measuredCurrentAmperes ?: 0.0,
+            neutralVolts = telemetry?.neutralCurrent ?: 2
         )
 
         // Segmented Amperage Selector
@@ -70,7 +83,8 @@ fun DashboardScreen(
 
         // Action Buttons: Start / Stop
         ActionButtonsRow(
-            isCharging = state.telemetry?.isChargingActive ?: false,
+            isCharging = telemetry?.isChargingActive ?: false,
+            isOnline = telemetry?.isOnline ?: false,
             isBusy = state.isStartingOrStopping,
             onStart = { viewModel.onStartClicked(context) },
             onStop = { viewModel.onStopClicked() }
@@ -102,7 +116,7 @@ private fun TopHeader(isOnline: Boolean, voltage: Int) {
                         .background(if (isOnline) PrimaryNeonGreen else ErrorRed)
                 )
                 Text(
-                    text = "Гараж • Electros Station",
+                    text = if (isOnline) "Гараж • Станція ONLINE" else "Гараж • Станція OFFLINE",
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextSecondaryDark
                 )
@@ -117,16 +131,35 @@ private fun TopHeader(isOnline: Boolean, voltage: Int) {
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             Text(
-                text = "● $voltage В",
+                text = if (isOnline) "● $voltage В" else "● 0 В (Вимкнено)",
                 style = MaterialTheme.typography.labelSmall,
-                color = PrimaryNeonGreen
+                color = if (isOnline) PrimaryNeonGreen else ErrorRed
             )
         }
     }
 }
 
 @Composable
-private fun OutageBanner(deliveredKwh: Double, targetKwh: Double) {
+private fun ErrorMessageCard(message: String) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainerHighDark),
+        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(ErrorRed, ErrorRed))),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "⚠️", fontSize = 18.sp)
+            Text(text = message, fontSize = 13.sp, color = TextPrimaryDark)
+        }
+    }
+}
+
+@Composable
+private fun OutageBanner(deliveredKwh: Double, targetKwh: Double, isLimitEnabled: Boolean) {
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = WarningContainerDark),
@@ -141,13 +174,17 @@ private fun OutageBanner(deliveredKwh: Double, targetKwh: Double) {
             Text(text = "⚠️", fontSize = 20.sp)
             Column {
                 Text(
-                    text = "Автодозарядка активна",
+                    text = "Зникло світло в гаражі",
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     color = WarningAmber
                 )
                 Text(
-                    text = "Збережено %.1f кВт⋅год. При відновленні живлення зарядка продовжиться до %.1f кВт⋅год.".format(deliveredKwh, targetKwh),
+                    text = if (isLimitEnabled) {
+                        "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(deliveredKwh, targetKwh)
+                    } else {
+                        "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично при відновленні живлення.".format(deliveredKwh)
+                    },
                     fontSize = 12.sp,
                     color = TextPrimaryDark
                 )
@@ -157,14 +194,50 @@ private fun OutageBanner(deliveredKwh: Double, targetKwh: Double) {
 }
 
 @Composable
+private fun OfflineWarningCard() {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainerHighDark),
+        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(ErrorRed, ErrorRed))),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "🔌", fontSize = 20.sp)
+            Column {
+                Text(
+                    text = "Станція вимкнена з розетки (OFFLINE)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = ErrorRed
+                )
+                Text(
+                    text = "Немає живлення від мережі. Підключіть станцію в розетку перед початком заряджання.",
+                    fontSize = 12.sp,
+                    color = TextSecondaryDark
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun HeroDialCard(
     deliveredKwh: Double,
+    isKwhLimitEnabled: Boolean,
     targetKwh: Double,
     powerKw: Double,
     currentAmperes: Double,
     neutralVolts: Int
 ) {
-    val progressRatio = if (targetKwh > 0.0) (deliveredKwh / targetKwh).toFloat().coerceIn(0f, 1f) else 0f
+    val progressRatio = if (isKwhLimitEnabled && targetKwh > 0.0) {
+        (deliveredKwh / targetKwh).toFloat().coerceIn(0f, 1f)
+    } else {
+        if (deliveredKwh > 0.0) 0.5f else 0.05f
+    }
     val animatedProgress by animateFloatAsState(targetValue = progressRatio, label = "gaugeProgress")
 
     Card(
@@ -209,17 +282,31 @@ private fun HeroDialCard(
                         style = MaterialTheme.typography.displayLarge,
                         color = TextPrimaryDark
                     )
-                    Text(
-                        text = "з %.1f кВт⋅год".format(targetKwh),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = PrimaryNeonGreen
-                    )
-                    Text(
-                        text = "%d%% виконано".format((animatedProgress * 100).toInt()),
-                        fontSize = 12.sp,
-                        color = TextSecondaryDark
-                    )
+                    if (isKwhLimitEnabled && targetKwh > 0.0) {
+                        Text(
+                            text = "з %.0f кВт⋅год".format(targetKwh),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PrimaryNeonGreen
+                        )
+                        Text(
+                            text = "%d%% виконано".format((animatedProgress * 100).toInt()),
+                            fontSize = 12.sp,
+                            color = TextSecondaryDark
+                        )
+                    } else {
+                        Text(
+                            text = "кВт⋅год",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PrimaryNeonGreen
+                        )
+                        Text(
+                            text = "Без ліміту (до вимкнення авто)",
+                            fontSize = 11.sp,
+                            color = TextSecondaryDark
+                        )
+                    }
                 }
             }
 
@@ -240,62 +327,58 @@ private fun HeroDialCard(
 
 @Composable
 private fun MetricCell(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
-    Box(
+    Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(SurfaceContainerHighDark)
             .padding(vertical = 12.dp, horizontal = 8.dp),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextSecondaryDark)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = value, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = valueColor)
-        }
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextSecondaryDark)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(text = value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = valueColor)
     }
 }
 
 @Composable
-private fun AmperageSelectorCard(selectedAmperes: Int, onAmperageSelected: (Int) -> Unit) {
+private fun AmperageSelectorCard(
+    selectedAmperes: Int,
+    onAmperageSelected: (Int) -> Unit
+) {
+    val amperages = listOf(6, 10, 16, 20, 25, 32)
+
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Струм заряджання", style = MaterialTheme.typography.titleMedium, color = TextPrimaryDark)
-                Text(text = "$selectedAmperes A", fontWeight = FontWeight.Bold, color = SecondaryCyan)
-            }
+            Text(
+                text = "СТРУМ ЗАРЯДЖАННЯ",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondaryDark
+            )
             Spacer(modifier = Modifier.height(10.dp))
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceContainerHighDark)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf(6, 10, 16, 20, 24, 32).forEach { amps ->
-                    val isSelected = amps == selectedAmperes
+                amperages.forEach { amp ->
+                    val isSelected = selectedAmperes == amp
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) SecondaryContainerDark else Color.Transparent)
-                            .clickable { onAmperageSelected(amps) }
-                            .padding(vertical = 8.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) PrimaryNeonGreen else SurfaceContainerHighDark)
+                            .clickable { onAmperageSelected(amp) }
+                            .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${amps}A",
-                            fontSize = 12.sp,
+                            text = "${amp}A",
                             fontWeight = FontWeight.Bold,
-                            color = if (isSelected) OnSecondaryContainerDark else TextSecondaryDark
+                            fontSize = 13.sp,
+                            color = if (isSelected) OnPrimaryDark else TextPrimaryDark
                         )
                     }
                 }
@@ -307,6 +390,7 @@ private fun AmperageSelectorCard(selectedAmperes: Int, onAmperageSelected: (Int)
 @Composable
 private fun ActionButtonsRow(
     isCharging: Boolean,
+    isOnline: Boolean,
     isBusy: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit
@@ -317,33 +401,26 @@ private fun ActionButtonsRow(
     ) {
         Button(
             onClick = onStart,
-            enabled = !isCharging && !isBusy,
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = PrimaryNeonGreen,
-                contentColor = OnPrimaryDark
-            ),
+            enabled = !isCharging && !isBusy && isOnline,
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
             modifier = Modifier
                 .weight(1f)
                 .height(54.dp)
         ) {
-            Text(text = "▶  Почати", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(text = if (isCharging) "Заряджається..." else "Почати", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
 
         Button(
             onClick = onStop,
             enabled = isCharging && !isBusy,
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = ErrorContainerDark,
-                contentColor = Color(0xFFFFB4AB)
-            ),
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = ErrorRed, contentColor = Color.White),
             modifier = Modifier
                 .weight(1f)
                 .height(54.dp)
         ) {
-            Text(text = "⏹  Зупинити", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(text = "Зупинити", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
     }
 }
-

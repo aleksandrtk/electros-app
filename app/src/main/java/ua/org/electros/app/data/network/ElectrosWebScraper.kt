@@ -68,29 +68,41 @@ class ElectrosWebScraper(
         }
     }
 
-    suspend fun login(): Result<Unit> = withContext(Dispatchers.IO) {
-        val auth = authPreferences ?: return@withContext Result.failure(IllegalStateException("No credentials configured"))
-        if (!auth.hasValidCredentials()) {
-            return@withContext Result.failure(IllegalStateException("No credentials configured"))
+    suspend fun login(
+        serial: String? = null,
+        password: String? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val targetSerial = serial ?: authPreferences?.deviceSerial.orEmpty()
+        val targetPassword = password ?: authPreferences?.internetPassword.orEmpty()
+
+        if (targetSerial.isBlank() || targetPassword.isBlank()) {
+            return@withContext Result.failure(IllegalStateException("Введіть номер пристрою та пароль"))
         }
 
         try {
             val formBuilder = FormBody.Builder()
-                .add("serial", auth.deviceSerial)
-                .add("password", auth.internetPassword)
+                .add("username", targetSerial)
+                .add("password", targetPassword)
 
             lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
 
             val request = Request.Builder()
                 .url("$baseUrl/auth/login.php")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36")
                 .post(formBuilder.build())
                 .build()
 
             val response = client.newCall(request).execute()
-            if (response.isSuccessful) {
+            val body = response.body?.string().orEmpty()
+
+            if (body.contains("Вхід ElectroS WiFi") || body.contains("Невірний номер")) {
+                Result.failure(IllegalArgumentException("Невірний номер пристрою або пароль"))
+            } else if (response.isSuccessful) {
+                val doc = Jsoup.parse(body)
+                extractCsrfToken(doc)
                 Result.success(Unit)
             } else {
-                Result.failure(IOException("Login failed with HTTP ${response.code}"))
+                Result.failure(IOException("Помилка зв'язку з сервером (HTTP ${response.code})"))
             }
         } catch (e: Exception) {
             Result.failure(e)
