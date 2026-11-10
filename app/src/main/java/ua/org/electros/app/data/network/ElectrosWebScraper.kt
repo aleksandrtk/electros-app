@@ -191,64 +191,115 @@ class ElectrosWebScraper(
 
         // Grid Voltage row: Min / Середня / Поточна / Max
         var vMin = 0; var vAvg = 0; var vCur = 0; var vMax = 0
-        val vTable = doc.select("table:contains(Напруга Мережі)")
-        if (vTable.isNotEmpty()) {
-            val cells = vTable.select("tr").last()?.select("td")
-            if (cells != null && cells.size >= 4) {
-                vMin = cells[0].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-                vAvg = cells[1].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-                vCur = cells[2].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-                vMax = cells[3].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+        val vTable = doc.select("table").firstOrNull { table ->
+            val txt = table.text().lowercase()
+            txt.contains("напруга") && txt.contains("мереж")
+        } ?: doc.select("table:contains(Напруга)").firstOrNull()
+
+        if (vTable != null) {
+            val dataRows = vTable.select("tr").filter { it.select("td").isNotEmpty() }
+            val lastDataRow = dataRows.lastOrNull()
+            val cells = lastDataRow?.select("td")
+            if (cells != null && cells.isNotEmpty()) {
+                val numbers = cells.mapNotNull {
+                    it.text().trim().replace(Regex("[^0-9]"), "").toIntOrNull()
+                }
+                if (numbers.size >= 4) {
+                    vMin = numbers[0]
+                    vAvg = numbers[1]
+                    vCur = numbers[2]
+                    vMax = numbers[3]
+                } else if (numbers.size == 3) {
+                    vMin = numbers[0]
+                    vAvg = numbers[1]
+                    vCur = numbers[1]
+                    vMax = numbers[2]
+                } else if (numbers.isNotEmpty()) {
+                    vCur = numbers.last()
+                    vAvg = numbers.last()
+                }
+            }
+        }
+        if (vCur == 0) {
+            val voltMatcher = Regex("([1-9][0-9]{2})\\s*[ВVv]").find(bodyText)
+            if (voltMatcher != null) {
+                val foundV = voltMatcher.groupValues[1].toIntOrNull() ?: 0
+                if (foundV in 100..450) {
+                    vCur = foundV
+                    vAvg = foundV
+                }
             }
         }
 
-        // Station online/offline parsing
-        val hasOfflineMarkers = bodyText.contains("Станція OFFLINE", ignoreCase = true) ||
-                bodyText.contains("OFFLINE", ignoreCase = true) ||
-                bodyText.contains("Офлайн", ignoreCase = true) ||
-                bodyText.contains("Немає зв'язку", ignoreCase = true) ||
-                bodyText.contains("Зв'язок відсутній", ignoreCase = true) ||
-                bodyText.contains("Станція вимкнена", ignoreCase = true) ||
-                (vTable.isNotEmpty() && vCur == 0 && vAvg == 0)
-
+        // Station status parsing
         var extractedStatus = ""
-        val statusEl = doc.select(":containsOwn(Стан:)").first()
+        val statusEl = doc.select("*:containsOwn(Стан:)").firstOrNull()
+            ?: doc.select("*:matchesOwn(Стан\\s*:)").firstOrNull()
         if (statusEl != null) {
-            val raw = statusEl.text().substringAfter("Стан:").trim()
-            if (raw.isNotBlank()) {
-                extractedStatus = raw.substringBefore("Напруга").substringBefore("Min").trim()
-            }
+            val fullText = statusEl.parent()?.text() ?: statusEl.text()
+            extractedStatus = fullText.substringAfter("Стан:").trim()
+            extractedStatus = extractedStatus
+                .substringBefore("Напруга")
+                .substringBefore("Min")
+                .substringBefore("Середня")
+                .substringBefore("Поточна")
+                .substringBefore("Оберіть")
+                .substringBefore("Струм")
+                .trim()
         }
         if (extractedStatus.isBlank()) {
-            val statusMatcher = Regex("Стан:\\s*([A-Za-zА-Яа-яІіЇїЄє0-9\\s.]+?)(?=Напруга|Min|Оберіть|\\n|$)").find(bodyText)
+            val statusMatcher = Regex("Стан\\s*:\\s*([A-Za-zА-Яа-яІіЇїЄє0-9\\s.]+?)(?=Напруга|Min|Середня|Поточна|Оберіть|Струм|\\n|$)").find(bodyText)
             if (statusMatcher != null) {
                 extractedStatus = statusMatcher.groupValues[1].trim()
             }
         }
 
-        val isOnline = !hasOfflineMarkers && (vCur > 50 || bodyText.contains("Підключено") || bodyText.contains("Заряд"))
-        val statusText = if (!isOnline) {
-            if (extractedStatus.contains("OFFLINE", true) || extractedStatus.contains("зв'яз", true) || extractedStatus.contains("вимк", true)) {
-                extractedStatus
-            } else {
-                "Станція OFFLINE"
-            }
-        } else if (extractedStatus.isNotBlank()) {
-            extractedStatus
-        } else {
-            "Підключено"
+        val isExplicitlyOnline = extractedStatus.contains("Підключено", ignoreCase = true) ||
+                extractedStatus.contains("Заряд", ignoreCase = true) ||
+                extractedStatus.contains("Очікування", ignoreCase = true) ||
+                extractedStatus.contains("ONLINE", ignoreCase = true)
+
+        val isExplicitlyOffline = extractedStatus.contains("OFFLINE", ignoreCase = true) ||
+                extractedStatus.contains("Немає зв'язку", ignoreCase = true) ||
+                extractedStatus.contains("Зв'язок відсутній", ignoreCase = true) ||
+                extractedStatus.contains("Станція OFFLINE", ignoreCase = true) ||
+                extractedStatus.contains("Вимкнен", ignoreCase = true)
+
+        val isOnline = when {
+            isExplicitlyOffline -> false
+            isExplicitlyOnline -> true
+            bodyText.contains("Станція OFFLINE", ignoreCase = true) -> false
+            vCur > 50 -> true
+            bodyText.contains("Напруга мережі", ignoreCase = true) || bodyText.contains("Напруга Мережі") -> true
+            else -> false
+        }
+
+        val statusText = when {
+            extractedStatus.isNotBlank() -> extractedStatus
+            isOnline -> "Підключено"
+            else -> "Станція OFFLINE"
         }
 
         // Neutral Voltage row
         var nMin = 0; var nAvg = 2; var nCur = 2; var nMax = 5
-        val nTable = doc.select("table:contains(Напруга нейтралі)")
-        if (nTable.isNotEmpty()) {
-            val cells = nTable.select("tr").last()?.select("td")
-            if (cells != null && cells.size >= 4) {
-                nMin = cells[0].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-                nAvg = cells[1].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 2
-                nCur = cells[2].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 2
-                nMax = cells[3].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 5
+        val nTable = doc.select("table").firstOrNull { table ->
+            val txt = table.text().lowercase()
+            txt.contains("напруга") && txt.contains("нейтрал")
+        }
+        if (nTable != null) {
+            val dataRows = nTable.select("tr").filter { it.select("td").isNotEmpty() }
+            val lastDataRow = dataRows.lastOrNull()
+            val cells = lastDataRow?.select("td")
+            if (cells != null && cells.isNotEmpty()) {
+                val numbers = cells.mapNotNull {
+                    it.text().trim().replace(Regex("[^0-9]"), "").toIntOrNull()
+                }
+                if (numbers.size >= 4) {
+                    nMin = numbers[0]
+                    nAvg = numbers[1]
+                    nCur = numbers[2]
+                    nMax = numbers[3]
+                }
             }
         }
 

@@ -131,7 +131,7 @@ private fun TopHeader(isOnline: Boolean, statusText: String, voltage: Int) {
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             Text(
-                text = if (isOnline) "● $voltage В" else "● 0 В (Вимкнено)",
+                text = if (isOnline && voltage > 0) "● $voltage В" else if (isOnline) "● В мережі" else "● 0 В (Вимкнено)",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isOnline) PrimaryNeonGreen else ErrorRed
             )
