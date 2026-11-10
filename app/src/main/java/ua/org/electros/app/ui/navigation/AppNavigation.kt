@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import ua.org.electros.app.ElectrosApplication
@@ -72,10 +73,10 @@ fun AppNavigation(application: ElectrosApplication) {
         }
 
         Scaffold(
-            containerColor = SurfaceDark,
+            containerColor = StudioChassisDark,
             bottomBar = {
                 NavigationBar(
-                    containerColor = SurfaceContainerDark,
+                    containerColor = StudioPanelDark,
                     tonalElevation = 0.dp
                 ) {
                     NavTab.values().forEach { tab ->
@@ -92,9 +93,9 @@ fun AppNavigation(application: ElectrosApplication) {
                             },
                             label = { Text(text = tab.title, style = MaterialTheme.typography.labelSmall) },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = OnPrimaryDark,
-                                selectedTextColor = PrimaryNeonGreen,
-                                indicatorColor = PrimaryNeonGreen,
+                                selectedIconColor = Color.Black,
+                                selectedTextColor = AmberNixie,
+                                indicatorColor = AmberNixie,
                                 unselectedIconColor = TextSecondaryDark,
                                 unselectedTextColor = TextSecondaryDark
                             )

@@ -1,614 +1,704 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Electros EV - Modern Material 3 UI</title>
+  <title>Electros EV — Analog Hardware Studio Variations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --m3-surface: #0B0E14;
-      --m3-surface-dim: #10141D;
-      --m3-surface-container: #171C28;
-      --m3-surface-container-high: #21283B;
-      --m3-surface-container-highest: #2C354D;
-      --m3-primary: #38EF7D;
-      --m3-primary-glow: rgba(56, 239, 125, 0.25);
-      --m3-on-primary: #00391A;
-      --m3-primary-container: #11462B;
-      --m3-on-primary-container: #75FFA9;
-      --m3-secondary: #00D2FF;
-      --m3-secondary-container: #00455B;
-      --m3-on-secondary-container: #9CE7FF;
-      --m3-on-surface: #E6EDF5;
-      --m3-on-surface-variant: #94A3B8;
-      --m3-outline: #475569;
-      --m3-outline-variant: #334155;
-      --m3-error: #FF6B6B;
-      --m3-error-container: #4D1919;
-      --m3-warning: #FFB300;
-      --m3-warning-container: #4D3800;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
-    body { background: #06080B; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-
-    .device-shell {
-      width: 400px;
-      height: 840px;
-      background: var(--m3-surface);
-      border-radius: 48px;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.8), 0 0 0 12px #141720, 0 0 0 14px #242938;
-      position: relative;
-      overflow: hidden;
+    /* =========================================================
+       GLOBAL RESET & SHOWCASE FRAMEWORK
+       ========================================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #090B0E;
+      color: #D1D5DB;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 32px 20px 80px;
       display: flex;
       flex-direction: column;
-      color: var(--m3-on-surface);
-    }
-
-    /* System Status Bar */
-    .status-bar {
-      height: 44px;
-      padding: 14px 26px 0;
-      display: flex;
-      justify-content: space-between;
       align-items: center;
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.2px;
-      z-index: 10;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .status-icons {
-      display: flex;
-      gap: 6px;
-      align-items: center;
+    header.showcase-header {
+      text-align: center;
+      max-width: 820px;
+      margin-bottom: 24px;
     }
-    .status-icons svg { width: 14px; height: 14px; fill: currentColor; }
-
-    /* Top App Bar */
-    .top-app-bar {
-      padding: 10px 22px 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      z-index: 10;
-    }
-
-    .station-title h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
-    .station-subtitle { font-size: 12px; color: var(--m3-on-surface-variant); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--m3-primary); box-shadow: 0 0 10px var(--m3-primary); animation: pulse 2s infinite; }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.85); }
-    }
-
-    .chip-badge {
+    .badge-pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 12px;
-      border-radius: 100px;
+      padding: 4px 12px;
+      background: rgba(255, 153, 0, 0.1);
+      border: 1px solid rgba(255, 153, 0, 0.25);
+      border-radius: 999px;
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.4px;
-      background: var(--m3-surface-container);
-      border: 1px solid var(--m3-outline-variant);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #FF9900;
+      margin-bottom: 12px;
+    }
+    .badge-pill span.dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #FF9900;
+      box-shadow: 0 0 8px #FF9900;
+    }
+    header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #FFFFFF;
+      margin-bottom: 8px;
+    }
+    header p {
+      color: #9CA3AF;
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    /* Content Viewport */
-    .viewport {
-      flex: 1;
-      overflow-y: auto;
-      padding: 4px 18px 90px;
+    /* Showcase Grid */
+    .showcase-stage {
+      width: 100%;
+      max-width: 1320px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 36px;
+      justify-items: center;
+      margin-top: 12px;
+    }
+
+    /* Phone Shell & Meta */
+    .phone-column {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      scrollbar-width: none;
+      align-items: center;
+      gap: 14px;
+      width: 375px;
     }
-    .viewport::-webkit-scrollbar { display: none; }
+    .phone-meta {
+      width: 100%;
+      text-align: left;
+      padding: 0 4px;
+    }
+    .phone-meta .var-tag {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #FF9900;
+      margin-bottom: 2px;
+    }
+    .phone-meta .var-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #FFFFFF;
+      letter-spacing: -0.01em;
+    }
+    .phone-meta .var-desc {
+      font-size: 12px;
+      color: #9CA3AF;
+      line-height: 1.4;
+      margin-top: 4px;
+    }
 
-    .m3-card {
-      background: var(--m3-surface-container);
-      border-radius: 28px;
-      padding: 20px;
-      border: 1px solid rgba(255,255,255,0.04);
+    /* Shared Phone Chassis */
+    .phone-chassis {
+      width: 375px;
+      height: 780px;
+      border-radius: 50px;
       position: relative;
       overflow: hidden;
-    }
-
-    /* Hero Gauge */
-    .hero-card {
-      background: radial-gradient(circle at 50% 0%, rgba(56, 239, 125, 0.12), transparent 70%), var(--m3-surface-container);
-      border: 1px solid rgba(56, 239, 125, 0.2);
-      text-align: center;
-      padding: 24px 20px 20px;
-    }
-
-    .gauge-wrapper {
-      position: relative;
-      width: 210px;
-      height: 210px;
-      margin: 0 auto 16px;
-    }
-    .gauge-wrapper svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    .gauge-track { fill: none; stroke: var(--m3-surface-container-highest); stroke-width: 14; stroke-linecap: round; }
-    .gauge-progress {
-      fill: none;
-      stroke: url(#primaryGlow);
-      stroke-width: 14;
-      stroke-linecap: round;
-      stroke-dasharray: 440;
-      stroke-dashoffset: 145;
-      filter: drop-shadow(0 0 8px var(--m3-primary-glow));
-      transition: stroke-dashoffset 0.8s ease;
-    }
-
-    .gauge-data {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+      box-shadow: 0 24px 60px -12px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.08);
       display: flex;
       flex-direction: column;
-      align-items: center;
+      background: #111318;
+      border: 8px solid #1A1D24;
     }
-    .val-large { font-size: 38px; font-weight: 800; letter-spacing: -1px; line-height: 1; color: var(--m3-on-surface); }
-    .val-unit { font-size: 13px; font-weight: 600; color: var(--m3-primary); margin-top: 4px; }
-    .val-sub { font-size: 12px; color: var(--m3-on-surface-variant); font-weight: 500; margin-top: 4px; }
-
-    /* Outage Card */
-    .outage-pill {
-      background: var(--m3-warning-container);
-      color: #FFE082;
-      border-radius: 18px;
-      padding: 12px 14px;
-      font-size: 12px;
-      font-weight: 500;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      border: 1px solid rgba(255, 179, 0, 0.3);
-    }
-    .outage-pill svg { width: 18px; height: 18px; fill: #FFB300; flex-shrink: 0; margin-top: 1px; }
-
-    /* Metrics Grid */
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-    }
-    .metric-cell {
-      background: var(--m3-surface-container-high);
+    .island {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 118px;
+      height: 30px;
+      background: #000000;
       border-radius: 20px;
-      padding: 14px 10px;
-      text-align: center;
-      border: 1px solid rgba(255,255,255,0.03);
-    }
-    .metric-label { font-size: 11px; font-weight: 600; color: var(--m3-on-surface-variant); text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-number { font-size: 17px; font-weight: 700; margin-top: 4px; color: var(--m3-on-surface); }
-
-    /* Segmented Selector for Amperage */
-    .segment-bar {
+      z-index: 100;
       display: flex;
-      background: var(--m3-surface-container-high);
-      border-radius: 16px;
-      padding: 4px;
-      gap: 4px;
-      margin-top: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
     }
-    .segment-btn {
+    .island-dot { width: 10px; height: 10px; border-radius: 50%; background: #1a1a1a; }
+    .island-cam { width: 9px; height: 9px; border-radius: 50%; background: #0c1428; border: 1px solid #1a233a; }
+    .status-bar {
+      height: 48px;
+      padding: 12px 24px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 50;
+      position: relative;
+      color: #9CA3AF;
+    }
+
+    /* Common Tactile Studio Styling */
+    .studio-viewport {
       flex: 1;
-      padding: 10px 0;
-      border: none;
-      background: transparent;
-      color: var(--m3-on-surface-variant);
+      padding: 4px 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: #121419;
+    }
+
+    .studio-subhead {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid #232733;
+      padding-bottom: 6px;
+    }
+    .studio-model-code {
+      font-size: 11px;
+      font-weight: 800;
+      color: #FF9900;
+      letter-spacing: 0.08em;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .studio-serial {
+      font-size: 10px;
+      color: #6B7280;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Tactile Bezel Card */
+    .tactile-face {
+      background: #1A1D24;
+      border: 2px solid #282D3A;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8), 0 4px 14px rgba(0,0,0,0.6);
+      border-radius: 16px;
+      padding: 14px 16px;
+      position: relative;
+    }
+
+    /* Amber Glowing Nixie/LED Segment Display */
+    .nixie-display {
+      background: #090A0E;
+      border: 2px solid #232733;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: 'JetBrains Mono', monospace;
+      color: #FF9900;
+      text-shadow: 0 0 12px rgba(255, 153, 0, 0.65), 0 0 24px rgba(255, 153, 0, 0.25);
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+    }
+    .nixie-unit {
       font-size: 13px;
       font-weight: 700;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .segment-btn.active {
-      background: var(--m3-secondary-container);
-      color: var(--m3-on-secondary-container);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      color: #D97706;
+      text-shadow: none;
     }
 
-    /* Action Buttons */
-    .action-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 6px;
-    }
-    .btn-m3 {
-      height: 56px;
-      border-radius: 28px;
-      border: none;
-      font-size: 15px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      cursor: pointer;
-      transition: transform 0.1s ease, filter 0.2s ease;
-    }
-    .btn-m3 svg { width: 20px; height: 20px; fill: currentColor; }
-    .btn-m3:active { transform: scale(0.97); }
-    .btn-m3-start {
-      background: var(--m3-primary);
-      color: var(--m3-on-primary);
-      box-shadow: 0 4px 16px var(--m3-primary-glow);
-    }
-    .btn-m3-stop {
-      background: var(--m3-error-container);
-      color: #FFB4AB;
-      border: 1px solid rgba(255, 107, 107, 0.25);
-    }
-
-    /* Limiter Presets */
-    .limiter-presets {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .preset-chip {
-      background: var(--m3-surface-container-high);
-      color: var(--m3-on-surface);
-      border: 1px solid var(--m3-outline-variant);
-      border-radius: 14px;
-      padding: 10px 0;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
+    /* Center Rotary Knob Container */
+    .rotary-panel {
       text-align: center;
-      transition: all 0.2s;
-    }
-    .preset-chip.active {
-      background: var(--m3-primary-container);
-      color: var(--m3-on-primary-container);
-      border-color: var(--m3-primary);
-    }
-
-    /* Modern Bottom Navigation (M3 Pill Indicator & Vector Icons) */
-    .m3-navigation-bar {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 80px;
-      background: var(--m3-surface-dim);
-      border-top: 1px solid rgba(255,255,255,0.06);
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      padding-bottom: 12px;
-      z-index: 20;
-    }
-    .m3-nav-item {
+      padding: 16px 12px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
-      cursor: pointer;
-      flex: 1;
     }
-    .m3-nav-pill {
-      width: 60px;
-      height: 32px;
-      border-radius: 16px;
+    .rotary-panel-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      color: #8E95A5;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .rotary-stage {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .knob-graduations {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px dashed rgba(255, 153, 0, 0.25);
+    }
+    .knob-grad-val {
+      position: absolute;
+      font-size: 11px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      color: #6B7280;
+    }
+    .knob-grad-val.active-target {
+      color: #FF9900;
+      text-shadow: 0 0 8px rgba(255, 153, 0, 0.6);
+    }
+    .g-6a  { top: 22px; left: 16px; }
+    .g-8a  { top: 2px;  left: 74px; }
+    .g-10a { top: 22px; right: 16px; }
+    .g-12a { top: 76px; right: 2px; }
+    .g-16a { bottom: 20px; right: 22px; }
+
+    /* The Iconic Heavy Rotary Knob */
+    .rotary-knob-heavy {
+      width: 124px;
+      height: 124px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #353B4B 0%, #151820 70%);
+      box-shadow: 0 14px 28px rgba(0,0,0,0.9), inset 0 2px 3px rgba(255,255,255,0.25), 0 0 0 6px #242936;
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: background 0.2s ease, transform 0.15s ease;
+      cursor: grab;
+      user-select: none;
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
     }
-    .m3-nav-pill svg {
-      width: 22px;
-      height: 22px;
-      fill: var(--m3-on-surface-variant);
-      transition: fill 0.2s ease;
+    .knob-marker-line {
+      position: absolute;
+      top: 8px;
+      width: 4px;
+      height: 16px;
+      background: #FF9900;
+      border-radius: 2px;
+      box-shadow: 0 0 10px #FF9900, 0 0 20px rgba(255, 153, 0, 0.5);
     }
-    .m3-nav-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--m3-on-surface-variant);
-      transition: color 0.2s ease;
-    }
-    .m3-nav-item.active .m3-nav-pill {
-      background: var(--m3-primary-container);
-    }
-    .m3-nav-item.active .m3-nav-pill svg {
-      fill: var(--m3-on-primary-container);
-    }
-    .m3-nav-item.active .m3-nav-label {
-      color: var(--m3-primary);
-      font-weight: 700;
+    .knob-center-core {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #111317;
+      border: 2px solid #2E3442;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #FF9900;
+      font-size: 22px;
+      font-weight: 900;
+      font-family: 'JetBrains Mono', monospace;
+      text-shadow: 0 0 10px rgba(255, 153, 0, 0.6);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
     }
 
-    /* Views */
-    .tab-content { display: none; }
-    .tab-content.active { display: flex; flex-direction: column; gap: 14px; }
+    .rotary-caption {
+      font-size: 11px;
+      color: #FF9900;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 10px;
+    }
+
+    /* Heavy Switch Button */
+    .heavy-switch-btn {
+      width: 100%;
+      height: 48px;
+      border-radius: 12px;
+      border: 2px solid #991B1B;
+      background: linear-gradient(180deg, #DC2626 0%, #991B1B 100%);
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4), inset 0 1px 2px rgba(255,255,255,0.4);
+      margin-top: auto;
+    }
+    .heavy-switch-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+    }
+
+    /* =========================================================
+       VARIATION 4.1: ORIGINAL MK-IV EVOLVED
+       ========================================================= */
+    .dlb-indicator-pill {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .dlb-indicator-pill .dlb-lbl { color: #8E95A5; }
+    .dlb-indicator-pill .dlb-val {
+      color: #10B981;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dlb-indicator-pill .dlb-val .lamp {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10B981;
+      box-shadow: 0 0 8px #10B981;
+    }
+
+    /* =========================================================
+       VARIATION 4.2: DUAL-DISPLAY WITH GRID SAG VOLTAGE METER
+       ========================================================= */
+    .sag-ladder-strip {
+      background: #090A0E;
+      border: 2px solid #232733;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+    .sag-ladder-title {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      font-weight: 800;
+      color: #8E95A5;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 6px;
+    }
+    .sag-track {
+      height: 10px;
+      background: #1A1D24;
+      border-radius: 5px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+    }
+    .sag-zone-danger { width: 25%; background: #EF4444; }
+    .sag-zone-warn   { width: 35%; background: #F59E0B; }
+    .sag-zone-safe   { width: 40%; background: #10B981; }
+    .sag-current-pin {
+      position: absolute;
+      top: -2px;
+      left: 72%;
+      width: 6px;
+      height: 14px;
+      border-radius: 3px;
+      background: #FFFFFF;
+      box-shadow: 0 0 8px #FFFFFF;
+    }
+
+    /* =========================================================
+       VARIATION 4.3: SURROUND LED RING ILLUMINATION
+       ========================================================= */
+    .led-ring-pip {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #252A36;
+      transition: all 0.2s ease;
+    }
+    .led-ring-pip.lit {
+      background: #FF9900;
+      box-shadow: 0 0 8px #FF9900, 0 0 14px #FF9900;
+    }
   </style>
 </head>
 <body>
 
-<div class="device-shell">
-  <!-- System Status Bar -->
-  <div class="status-bar">
-    <span>10:20</span>
-    <div class="status-icons">
-      <!-- Signal -->
-      <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L12 22l7.03-4.39C20.26 16.07 21 14.12 21 12c0-4.97-4.03-9-9-9z" opacity="0.3"/><path d="M12 11c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-      <!-- Battery -->
-      <svg viewBox="0 0 24 24"><path d="M16 4h-2V2h-4v2H8C6.9 4 6 4.9 6 6v14c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-1 9l-4 7v-5H9l4-7v5h2z"/></svg>
-      <span>92%</span>
+  <header class="showcase-header">
+    <div class="badge-pill">
+      <span class="dot"></span>
+      Analog Hardware Studio Edition
     </div>
+    <h1>3 Evolutions of the Analog Studio Aesthetic</h1>
+    <p>Preserving the heavy dark titanium chassis, physical 130px rotary current knob, glowing amber nixie telemetry, and tactile studio rack controls that stood out in Concept 4.</p>
+  </header>
+
+  <div class="showcase-stage">
+
+    <!-- ====================================================
+         VARIATION 4.1: STUDIO MK-IV (ORIGINAL EVOLVED)
+         ==================================================== -->
+    <div class="phone-column">
+      <div class="phone-meta">
+        <div class="var-tag">Variation 4.1</div>
+        <div class="var-title">Studio MK-IV Classic</div>
+        <div class="var-desc">The exact original look: 130px notched potentiometer, amber nixie voltage display, and mechanical halt switch.</div>
+      </div>
+      <div class="phone-chassis">
+        <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
+        <div class="status-bar"><span>14:00</span><span>DC/AC PWR</span></div>
+        <div class="studio-viewport">
+          <div class="studio-subhead">
+            <span class="studio-model-code">STUDIO CONTROLLER // MK-IV</span>
+            <span class="studio-serial">REV. 2.2</span>
+          </div>
+
+          <!-- RMS Line Voltage Panel -->
+          <div class="tactile-face">
+            <div style="font-size:10px; font-weight:800; color:#8E95A5; letter-spacing:0.06em; margin-bottom:6px;">LINE VOLTAGE (RMS)</div>
+            <div class="nixie-display">
+              <span id="nix-v-1">218.4</span>
+              <span class="nixie-unit">VOLTS AC</span>
+            </div>
+          </div>
+
+          <!-- Central Rotary Current Knob Panel -->
+          <div class="tactile-face rotary-panel">
+            <div class="rotary-panel-label">SELECTABLE CHARGE CURRENT</div>
+            <div class="rotary-stage">
+              <div class="knob-graduations"></div>
+              <span class="knob-grad-val g-6a" id="g1-6">6A</span>
+              <span class="knob-grad-val g-8a" id="g1-8">8A</span>
+              <span class="knob-grad-val g-10a active-target" id="g1-10">10A</span>
+              <span class="knob-grad-val g-12a" id="g1-12">12A</span>
+              <span class="knob-grad-val g-16a" id="g1-16">16A</span>
+
+              <div class="rotary-knob-heavy" id="knob-1" onclick="stepKnob1()">
+                <div class="knob-marker-line"></div>
+                <div class="knob-center-core" id="knob-val-1">10A</div>
+              </div>
+            </div>
+            <div class="rotary-caption" id="kw-cap-1">OUTPUT: 2.18 kW ACTIVE</div>
+            <div style="font-size:10px; color:#6B7280; margin-top:4px; font-family:'JetBrains Mono';">TAP KNOB TO CYCLE STEP</div>
+          </div>
+
+          <!-- DLB Auto-Derate Status -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill">
+              <span class="dlb-lbl">DLB AUTO-DERATE</span>
+              <span class="dlb-val" id="dlb-status-1">
+                <span class="lamp"></span> ENGAGED (&gt;185V)
+              </span>
+            </div>
+          </div>
+
+          <button class="heavy-switch-btn" onclick="alert('Emergency Stop Triggered')">
+            EMERGENCY STOP
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         VARIATION 4.2: DUAL DISPLAY & VOLTAGE SAG HEADROOM
+         ==================================================== -->
+    <div class="phone-column">
+      <div class="phone-meta">
+        <div class="var-tag">Variation 4.2</div>
+        <div class="var-title">Studio Sag-Watch Pro</div>
+        <div class="var-desc">Adds a physical amber line sag margin strip (185V threshold monitor) directly above the heavy knob.</div>
+      </div>
+      <div class="phone-chassis">
+        <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
+        <div class="status-bar"><span>14:00</span><span>50.0 Hz</span></div>
+        <div class="studio-viewport">
+          <div class="studio-subhead">
+            <span class="studio-model-code">SAG-WATCH MONITOR // MK-IV-B</span>
+            <span class="studio-serial">DLB: ACTIVE</span>
+          </div>
+
+          <!-- Voltage Display + Sag Strip -->
+          <div class="tactile-face" style="padding-bottom: 10px;">
+            <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:800; color:#8E95A5; margin-bottom:4px;">
+              <span>MAINS VOLTAGE</span>
+              <span style="color:#FF9900;">HEADROOM: +33V</span>
+            </div>
+            <div class="nixie-display" style="font-size: 26px; padding: 6px 12px;">
+              <span>218.4</span>
+              <span class="nixie-unit">VAC @ 50Hz</span>
+            </div>
+
+            <!-- Sag Headroom Bar -->
+            <div class="sag-ladder-strip">
+              <div class="sag-ladder-title">
+                <span>&lt; 185V CUTOFF</span>
+                <span>205V RECOVER</span>
+                <span>240V NOM</span>
+              </div>
+              <div class="sag-track">
+                <div class="sag-zone-danger"></div>
+                <div class="sag-zone-warn"></div>
+                <div class="sag-zone-safe"></div>
+                <div class="sag-current-pin"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Knob -->
+          <div class="tactile-face rotary-panel" style="padding: 10px 12px;">
+            <div class="rotary-panel-label">DYNAMIC CURRENT LIMIT</div>
+            <div class="rotary-stage" style="transform: scale(0.95); margin: -4px 0;">
+              <div class="knob-graduations"></div>
+              <span class="knob-grad-val g-6a">6A</span>
+              <span class="knob-grad-val g-8a">8A</span>
+              <span class="knob-grad-val g-10a active-target">10A</span>
+              <span class="knob-grad-val g-12a">12A</span>
+              <span class="knob-grad-val g-16a">16A</span>
+
+              <div class="rotary-knob-heavy" id="knob-2" onclick="stepKnob2()">
+                <div class="knob-marker-line"></div>
+                <div class="knob-center-core" id="knob-val-2">10A</div>
+              </div>
+            </div>
+            <div class="rotary-caption" id="kw-cap-2">OUTPUT: 2.18 kW ACTIVE</div>
+          </div>
+
+          <!-- Dual Telemetry Row -->
+          <div class="tactile-face" style="padding: 10px 14px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family:'JetBrains Mono'; font-size:11px;">
+              <div>
+                <span style="color:#6B7280; font-size:9px;">DELIVERED:</span><br>
+                <strong style="color:#FF9900;">14.82 kWh</strong>
+              </div>
+              <div>
+                <span style="color:#6B7280; font-size:9px;">TIME ACTIVE:</span><br>
+                <strong style="color:#FFF;">01:42:18</strong>
+              </div>
+            </div>
+          </div>
+
+          <button class="heavy-switch-btn" onclick="alert('Trip Breaker')">
+            TRIP RELAY BREAKER
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         VARIATION 4.3: SURROUND AMBER LED RING
+         ==================================================== -->
+    <div class="phone-column">
+      <div class="phone-meta">
+        <div class="var-tag">Variation 4.3</div>
+        <div class="var-title">Studio LED Halo Console</div>
+        <div class="var-desc">The heavy rotary dial surrounded by an illuminated 16-pip amber LED halo that lights up with current draw.</div>
+      </div>
+      <div class="phone-chassis">
+        <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
+        <div class="status-bar"><span>14:00</span><span>MOD-IV HALO</span></div>
+        <div class="studio-viewport">
+          <div class="studio-subhead">
+            <span class="studio-model-code">HALO CONSOLE // MK-IV-C</span>
+            <span class="studio-serial">16-PIP RING</span>
+          </div>
+
+          <!-- Voltage Display -->
+          <div class="tactile-face">
+            <div style="font-size:10px; font-weight:800; color:#8E95A5; margin-bottom:4px;">MAINS VOLTAGE (RMS)</div>
+            <div class="nixie-display">
+              <span>218.4</span>
+              <span class="nixie-unit">VOLTS</span>
+            </div>
+          </div>
+
+          <!-- Knob with LED Halo -->
+          <div class="tactile-face rotary-panel">
+            <div class="rotary-panel-label">LOAD CURRENT POTENTIOMETER</div>
+            <div class="rotary-stage" id="halo-stage">
+              <!-- Circular LED Ring Pips -->
+              <div class="led-ring-pip lit" style="top: 8px; left: 81px;"></div>
+              <div class="led-ring-pip lit" style="top: 18px; left: 115px;"></div>
+              <div class="led-ring-pip lit" style="top: 42px; left: 142px;"></div>
+              <div class="led-ring-pip lit" style="top: 76px; left: 154px;"></div>
+              <div class="led-ring-pip lit" style="top: 110px; left: 146px;"></div>
+              <div class="led-ring-pip lit" style="top: 138px; left: 122px;"></div>
+              <div class="led-ring-pip" style="top: 152px; left: 81px;"></div>
+              <div class="led-ring-pip" style="top: 142px; left: 44px;"></div>
+              <div class="led-ring-pip" style="top: 116px; left: 18px;"></div>
+              <div class="led-ring-pip" style="top: 81px; left: 8px;"></div>
+              <div class="led-ring-pip" style="top: 47px; left: 16px;"></div>
+              <div class="led-ring-pip" style="top: 20px; left: 44px;"></div>
+
+              <div class="rotary-knob-heavy" id="knob-3" onclick="stepKnob3()">
+                <div class="knob-marker-line"></div>
+                <div class="knob-center-core" id="knob-val-3">10A</div>
+              </div>
+            </div>
+            <div class="rotary-caption" id="kw-cap-3">OUTPUT: 2.18 kW ACTIVE</div>
+          </div>
+
+          <!-- DLB Status Panel -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill">
+              <span class="dlb-lbl">DLB DERATE LOGIC</span>
+              <span class="dlb-val">
+                <span class="lamp"></span> STABLE (&gt;185V)
+              </span>
+            </div>
+          </div>
+
+          <button class="heavy-switch-btn" onclick="alert('Cutout Engaged')">
+            POWER CUTOUT
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Top App Bar -->
-  <div class="top-app-bar">
-    <div class="station-title">
-      <h1>Electros</h1>
-      <div class="station-subtitle">
-        <div class="pulse-dot"></div>
-        <span>Гараж • Electros Station</span>
-      </div>
-    </div>
-    <div class="chip-badge">
-      <span style="color: var(--m3-primary);">●</span>
-      <span>228 В</span>
-    </div>
-  </div>
+  <script>
+    const ampValues = [6, 8, 10, 12, 16];
+    const knobAngles = { 6: -60, 8: -25, 10: 10, 12: 52, 16: 95 };
 
-  <!-- Main Viewport -->
-  <div class="viewport">
+    // Knob 1
+    let idx1 = 2; // 10A
+    function stepKnob1() {
+      idx1 = (idx1 + 1) % ampValues.length;
+      const v = ampValues[idx1];
+      document.getElementById('knob-1').style.transform = `rotate(${knobAngles[v]}deg)`;
+      document.getElementById('knob-val-1').innerText = `${v}A`;
+      const kw = ((218.4 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-1').innerText = `OUTPUT: ${kw} kW ACTIVE`;
+      [6, 8, 10, 12, 16].forEach(val => {
+        const el = document.getElementById(`g1-${val}`);
+        if (el) el.classList.toggle('active-target', val === v);
+      });
+    }
 
-    <!-- VIEW 1: CHARGING -->
-    <div id="view-charging" class="tab-content active">
-      <!-- Outage Banner -->
-      <div class="outage-pill">
-        <svg viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-        <div>
-          <strong>Автодозарядка активна:</strong> збережено 12.4 кВт⋅ч перед вимкненням світла. При появі живлення зарядка відновиться до 30.0 кВт⋅ч.
-        </div>
-      </div>
+    // Knob 2
+    let idx2 = 2; // 10A
+    function stepKnob2() {
+      idx2 = (idx2 + 1) % ampValues.length;
+      const v = ampValues[idx2];
+      document.getElementById('knob-2').style.transform = `rotate(${knobAngles[v]}deg)`;
+      document.getElementById('knob-val-2').innerText = `${v}A`;
+      const kw = ((218.4 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-2').innerText = `OUTPUT: ${kw} kW ACTIVE`;
+    }
 
-      <!-- Hero Dial Gauge -->
-      <div class="m3-card hero-card">
-        <div class="gauge-wrapper">
-          <svg viewBox="0 0 160 160">
-            <defs>
-              <linearGradient id="primaryGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#38EF7D" />
-                <stop offset="100%" stop-color="#00D2FF" />
-              </linearGradient>
-            </defs>
-            <circle class="gauge-track" cx="80" cy="80" r="70"></circle>
-            <circle class="gauge-progress" cx="80" cy="80" r="70"></circle>
-          </svg>
-          <div class="gauge-data">
-            <span class="val-large">18.4</span>
-            <span class="val-unit">з 30.0 кВт⋅год</span>
-            <span class="val-sub">61% виконано</span>
-          </div>
-        </div>
+    // Knob 3
+    let idx3 = 2; // 10A
+    function stepKnob3() {
+      idx3 = (idx3 + 1) % ampValues.length;
+      const v = ampValues[idx3];
+      document.getElementById('knob-3').style.transform = `rotate(${knobAngles[v]}deg)`;
+      document.getElementById('knob-val-3').innerText = `${v}A`;
+      const kw = ((218.4 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-3').innerText = `OUTPUT: ${kw} kW ACTIVE`;
 
-        <!-- Telemetry Grid -->
-        <div class="metrics-grid">
-          <div class="metric-cell">
-            <div class="metric-label">Потужність</div>
-            <div class="metric-number" style="color: var(--m3-primary);">3.7 кВт</div>
-          </div>
-          <div class="metric-cell">
-            <div class="metric-label">Струм</div>
-            <div class="metric-number">16.1 А</div>
-          </div>
-          <div class="metric-cell">
-            <div class="metric-label">Нейтраль</div>
-            <div class="metric-number" style="color: var(--m3-secondary);">2 В</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Stepped Current Selector -->
-      <div class="m3-card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 14px; font-weight: 600;">Струм заряджання</span>
-          <span style="font-size: 16px; font-weight: 800; color: var(--m3-secondary);">16 A (3.7 кВт)</span>
-        </div>
-        <div class="segment-bar">
-          <button class="segment-btn">6A</button>
-          <button class="segment-btn">10A</button>
-          <button class="segment-btn active">16A</button>
-          <button class="segment-btn">20A</button>
-          <button class="segment-btn">24A</button>
-          <button class="segment-btn">32A</button>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="action-row">
-        <button class="btn-m3 btn-m3-start">
-          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          <span>Почати</span>
-        </button>
-        <button class="btn-m3 btn-m3-stop">
-          <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
-          <span>Зупинити</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- VIEW 2: LIMITER & TIMER -->
-    <div id="view-limiter" class="tab-content">
-      <div class="m3-card">
-        <span style="font-size: 11px; font-weight: 700; color: var(--m3-primary); text-transform: uppercase; letter-spacing: 0.5px;">Автовимкнення</span>
-        <h2 style="font-size: 20px; font-weight: 700; margin: 4px 0 12px;">Ліміт кіловат на сесію</h2>
-
-        <div style="background: var(--m3-surface-container-high); border-radius: 20px; padding: 18px; display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <div style="font-size: 12px; color: var(--m3-on-surface-variant);">Цільовий об'єм</div>
-            <div style="font-size: 32px; font-weight: 800; color: var(--m3-on-surface);">30.0 <span style="font-size: 16px; color: var(--m3-primary);">кВт⋅год</span></div>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--m3-outline); background: transparent; color: white; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center;">−</button>
-            <button style="width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--m3-primary); color: var(--m3-on-primary); font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
-          </div>
-        </div>
-
-        <div class="limiter-presets">
-          <div class="preset-chip">+10</div>
-          <div class="preset-chip">+20</div>
-          <div class="preset-chip active">+30</div>
-          <div class="preset-chip">+50</div>
-        </div>
-      </div>
-
-      <div class="m3-card">
-        <span style="font-size: 11px; font-weight: 700; color: var(--m3-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Розклад</span>
-        <h2 style="font-size: 20px; font-weight: 700; margin: 4px 0 12px;">Нічний тариф</h2>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div class="metric-cell" style="text-align: left; padding: 12px;">
-            <div class="metric-label">Початок</div>
-            <div class="metric-number" style="font-size: 22px;">23:00</div>
-          </div>
-          <div class="metric-cell" style="text-align: left; padding: 12px;">
-            <div class="metric-label">Кінець</div>
-            <div class="metric-number" style="font-size: 22px;">07:00</div>
-          </div>
-        </div>
-        <button class="btn-m3 btn-m3-start" style="width: 100%; margin-top: 14px; height: 48px; border-radius: 24px;">Активувати розклад</button>
-      </div>
-    </div>
-
-    <!-- VIEW 3: HISTORY -->
-    <div id="view-history" class="tab-content">
-      <div class="m3-card">
-        <span style="font-size: 11px; font-weight: 700; color: var(--m3-primary); text-transform: uppercase; letter-spacing: 0.5px;">Аналітика</span>
-        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px;">
-          <h2 style="font-size: 32px; font-weight: 800;">79.7 <span style="font-size: 16px; font-weight: 600; color: var(--m3-on-surface-variant);">кВт⋅год</span></h2>
-          <span style="font-size: 12px; color: var(--m3-primary);">Листопад 2026</span>
-        </div>
-      </div>
-
-      <div class="m3-card">
-        <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px;">Останні зарядки</h3>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-            <div>
-              <div style="font-weight: 600; font-size: 14px;">09.11 • 14:22</div>
-              <div style="font-size: 11px; color: var(--m3-on-surface-variant);">Денна сесія • 16A</div>
-            </div>
-            <div style="font-size: 16px; font-weight: 700; color: var(--m3-primary);">7.1 кВт⋅год</div>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-            <div>
-              <div style="font-weight: 600; font-size: 14px;">09.11 • 01:33</div>
-              <div style="font-size: 11px; color: var(--m3-on-surface-variant);">Нічний тариф • 16A</div>
-            </div>
-            <div style="font-size: 16px; font-weight: 700; color: var(--m3-secondary);">11.2 кВт⋅год</div>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-weight: 600; font-size: 14px;">08.11 • 17:23</div>
-              <div style="font-size: 11px; color: var(--m3-on-surface-variant);">Дозарядка • 10A</div>
-            </div>
-            <div style="font-size: 16px; font-weight: 700; color: var(--m3-primary);">8.5 кВт⋅год</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- VIEW 4: SETTINGS -->
-    <div id="view-settings" class="tab-content">
-      <div class="m3-card">
-        <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px;">Апаратні параметри</h3>
-        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Контроль заземлення</span>
-            <span style="color: var(--m3-primary); font-weight: 700;">Увімкнено</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Струм витоку (УЗО)</span>
-            <span style="font-weight: 700;">> 30 мА</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Мін. напруга відсікання</span>
-            <span style="font-weight: 700;">175 В</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Сервер станції</span>
-            <span style="color: var(--m3-on-surface-variant); font-family: monospace;">electros.org.ua:8000</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="m3-card">
-        <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Фонова служба Android</h3>
-        <p style="font-size: 12px; color: var(--m3-on-surface-variant); line-height: 1.5;">
-          Використовує Foreground Service для надійного обліку кіловат при вимкненому екрані. Батарея авто і станція автоматично припиняють заряд при заповненні 100%.
-        </p>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Material 3 Navigation Bar (Clean Vector SVGs) -->
-  <nav class="m3-navigation-bar">
-    <!-- Tab 1: Charge / EV Bolt -->
-    <div class="m3-nav-item active" onclick="navigate('view-charging', this)">
-      <div class="m3-nav-pill">
-        <svg viewBox="0 0 24 24">
-          <path d="M11 21h-1l1-7H7.5c-.88 0-1.33-1.06-.71-1.68L14.5 3h1l-1 7h3.5c.88 0 1.33 1.06.71 1.68L11 21z"/>
-        </svg>
-      </div>
-      <span class="m3-nav-label">Заряд</span>
-    </div>
-
-    <!-- Tab 2: Limiter / Gauge Dial -->
-    <div class="m3-nav-item" onclick="navigate('view-limiter', this)">
-      <div class="m3-nav-pill">
-        <svg viewBox="0 0 24 24">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
-        </svg>
-      </div>
-      <span class="m3-nav-label">Ліміт</span>
-    </div>
-
-    <!-- Tab 3: History / Analytics Chart -->
-    <div class="m3-nav-item" onclick="navigate('view-history', this)">
-      <div class="m3-nav-pill">
-        <svg viewBox="0 0 24 24">
-          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
-        </svg>
-      </div>
-      <span class="m3-nav-label">Історія</span>
-    </div>
-
-    <!-- Tab 4: Settings / Tuner Cog -->
-    <div class="m3-nav-item" onclick="navigate('view-settings', this)">
-      <div class="m3-nav-pill">
-        <svg viewBox="0 0 24 24">
-          <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-        </svg>
-      </div>
-      <span class="m3-nav-label">Опції</span>
-    </div>
-  </nav>
-</div>
-
-<script>
-  function navigate(viewId, el) {
-    document.querySelectorAll('.tab-content').forEach(v => v.classList.remove('active'));
-    document.querySelectorAll('.m3-nav-item').forEach(i => i.classList.remove('active'));
-    document.getElementById(viewId).classList.add('active');
-    el.classList.add('active');
-  }
-</script>
-
+      // Update halo pips
+      const pips = document.querySelectorAll('#halo-stage .led-ring-pip');
+      const litCount = Math.round((v / 16) * pips.length);
+      pips.forEach((p, i) => {
+        p.classList.toggle('lit', i < litCount);
+      });
+    }
+  </script>
 </body>
 </html>

@@ -2,26 +2,42 @@ package ua.org.electros.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val SurfaceDark = Color(0xFF0B0E14)
-val SurfaceContainerDark = Color(0xFF171C28)
-val SurfaceContainerHighDark = Color(0xFF21283B)
-val SurfaceContainerHighestDark = Color(0xFF2C354D)
+// Analog Hardware Studio Theme Colors
+val StudioChassisDark = Color(0xFF101217)       // Deep dark titanium background
+val StudioPanelDark = Color(0xFF181B22)         // Tactile beveled card face
+val StudioPanelBorder = Color(0xFF282D3A)       // Heavy bezel outline
+val StudioScreenDark = Color(0xFF090A0E)        // Recessed cathode display window
+val StudioScreenBorder = Color(0xFF232733)      // Inner display bezel
 
-val PrimaryNeonGreen = Color(0xFF38EF7D)
-val OnPrimaryDark = Color(0xFF00391A)
-val PrimaryContainerDark = Color(0xFF11462B)
-val OnPrimaryContainerDark = Color(0xFF75FFA9)
+val AmberNixie = Color(0xFFFF9900)             // Signature glowing warm amber
+val AmberNixieDim = Color(0xFFB46E00)          // Secondary/dim amber
+val AmberNixieGlow = Color(0x66FF9900)         // Cathode tube glow overlay
+val AmberNixieText = Color(0xFFFFCC80)         // Soft warm text
 
-val SecondaryCyan = Color(0xFF00D2FF)
-val SecondaryContainerDark = Color(0xFF00455B)
-val OnSecondaryContainerDark = Color(0xFF9CE7FF)
+val StudioCyan = Color(0xFF38BDF8)             // Subtle engineering blue
+val StudioGreen = Color(0xFF10B981)            // Status OK / DLB active
+val StudioAmberWarn = Color(0xFFF59E0B)        // Sag / Voltage Derate warning
+val IndustrialRed = Color(0xFFDC2626)          // Emergency stop / trip breaker
+val IndustrialRedBorder = Color(0xFF991B1B)
 
-val TextPrimaryDark = Color(0xFFE6EDF5)
-val TextSecondaryDark = Color(0xFF94A3B8)
-val OutlineDark = Color(0xFF475569)
+val TextPrimaryDark = Color(0xFFEDEDED)        // Clean metallic white
+val TextSecondaryDark = Color(0xFF8E95A5)      // Brushed steel gray
+val TextTertiaryDark = Color(0xFF5B6272)       // Dim label gray
+val OutlineDark = StudioPanelBorder
 
-val ErrorRed = Color(0xFFFF6B6B)
-val ErrorContainerDark = Color(0xFF4D1919)
-val WarningAmber = Color(0xFFFFB300)
-val WarningContainerDark = Color(0xFF4D3800)
-
+// Backward compatibility mappings for MaterialTheme tokens
+val SurfaceDark = StudioChassisDark
+val SurfaceContainerDark = StudioPanelDark
+val SurfaceContainerHighDark = Color(0xFF222630)
+val SurfaceContainerHighestDark = Color(0xFF2C3240)
+val PrimaryNeonGreen = AmberNixie
+val OnPrimaryDark = Color(0xFF1C0D00)
+val PrimaryContainerDark = Color(0xFF331C00)
+val OnPrimaryContainerDark = Color(0xFFFFD499)
+val SecondaryCyan = StudioCyan
+val SecondaryContainerDark = Color(0xFF00364A)
+val OnSecondaryContainerDark = Color(0xFFBBE9FF)
+val ErrorRed = IndustrialRed
+val ErrorContainerDark = Color(0xFF451111)
+val WarningAmber = StudioAmberWarn
+val WarningContainerDark = Color(0xFF3D2700)

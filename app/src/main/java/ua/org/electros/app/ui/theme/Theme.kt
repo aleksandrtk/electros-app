@@ -5,23 +5,23 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryNeonGreen,
+    primary = AmberNixie,
     onPrimary = OnPrimaryDark,
     primaryContainer = PrimaryContainerDark,
     onPrimaryContainer = OnPrimaryContainerDark,
-    secondary = SecondaryCyan,
+    secondary = StudioCyan,
     onSecondary = OnPrimaryDark,
     secondaryContainer = SecondaryContainerDark,
     onSecondaryContainer = OnSecondaryContainerDark,
-    background = SurfaceDark,
-    surface = SurfaceDark,
-    surfaceContainer = SurfaceContainerDark,
+    background = StudioChassisDark,
+    surface = StudioChassisDark,
+    surfaceContainer = StudioPanelDark,
     surfaceContainerHigh = SurfaceContainerHighDark,
     surfaceContainerHighest = SurfaceContainerHighestDark,
     onSurface = TextPrimaryDark,
     onSurfaceVariant = TextSecondaryDark,
-    outline = OutlineDark,
-    error = ErrorRed,
+    outline = StudioPanelBorder,
+    error = IndustrialRed,
     errorContainer = ErrorContainerDark
 )
 
@@ -33,4 +33,3 @@ fun ElectrosTheme(content: @Composable () -> Unit) {
         content = content
     )
 }
-
