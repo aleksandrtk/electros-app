@@ -3,11 +3,13 @@ package ua.org.electros.app.ui.dashboard
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
@@ -48,8 +50,10 @@ class DashboardViewModel(
         val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
         val isOnline = telemetry?.isOnline == true
 
-        // If station is completely offline and delivered energy is 0, session is stale
-        val effectiveSession = if (activeSession != null && (!isOnline && activeSession.totalKwhDelivered == 0.0)) {
+        val isCharging = telemetry?.isChargingActive == true
+
+        // If station is not actively charging and delivered energy is 0, or station is completely offline
+        val effectiveSession = if (activeSession != null && (!isOnline || !isCharging) && activeSession.totalKwhDelivered == 0.0) {
             null
         } else {
             activeSession
@@ -81,9 +85,16 @@ class DashboardViewModel(
     )
 
     init {
-        refreshTelemetry()
+        startTelemetryPolling()
+    }
+
+    private fun startTelemetryPolling() {
         viewModelScope.launch {
             repository.cancelStaleSessionsIfOffline()
+            while (isActive) {
+                repository.fetchLatestTelemetry()
+                delay(3000L)
+            }
         }
     }
 

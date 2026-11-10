@@ -51,9 +51,9 @@ class ChargeRepository(
         val result = scraper.fetchTelemetry()
         result.onSuccess { data ->
             _telemetryState.value = data
-            if (!data.isOnline) {
+            if (!data.isOnline || !data.isChargingActive) {
                 val active = chargeDao.getActiveSession()
-                if (active != null && active.totalKwhDelivered == 0.0) {
+                if (active != null && (active.totalKwhDelivered == 0.0 || !data.isOnline)) {
                     chargeDao.cancelAllActiveSessions()
                 }
             }

@@ -189,9 +189,27 @@ class ElectrosWebScraper(
     fun parseTelemetryDocument(doc: Document): TelemetryData {
         val bodyText = doc.body().text()
 
+        // Grid Voltage row: Min / Середня / Поточна / Max
+        var vMin = 0; var vAvg = 0; var vCur = 0; var vMax = 0
+        val vTable = doc.select("table:contains(Напруга Мережі)")
+        if (vTable.isNotEmpty()) {
+            val cells = vTable.select("tr").last()?.select("td")
+            if (cells != null && cells.size >= 4) {
+                vMin = cells[0].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                vAvg = cells[1].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                vCur = cells[2].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                vMax = cells[3].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+            }
+        }
+
         // Station online/offline parsing
-        val isOffline = bodyText.contains("Станція OFFLINE", ignoreCase = true) ||
-                (bodyText.contains("OFFLINE", ignoreCase = true) && !bodyText.contains("ONLINE", ignoreCase = true))
+        val hasOfflineMarkers = bodyText.contains("Станція OFFLINE", ignoreCase = true) ||
+                bodyText.contains("OFFLINE", ignoreCase = true) ||
+                bodyText.contains("Офлайн", ignoreCase = true) ||
+                bodyText.contains("Немає зв'язку", ignoreCase = true) ||
+                bodyText.contains("Зв'язок відсутній", ignoreCase = true) ||
+                bodyText.contains("Станція вимкнена", ignoreCase = true) ||
+                (vTable.isNotEmpty() && vCur == 0 && vAvg == 0)
 
         var extractedStatus = ""
         val statusEl = doc.select(":containsOwn(Стан:)").first()
@@ -208,26 +226,17 @@ class ElectrosWebScraper(
             }
         }
 
-        val isOnline = !isOffline && (extractedStatus.isNotBlank() || bodyText.contains("Напруга Мережі"))
-        val statusText = if (extractedStatus.isNotBlank()) {
-            extractedStatus
-        } else if (isOnline) {
-            "Підключено"
-        } else {
-            "Станція OFFLINE"
-        }
-
-        // Grid Voltage row: Min / Середня / Поточна / Max
-        var vMin = 220; var vAvg = 220; var vCur = 220; var vMax = 220
-        val vTable = doc.select("table:contains(Напруга Мережі)")
-        if (vTable.isNotEmpty()) {
-            val cells = vTable.select("tr").last()?.select("td")
-            if (cells != null && cells.size >= 4) {
-                vMin = cells[0].text().trim().toIntOrNull() ?: 220
-                vAvg = cells[1].text().trim().toIntOrNull() ?: 220
-                vCur = cells[2].text().trim().toIntOrNull() ?: 220
-                vMax = cells[3].text().trim().toIntOrNull() ?: 220
+        val isOnline = !hasOfflineMarkers && (vCur > 50 || bodyText.contains("Підключено") || bodyText.contains("Заряд"))
+        val statusText = if (!isOnline) {
+            if (extractedStatus.contains("OFFLINE", true) || extractedStatus.contains("зв'яз", true) || extractedStatus.contains("вимк", true)) {
+                extractedStatus
+            } else {
+                "Станція OFFLINE"
             }
+        } else if (extractedStatus.isNotBlank()) {
+            extractedStatus
+        } else {
+            "Підключено"
         }
 
         // Neutral Voltage row
@@ -236,10 +245,10 @@ class ElectrosWebScraper(
         if (nTable.isNotEmpty()) {
             val cells = nTable.select("tr").last()?.select("td")
             if (cells != null && cells.size >= 4) {
-                nMin = cells[0].text().trim().toIntOrNull() ?: 0
-                nAvg = cells[1].text().trim().toIntOrNull() ?: 2
-                nCur = cells[2].text().trim().toIntOrNull() ?: 2
-                nMax = cells[3].text().trim().toIntOrNull() ?: 5
+                nMin = cells[0].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                nAvg = cells[1].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 2
+                nCur = cells[2].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 2
+                nMax = cells[3].text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: 5
             }
         }
 
@@ -302,9 +311,8 @@ class ElectrosWebScraper(
             }
         }
 
-        val isChargingActive = !isOffline &&
-                (measuredA > 0.5 || powerKw > 0.1 || statusText.contains("Заряд", ignoreCase = true)) &&
-                !statusText.contains("Немає заряду", ignoreCase = true)
+        val isChargingActive = isOnline &&
+                (measuredA > 0.5 || powerKw > 0.1 || (statusText.contains("Заряд", ignoreCase = true) && !statusText.contains("Немає заряду", ignoreCase = true)))
 
         return TelemetryData(
             statusText = statusText,

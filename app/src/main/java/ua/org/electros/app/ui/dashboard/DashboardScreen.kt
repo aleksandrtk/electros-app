@@ -85,8 +85,6 @@ fun DashboardScreen(
         // Action Buttons: Start / Stop
         ActionButtonsRow(
             isCharging = telemetry?.isChargingActive ?: false,
-            hasActiveSession = state.activeSession != null,
-            isOnline = telemetry?.isOnline ?: false,
             isBusy = state.isStartingOrStopping,
             onStart = { viewModel.onStartClicked(context) },
             onStop = { viewModel.onStopClicked() }
@@ -396,8 +394,6 @@ private fun AmperageSelectorCard(
 @Composable
 private fun ActionButtonsRow(
     isCharging: Boolean,
-    hasActiveSession: Boolean,
-    isOnline: Boolean,
     isBusy: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit
@@ -408,26 +404,44 @@ private fun ActionButtonsRow(
     ) {
         Button(
             onClick = onStart,
-            enabled = !isCharging && !isBusy && isOnline,
+            enabled = !isCharging && !isBusy,
             shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = PrimaryNeonGreen,
+                contentColor = OnPrimaryDark,
+                disabledContainerColor = SurfaceContainerHighDark,
+                disabledContentColor = TextSecondaryDark
+            ),
             modifier = Modifier
                 .weight(1f)
                 .height(54.dp)
         ) {
-            Text(text = if (isCharging) "Заряджається..." else "Почати", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                text = if (isCharging) "Заряджається..." else "Почати",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
         }
 
         Button(
             onClick = onStop,
-            enabled = (isCharging || hasActiveSession) && !isBusy,
+            enabled = isCharging && !isBusy,
             shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ErrorRed, contentColor = Color.White),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = ErrorRed,
+                contentColor = Color.White,
+                disabledContainerColor = SurfaceContainerHighDark,
+                disabledContentColor = TextSecondaryDark
+            ),
             modifier = Modifier
                 .weight(1f)
                 .height(54.dp)
         ) {
-            Text(text = "Зупинити", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                text = "Зупинити",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
         }
     }
 }

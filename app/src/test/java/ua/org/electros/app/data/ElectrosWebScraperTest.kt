@@ -98,4 +98,29 @@ class ElectrosWebScraperTest {
         assertThat(telemetry.selectedCurrentAmperes).isEqualTo(16)
         assertThat(telemetry.isChargingActive).isFalse()
     }
+
+    @Test
+    fun parseTelemetryDocument_whenUnpluggedFromOutlet_isOnlineFalse() {
+        val unpluggedHtml = """
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <div>Стан: <span>Немає зв'язку зі станцією</span></div>
+                <table>
+                    <caption>Напруга Мережі, В:</caption>
+                    <tr><th>Min</th><th>Середня</th><th>Поточна</th><th>Max</th></tr>
+                    <tr><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+                </table>
+            </body>
+            </html>
+        """.trimIndent()
+        val doc = Jsoup.parse(unpluggedHtml)
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseTelemetryDocument(doc)
+
+        assertThat(telemetry.isOnline).isFalse()
+        assertThat(telemetry.statusText).contains("Немає зв'язку")
+        assertThat(telemetry.voltageCurrent).isEqualTo(0)
+        assertThat(telemetry.isChargingActive).isFalse()
+    }
 }
