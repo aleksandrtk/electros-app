@@ -81,7 +81,7 @@ class ChargeRepository(
         scraper.setAmperage(amperage)
 
         // Start station
-        val startResult = scraper.startCharge()
+        val startResult = scraper.startCharge(amperage)
         if (startResult.isSuccess) {
             val telemetry = _telemetryState.value
             val currentCounter = telemetry?.consumedEnergyKwh ?: 0.0

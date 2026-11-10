@@ -1,17 +1,24 @@
 package ua.org.electros.app.data.network
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.FormBody
-import okhttp3.OkHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.model.TelemetryData
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 
 class ElectrosWebScraper(
     private val cookieStorage: CookieStorage? = null,
@@ -25,13 +32,117 @@ class ElectrosWebScraper(
 ) {
 
     private val baseUrl = "https://electros.org.ua"
+    private val wsUrl = "wss://electros.org.ua/ws/"
     private var lastCsrfToken: String? = null
     private var consecutiveAuthFailures = 0
 
     suspend fun fetchTelemetry(): Result<TelemetryData> = withContext(Dispatchers.IO) {
+        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        if (serial.isNotBlank()) {
+            val wsResult = queryWebSocket("site $serial")
+            if (wsResult.isSuccess) {
+                val data = wsResult.getOrThrow()
+                if (data.isNotBlank() && data.contains("\n")) {
+                    val telemetry = parseWebSocketTelemetry(data)
+                    return@withContext Result.success(telemetry)
+                }
+            }
+        }
+
+        // Fallback to HTTP protected_page.php if WebSocket query fails
+        fetchTelemetryHttp()
+    }
+
+    private suspend fun queryWebSocket(command: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            withTimeout(5000L) {
+                suspendCancellableCoroutine { continuation ->
+                    val wsRequest = Request.Builder()
+                        .url(wsUrl)
+                        .header("Sec-WebSocket-Protocol", "example-protocol")
+                        .header("Origin", baseUrl)
+                        .build()
+
+                    var ws: WebSocket? = null
+                    val listener = object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                            webSocket.send(command)
+                        }
+
+                        override fun onMessage(webSocket: WebSocket, text: String) {
+                            if (continuation.isActive) {
+                                continuation.resume(Result.success(text))
+                            }
+                            webSocket.close(1000, "Done")
+                        }
+
+                        override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
+                            if (continuation.isActive) {
+                                continuation.resume(Result.failure(t))
+                            }
+                        }
+
+                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                            if (continuation.isActive) {
+                                continuation.resume(Result.failure(IOException("WebSocket closed ($code): $reason")))
+                            }
+                        }
+                    }
+
+                    ws = client.newWebSocket(wsRequest, listener)
+                    continuation.invokeOnCancellation {
+                        ws.cancel()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun sendCommandWebSocket(command: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            withTimeout(5000L) {
+                suspendCancellableCoroutine { continuation ->
+                    val wsRequest = Request.Builder()
+                        .url(wsUrl)
+                        .header("Sec-WebSocket-Protocol", "example-protocol")
+                        .header("Origin", baseUrl)
+                        .build()
+
+                    var ws: WebSocket? = null
+                    val listener = object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                            val sent = webSocket.send(command)
+                            webSocket.close(1000, "Command sent")
+                            if (continuation.isActive) {
+                                if (sent) continuation.resume(Result.success(Unit))
+                                else continuation.resume(Result.failure(IOException("Failed to send WS frame")))
+                            }
+                        }
+
+                        override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
+                            if (continuation.isActive) {
+                                continuation.resume(Result.failure(t))
+                            }
+                        }
+                    }
+
+                    ws = client.newWebSocket(wsRequest, listener)
+                    continuation.invokeOnCancellation {
+                        ws.cancel()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchTelemetryHttp(): Result<TelemetryData> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url("$baseUrl/auth/main.php")
+                .url("$baseUrl/auth/protected_page.php")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36")
                 .build()
 
@@ -44,7 +155,7 @@ class ElectrosWebScraper(
             val html = response.body?.string().orEmpty()
 
             // Detect if redirected to login page
-            if (finalUrl.contains("login.php") || html.contains("name=\"password\"") && !html.contains("Станція")) {
+            if (finalUrl.contains("login.php") || finalUrl.contains("main.php") || (html.contains("name=\"password\"") && !html.contains("Станція"))) {
                 if (consecutiveAuthFailures >= 2) {
                     return@withContext Result.failure(SecurityException("Authentication failed twice. Circuit breaker open."))
                 }
@@ -54,7 +165,7 @@ class ElectrosWebScraper(
                     return@withContext Result.failure(loginResult.exceptionOrNull() ?: IOException("Login failed"))
                 }
                 consecutiveAuthFailures = 0
-                return@withContext fetchTelemetry()
+                return@withContext fetchTelemetryHttp()
             }
 
             consecutiveAuthFailures = 0
@@ -109,11 +220,33 @@ class ElectrosWebScraper(
         }
     }
 
-    suspend fun startCharge(): Result<Unit> = executeAction("start")
+    suspend fun startCharge(amperes: Int = 16): Result<Unit> = withContext(Dispatchers.IO) {
+        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        if (serial.isNotBlank()) {
+            val idx = amperageToIndex(amperes)
+            val wsResult = sendCommandWebSocket("site $serial\nstart\n$idx\n0\n")
+            if (wsResult.isSuccess) return@withContext wsResult
+        }
+        executeAction("start")
+    }
 
-    suspend fun stopCharge(): Result<Unit> = executeAction("stop")
+    suspend fun stopCharge(): Result<Unit> = withContext(Dispatchers.IO) {
+        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        if (serial.isNotBlank()) {
+            val wsResult = sendCommandWebSocket("site $serial\nstop")
+            if (wsResult.isSuccess) return@withContext wsResult
+        }
+        executeAction("stop")
+    }
 
     suspend fun setAmperage(amperes: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        if (serial.isNotBlank()) {
+            val idx = amperageToIndex(amperes)
+            val wsResult = sendCommandWebSocket("site $serial\nstart\n$idx\n0\n")
+            if (wsResult.isSuccess) return@withContext wsResult
+        }
+
         val formBuilder = FormBody.Builder()
             .add("action", "set_current")
             .add("current", "$amperes A")
@@ -125,7 +258,7 @@ class ElectrosWebScraper(
         lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
 
         val request = Request.Builder()
-            .url("$baseUrl/auth/main.php")
+            .url("$baseUrl/auth/protected_page.php")
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36")
             .post(formBuilder.build())
             .build()
@@ -139,6 +272,14 @@ class ElectrosWebScraper(
     }
 
     suspend fun setTimer(startTime: String, stopTime: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        if (serial.isNotBlank()) {
+            val nowFormatted = SimpleDateFormat("dd.MM.yyyy'T'HH:mm:ss", Locale.getDefault()).format(Date())
+            val wsCmd = "site $serial\ndatetime\n$nowFormatted\n$startTime\n$stopTime\n"
+            val wsResult = sendCommandWebSocket(wsCmd)
+            if (wsResult.isSuccess) return@withContext wsResult
+        }
+
         val formBuilder = FormBody.Builder()
             .add("action", "set_timer")
             .add("time_start", startTime)
@@ -147,7 +288,7 @@ class ElectrosWebScraper(
         lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
 
         val request = Request.Builder()
-            .url("$baseUrl/auth/main.php")
+            .url("$baseUrl/auth/protected_page.php")
             .post(formBuilder.build())
             .build()
 
@@ -159,6 +300,33 @@ class ElectrosWebScraper(
         }
     }
 
+    suspend fun resetKwh(): Result<Unit> = withContext(Dispatchers.IO) {
+        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        if (serial.isNotBlank()) {
+            sendCommandWebSocket("site $serial\nresetkwt")
+        } else {
+            Result.failure(IllegalStateException("Номер пристрою не налаштовано"))
+        }
+    }
+
+    fun amperageToIndex(amperes: Int): Int = when (amperes) {
+        32 -> 0
+        30 -> 1
+        28 -> 2
+        26 -> 3
+        24 -> 4
+        22 -> 5
+        20 -> 6
+        18 -> 7
+        16 -> 8
+        14 -> 9
+        12 -> 10
+        10 -> 11
+        8 -> 12
+        6 -> 13
+        else -> ((32 - amperes) / 2).coerceIn(0, 13)
+    }
+
     private suspend fun executeAction(actionName: String): Result<Unit> = withContext(Dispatchers.IO) {
         val formBuilder = FormBody.Builder()
             .add("action", actionName)
@@ -166,7 +334,7 @@ class ElectrosWebScraper(
         lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
 
         val request = Request.Builder()
-            .url("$baseUrl/auth/main.php")
+            .url("$baseUrl/auth/protected_page.php")
             .post(formBuilder.build())
             .build()
 
@@ -184,6 +352,70 @@ class ElectrosWebScraper(
         if (!token.isNullOrBlank()) {
             lastCsrfToken = token
         }
+    }
+
+    fun parseWebSocketTelemetry(data: String): TelemetryData {
+        val lines = data.split("\n")
+        val selectedA = lines.getOrNull(7)?.trim()?.toIntOrNull() ?: 16
+        val statusCode = lines.getOrNull(8)?.trim()?.toIntOrNull() ?: 7
+        val isOnline = statusCode !in listOf(7, 77)
+
+        val statusText = when (statusCode) {
+            0 -> "Чекаю підключення до авто"
+            1 -> "Підключено. Немає заряду"
+            2 -> "Заряджання"
+            3 -> "Помилка заряджання"
+            4 -> "Заборона заряджання"
+            5 -> "Напруга нижче порогового рівня"
+            6 -> "Помилка зв'язку №1"
+            7, 77 -> "Станція OFFLINE"
+            16 -> "Ток витоку виявлено"
+            32 -> "Струм перевищив 40 А"
+            else -> if (isOnline) "Підключено" else "Станція OFFLINE"
+        }
+
+        // Line 9: measured current * 10
+        val measuredA = (lines.getOrNull(9)?.trim()?.toDoubleOrNull() ?: 0.0) / 10.0
+
+        // Line 10: grid voltage
+        val vCur = lines.getOrNull(10)?.trim()?.toIntOrNull() ?: if (isOnline) 220 else 0
+
+        // Line 11: consumed energy in mWh (divide by 1,000,000 to get kWh)
+        val energyKwh = (lines.getOrNull(11)?.trim()?.toDoubleOrNull() ?: 0.0) / 1_000_000.0
+
+        // Line 12: power in dW (divide by 10,000 to get kW)
+        val powerKw = (lines.getOrNull(12)?.trim()?.toDoubleOrNull() ?: 0.0) / 10_000.0
+
+        // Line 13: neutral voltage
+        val neutralV = lines.getOrNull(13)?.trim()?.toIntOrNull() ?: 2
+
+        val vMax = lines.getOrNull(16)?.trim()?.toIntOrNull() ?: vCur
+        val vMin = lines.getOrNull(17)?.trim()?.toIntOrNull() ?: vCur
+        val vAvg = lines.getOrNull(20)?.trim()?.toIntOrNull() ?: vCur
+
+        val nMax = lines.getOrNull(18)?.trim()?.toIntOrNull() ?: neutralV
+        val nMin = lines.getOrNull(19)?.trim()?.toIntOrNull() ?: neutralV
+        val nAvg = lines.getOrNull(21)?.trim()?.toIntOrNull() ?: neutralV
+
+        val isChargingActive = statusCode == 2 || (isOnline && (measuredA > 0.5 || powerKw > 0.1))
+
+        return TelemetryData(
+            statusText = statusText,
+            isOnline = isOnline,
+            voltageMin = vMin,
+            voltageAvg = vAvg,
+            voltageCurrent = vCur,
+            voltageMax = vMax,
+            neutralMin = nMin,
+            neutralAvg = nAvg,
+            neutralCurrent = neutralV,
+            neutralMax = nMax,
+            selectedCurrentAmperes = selectedA,
+            measuredCurrentAmperes = measuredA,
+            consumedEnergyKwh = energyKwh,
+            powerKw = powerKw,
+            isChargingActive = isChargingActive
+        )
     }
 
     fun parseTelemetryDocument(doc: Document): TelemetryData {

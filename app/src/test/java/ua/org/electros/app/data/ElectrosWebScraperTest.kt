@@ -150,4 +150,81 @@ class ElectrosWebScraperTest {
         assertThat(telemetry.statusText).isEqualTo("Підключено. Немає заряду")
         assertThat(telemetry.voltageCurrent).isEqualTo(226)
     }
+
+    @Test
+    fun parseWebSocketTelemetry_whenConnectedIdle_parsesAccurately() {
+        val samplePacket = listOf(
+            "8800Lt", // 0
+            "0669330593@", // 1
+            "ElectroS", // 2
+            "0669330593", // 3
+            "electros.org.ua", // 4
+            "8000", // 5
+            "0", // 6
+            "10", // 7 selected tok
+            "1", // 8 status code: Connected, idle
+            "0", // 9 measured current * 10
+            "220", // 10 voltage
+            "95000", // 11 energy mWh
+            "0", // 12 power dW
+            "2", // 13 neutral V
+            "1", // 14
+            "10.11.2026T13:36:47", // 15
+            "222", // 16 max V
+            "219", // 17 min V
+            "3", // 18 max neutral
+            "2", // 19 min neutral
+            "220", // 20 avg V
+            "2" // 21 avg neutral
+        ).joinToString("\n")
+
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseWebSocketTelemetry(samplePacket)
+
+        assertThat(telemetry.isOnline).isTrue()
+        assertThat(telemetry.statusText).isEqualTo("Підключено. Немає заряду")
+        assertThat(telemetry.selectedCurrentAmperes).isEqualTo(10)
+        assertThat(telemetry.voltageCurrent).isEqualTo(220)
+        assertThat(telemetry.isChargingActive).isFalse()
+    }
+
+    @Test
+    fun parseWebSocketTelemetry_whenOffline_returnsOffline() {
+        val offlinePacket = listOf(
+            "8800Lt", "0669330593@", "ElectroS", "0669330593", "electros.org.ua", "8000", "0",
+            "16", // 7
+            "7", // 8 OFFLINE
+            "0", "0", "0", "0", "0"
+        ).joinToString("\n")
+
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseWebSocketTelemetry(offlinePacket)
+
+        assertThat(telemetry.isOnline).isFalse()
+        assertThat(telemetry.statusText).isEqualTo("Станція OFFLINE")
+        assertThat(telemetry.isChargingActive).isFalse()
+    }
+
+    @Test
+    fun parseWebSocketTelemetry_whenCharging_isChargingActiveTrue() {
+        val chargingPacket = listOf(
+            "8800Lt", "0669330593@", "ElectroS", "0669330593", "electros.org.ua", "8000", "0",
+            "16", // 7
+            "2", // 8 Charging
+            "162", // 9 measured 16.2 A
+            "224", // 10 voltage 224 V
+            "2200000", // 11 energy 2.2 kWh
+            "37000" // 12 power 3.7 kW
+        ).joinToString("\n")
+
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseWebSocketTelemetry(chargingPacket)
+
+        assertThat(telemetry.isOnline).isTrue()
+        assertThat(telemetry.statusText).isEqualTo("Заряджання")
+        assertThat(telemetry.isChargingActive).isTrue()
+        assertThat(telemetry.measuredCurrentAmperes).isEqualTo(16.2)
+        assertThat(telemetry.powerKw).isEqualTo(3.7)
+        assertThat(telemetry.consumedEnergyKwh).isEqualTo(2.2)
+    }
 }
