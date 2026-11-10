@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -393,9 +394,26 @@ private fun StudioRotaryKnobCard(
                             change.consume()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             val pos = change.position
-                            val angleRad = atan2(pos.y - center.y, pos.x - center.x)
-                            var angleDeg = Math.toDegrees(angleRad.toDouble()).toFloat() + 90f
-                            if (angleDeg > 180f) angleDeg -= 360f
+                            val dx = pos.x - center.x
+                            val dy = pos.y - center.y
+                            // 0 deg is UP (12 o'clock), positive is clockwise
+                            val angleRad = atan2(dx.toDouble(), -dy.toDouble())
+                            var angleDeg = Math.toDegrees(angleRad).toFloat()
+
+                            // Deadzone at bottom: [-180..-130] and [130..180]
+                            if (angleDeg > 130f) {
+                                if (selectedAmperes != 16) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    onAmperageSelected(16)
+                                }
+                                return@detectDragGestures
+                            } else if (angleDeg < -130f) {
+                                if (selectedAmperes != 6) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    onAmperageSelected(6)
+                                }
+                                return@detectDragGestures
+                            }
 
                             // Find nearest stop
                             var bestIdx = 0
@@ -478,11 +496,20 @@ private fun StudioRotaryKnobCard(
                             )
                         )
                         .border(4.dp, StudioPanelBorder, CircleShape)
-                        .clickable {
-                            // Tap knob cycles to next stop
-                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                            val nextIdx = (currentIndex + 1) % stops.size
-                            onAmperageSelected(stops[nextIdx])
+                        .pointerInput(stops, currentIndex) {
+                            detectTapGestures { offset ->
+                                // Tap right half rotates clockwise (+1 step), left half rotates counter-clockwise (-1 step)
+                                val isRightSide = offset.x >= (size.width / 2f)
+                                val newIdx = if (isRightSide) {
+                                    (currentIndex + 1).coerceAtMost(stops.lastIndex)
+                                } else {
+                                    (currentIndex - 1).coerceAtLeast(0)
+                                }
+                                if (newIdx != currentIndex) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                    onAmperageSelected(stops[newIdx])
+                                }
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {
