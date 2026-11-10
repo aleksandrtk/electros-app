@@ -73,7 +73,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = state.deviceSerial,
                         onValueChange = { viewModel.onSerialChanged(it) },
-                        label = { Text("Номер пристрою (наприклад, b4714)") },
+                        label = { Text("Номер пристрою (наприклад, a1234)") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimaryDark,

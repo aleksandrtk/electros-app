@@ -59,7 +59,7 @@ fun SettingsScreen(
                         serialInput = it
                         savedSuccess = false
                     },
-                    label = { Text("Номер пристрою (наприклад, b4714)") },
+                    label = { Text("Номер пристрою (наприклад, a1234)") },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimaryDark,
