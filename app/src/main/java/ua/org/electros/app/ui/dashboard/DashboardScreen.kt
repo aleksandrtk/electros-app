@@ -5,7 +5,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -101,6 +100,8 @@ fun DashboardScreen(
 
             // 4. DLB Auto-Derate Status Indicator Card (Variation 4.1 Classic)
             StudioClassicDlbCard(
+                isDlbEnabled = state.isVoltageBalancingEnabled,
+                lowThreshold = state.voltageLowThreshold,
                 voltage = telemetry?.voltageCurrent ?: 0,
                 isOnline = telemetry?.isOnline ?: false,
                 isCharging = telemetry?.isChargingActive ?: false
@@ -332,31 +333,6 @@ private fun StudioClassicRotaryKnobCard(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Background graduation tick marks
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val center = Offset(size.width / 2f, size.height / 2f)
-                    val outerRadius = 88.dp.toPx()
-                    val tickLength = 10.dp.toPx()
-
-                    stops.indices.forEach { idx ->
-                        val a = angleForIndex(idx)
-                        val rad = Math.toRadians(a.toDouble())
-                        val sinVal = sin(rad).toFloat()
-                        val cosVal = cos(rad).toFloat()
-
-                        val pStart = Offset(center.x + (outerRadius - tickLength) * sinVal, center.y - (outerRadius - tickLength) * cosVal)
-                        val pEnd = Offset(center.x + outerRadius * sinVal, center.y - outerRadius * cosVal)
-
-                        val isCurrent = idx == currentIndex
-                        drawLine(
-                            color = if (isCurrent) AmberNixie else StudioPanelBorder,
-                            start = pStart,
-                            end = pEnd,
-                            strokeWidth = if (isCurrent) 3.dp.toPx() else 1.5.dp.toPx()
-                        )
-                    }
-                }
-
                 // Graduation Numbers: 6A, 8A, 10A, 12A, 16A
                 stops.forEachIndexed { idx, stop ->
                     val a = angleForIndex(idx)
@@ -483,6 +459,8 @@ private fun StudioClassicRotaryKnobCard(
  */
 @Composable
 private fun StudioClassicDlbCard(
+    isDlbEnabled: Boolean,
+    lowThreshold: Int,
     voltage: Int,
     isOnline: Boolean,
     isCharging: Boolean
@@ -513,19 +491,25 @@ private fun StudioClassicDlbCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val isNormal = voltage >= 185
+                val (statusText, statusColor) = when {
+                    !isDlbEnabled -> Pair("DISABLED", TextTertiaryDark)
+                    !isOnline || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
+                    voltage < lowThreshold -> Pair("STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
+                    else -> Pair("ENGAGED (>${lowThreshold}V)", StudioGreen)
+                }
+
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(if (isNormal) StudioGreen else StudioAmberWarn)
+                        .background(statusColor)
                 )
                 Text(
-                    text = if (isNormal) "ENGAGED (>185V)" else "STABILIZING (<185V)",
+                    text = statusText,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    color = if (isNormal) StudioGreen else StudioAmberWarn
+                    color = statusColor
                 )
             }
         }

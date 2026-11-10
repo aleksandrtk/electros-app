@@ -1,6 +1,7 @@
 package ua.org.electros.app.ui.dashboard
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
@@ -28,6 +29,8 @@ data class DashboardUiState(
     val isOutageActive: Boolean = false,
     val isStartingOrStopping: Boolean = false,
     val isRefreshing: Boolean = false,
+    val isVoltageBalancingEnabled: Boolean = true,
+    val voltageLowThreshold: Int = 185,
     val errorMessage: String? = null
 )
 
@@ -40,21 +43,32 @@ class DashboardViewModel(
     private val _isBusy = MutableStateFlow(false)
     private val _isRefreshing = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _prefsTrigger = MutableStateFlow(0)
 
-    private val _operationState = combine(_isBusy, _isRefreshing) { busy, refreshing ->
-        Pair(busy, refreshing)
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        _prefsTrigger.value += 1
+    }
+
+    private val _operationState = combine(
+        _isBusy,
+        _isRefreshing,
+        _errorMessage,
+        _prefsTrigger
+    ) { busy, refreshing, err, _ ->
+        Triple(busy, refreshing, err)
     }
 
     val uiState: StateFlow<DashboardUiState> = combine(
         repository.telemetryState,
         repository.observeActiveSession(),
         _selectedAmperes,
-        _operationState,
-        _errorMessage
-    ) { telemetry, activeSession, amperes, opState, error ->
-        val (busy, refreshing) = opState
+        _operationState
+    ) { telemetry, activeSession, amperes, opState ->
+        val (busy, refreshing, error) = opState
         val isLimitEnabled = authPreferences.isKwhLimitEnabled
         val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
+        val isDlbEnabled = authPreferences.isVoltageBalancingEnabled
+        val dlbThreshold = authPreferences.voltageLowThreshold
         val isOnline = telemetry?.isOnline == true
 
         val isCharging = telemetry?.isChargingActive == true
@@ -84,16 +98,28 @@ class DashboardViewModel(
             isOutageActive = isOutage,
             isStartingOrStopping = busy,
             isRefreshing = refreshing,
+            isVoltageBalancingEnabled = isDlbEnabled,
+            voltageLowThreshold = dlbThreshold,
             errorMessage = error
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = DashboardUiState(selectedAmperes = authPreferences.preferredAmperage)
+        initialValue = DashboardUiState(
+            selectedAmperes = authPreferences.preferredAmperage,
+            isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
+            voltageLowThreshold = authPreferences.voltageLowThreshold
+        )
     )
 
     init {
+        authPreferences.registerListener(prefListener)
         startTelemetryPolling()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        authPreferences.unregisterListener(prefListener)
     }
 
     private fun startTelemetryPolling() {

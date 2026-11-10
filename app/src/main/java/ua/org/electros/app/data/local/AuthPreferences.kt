@@ -83,6 +83,14 @@ class AuthPreferences(context: Context) {
         get() = prefs.getInt("KEY_VOLTAGE_MIN_AMPERAGE", 6)
         set(value) = prefs.edit().putInt("KEY_VOLTAGE_MIN_AMPERAGE", value).apply()
 
+    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     fun hasValidCredentials(): Boolean {
         return deviceSerial.isNotBlank() && internetPassword.isNotBlank()
     }

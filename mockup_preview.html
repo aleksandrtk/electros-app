@@ -481,7 +481,7 @@
 
           <!-- DLB Auto-Derate Status -->
           <div class="tactile-face">
-            <div class="dlb-indicator-pill">
+            <div class="dlb-indicator-pill" id="dlb-pill-1" onclick="toggleDlb1()" style="cursor: pointer;" title="Click to toggle Enabled/Disabled">
               <span class="dlb-lbl">DLB AUTO-DERATE</span>
               <span class="dlb-val" id="dlb-status-1">
                 <span class="lamp"></span> ENGAGED (&gt;185V)
@@ -811,6 +811,19 @@
           stepFn(-1);
         }
       }, { passive: false });
+    }
+
+    let dlb1Enabled = true;
+    function toggleDlb1() {
+      dlb1Enabled = !dlb1Enabled;
+      const el = document.getElementById('dlb-status-1');
+      if (dlb1Enabled) {
+        el.innerHTML = '<span class="lamp"></span> ENGAGED (&gt;185V)';
+        el.style.color = '#10B981';
+      } else {
+        el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> DISABLED';
+        el.style.color = '#8E95A5';
+      }
     }
 
     attachRotaryPhysics('knob-1', setKnob1, stepKnob1);
