@@ -16,11 +16,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ua.org.electros.app.BuildConfig
+import ua.org.electros.app.ota.OtaViewModel
 import ua.org.electros.app.ui.theme.*
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    otaViewModel: OtaViewModel? = null,
     onLogout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -137,6 +140,28 @@ fun SettingsScreen(
                 SettingRow(label = "Струм витоку (УЗО)", value = state.config.leakageCurrentThreshold)
                 SettingRow(label = "Мін. напруга заряджання", value = "${state.config.minChargingVoltage} В")
                 SettingRow(label = "Сервер станції", value = "${state.config.serverHost}:${state.config.serverPort}")
+            }
+        }
+
+        // App Updates Card
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(text = "ОНОВЛЕННЯ ДОДАТКА", style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+
+                SettingRow(label = "Поточна версія", value = "v${BuildConfig.VERSION_NAME}")
+
+                Button(
+                    onClick = { otaViewModel?.checkForUpdates(manual = true) },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Перевірити оновлення", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

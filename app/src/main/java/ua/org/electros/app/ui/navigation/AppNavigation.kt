@@ -9,6 +9,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import ua.org.electros.app.ElectrosApplication
 import ua.org.electros.app.R
+import ua.org.electros.app.ota.OtaViewModel
 import ua.org.electros.app.ui.dashboard.DashboardScreen
 import ua.org.electros.app.ui.dashboard.DashboardViewModel
 import ua.org.electros.app.ui.history.HistoryScreen
@@ -17,6 +18,7 @@ import ua.org.electros.app.ui.limiter.LimiterScreen
 import ua.org.electros.app.ui.limiter.LimiterViewModel
 import ua.org.electros.app.ui.login.LoginScreen
 import ua.org.electros.app.ui.login.LoginViewModel
+import ua.org.electros.app.ui.ota.UpdateDialog
 import ua.org.electros.app.ui.settings.SettingsScreen
 import ua.org.electros.app.ui.settings.SettingsViewModel
 import ua.org.electros.app.ui.theme.*
@@ -30,6 +32,17 @@ enum class NavTab(val title: String, val iconRes: Int) {
 
 @Composable
 fun AppNavigation(application: ElectrosApplication) {
+    val otaViewModel = remember { OtaViewModel() }
+    val showUpdateDialog by otaViewModel.showUpdateDialog.collectAsState()
+
+    LaunchedEffect(Unit) {
+        otaViewModel.checkForUpdates(manual = false)
+    }
+
+    if (showUpdateDialog) {
+        UpdateDialog(viewModel = otaViewModel)
+    }
+
     var isLoggedIn by remember {
         mutableStateOf(application.authPreferences.hasValidCredentials())
     }
@@ -105,6 +118,7 @@ fun AppNavigation(application: ElectrosApplication) {
                 )
                 NavTab.SETTINGS -> SettingsScreen(
                     viewModel = settingsViewModel,
+                    otaViewModel = otaViewModel,
                     onLogout = { isLoggedIn = false },
                     modifier = Modifier.padding(innerPadding)
                 )
