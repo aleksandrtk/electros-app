@@ -22,15 +22,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,8 +46,6 @@ import kotlinx.coroutines.delay
 import ua.org.electros.app.ui.theme.*
 import java.util.Locale
 import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -254,7 +259,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
 }
 
 /**
- * Variation 4.1 Classic: Heavy Rotary Current Potentiometer (MK-IV)
+ * Variation 4.1 Classic: Sculpted Dark Graphite Cam Selector Switch
  */
 @Composable
 private fun StudioClassicRotaryKnobCard(
@@ -267,8 +272,7 @@ private fun StudioClassicRotaryKnobCard(
 
     val currentIndex = stops.indexOf(selectedAmperes).takeIf { it >= 0 } ?: 2 // default 10A
 
-    // Exact symmetrical angles for 5 stops
-    val stopAngles = listOf(-110f, -55f, 0f, 55f, 110f)
+    val stopAngles = listOf(-114f, -58f, 0f, 58f, 114f)
     fun angleForIndex(idx: Int) = stopAngles[idx.coerceIn(0, stopAngles.lastIndex)]
     val targetAngle = angleForIndex(currentIndex)
 
@@ -278,7 +282,14 @@ private fun StudioClassicRotaryKnobCard(
         label = "knobRotation"
     )
 
-    val stageCenterOffsetY = 11.dp
+    val stageCenterOffsetY = 10.dp
+    val labelOffsets = listOf(
+        Pair((-96).dp, 30.dp),  // 6A
+        Pair((-96).dp, (-28).dp), // 8A
+        Pair(0.dp, (-80).dp),     // 10A
+        Pair(96.dp, (-28).dp),    // 12A
+        Pair(96.dp, 30.dp)        // 16A
+    )
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -325,11 +336,11 @@ private fun StudioClassicRotaryKnobCard(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Compact vertical stage tailored to the -110..+110 arc while keeping the 136dp 3D dial full-sized
+            // Compact tactile stage matching dark machined cam switch aesthetic
             Box(
                 modifier = Modifier
-                    .width(236.dp)
-                    .height(184.dp)
+                    .fillMaxWidth()
+                    .height(180.dp)
                     .pointerInput(stops) {
                         detectDragGestures { change, _ ->
                             change.consume()
@@ -338,7 +349,7 @@ private fun StudioClassicRotaryKnobCard(
                             val dx = pos.x - center.x
                             val dy = pos.y - center.y
                             val angleRad = atan2(dx.toDouble(), -dy.toDouble())
-                            var angleDeg = Math.toDegrees(angleRad).toFloat()
+                            val angleDeg = Math.toDegrees(angleRad).toFloat()
 
                             // Deadzone at bottom
                             if (angleDeg > 130f) {
@@ -377,258 +388,332 @@ private fun StudioClassicRotaryKnobCard(
                     modifier = Modifier.offset(y = stageCenterOffsetY),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Graduation Numbers: 6A, 8A, 10A, 12A, 16A (kept cleanly outside the 136dp 3D dial)
+                    // Clean high-contrast amperage labels around the recessed dial well
                     stops.forEachIndexed { idx, stop ->
-                        val a = angleForIndex(idx)
-                        val rad = Math.toRadians(a.toDouble())
-                        val labelRadius = 93.dp
-                    val offsetX = (labelRadius.value * sin(rad)).dp
-                    val offsetY = (-labelRadius.value * cos(rad)).dp
-                    val isCurrent = idx == currentIndex
+                        val (offsetX, offsetY) = labelOffsets[idx]
+                        val isCurrent = idx == currentIndex
 
-                    Text(
-                        text = "${stop}A",
-                        fontSize = 12.sp,
-                        fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (isCurrent) AmberNixie else TextTertiaryDark,
-                        modifier = Modifier
-                            .offset(x = offsetX, y = offsetY)
-                            .clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                onAmperageSelected(stop)
-                            }
-                    )
-                }
-
-                // Soft directional cast shadow under the floating 3D knob
-                Box(
-                    modifier = Modifier
-                        .offset(x = 3.dp, y = 7.dp)
-                        .size(144.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xCC000000),
-                                    Color(0x66000000),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                )
-
-                // Recessed machined mounting collar on panel
-                Box(
-                    modifier = Modifier
-                        .size(148.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF090A0E), Color(0xFF191D26))
-                            )
-                        )
-                        .border(
-                            width = 1.dp,
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(0xFF060709), Color(0xFF2D3342))
-                            ),
-                            shape = CircleShape
-                        )
-                )
-
-                // Heavy 136dp 3D Machined Rotary Dial with bidirectional tap
-                Box(
-                    modifier = Modifier
-                        .size(136.dp)
-                        .shadow(18.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF4F576A), Color(0xFF20242F), Color(0xFF0B0D12))
-                            )
-                        )
-                        .border(
-                            width = 3.dp,
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(0xFF7B859C), Color(0xFF2B303D), Color(0xFF0A0C10))
-                            ),
-                            shape = CircleShape
-                        )
-                        .pointerInput(stops, currentIndex) {
-                            detectTapGestures { offset ->
-                                val isRightSide = offset.x >= (size.width / 2f)
-                                val newIdx = if (isRightSide) {
-                                    (currentIndex + 1).coerceAtMost(stops.lastIndex)
-                                } else {
-                                    (currentIndex - 1).coerceAtLeast(0)
-                                }
-                                if (newIdx != currentIndex) {
-                                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                                    onAmperageSelected(stops[newIdx])
-                                }
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Rotating outer knurled grip skirt + 3D glowing pointer channel
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .rotate(animatedAngle)
-                    ) {
-                        for (tickIdx in 0 until 24) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .rotate(tickIdx * 15f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .padding(top = 3.dp)
-                                        .width(2.dp)
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(1.dp))
-                                        .background(Color(0xAA0A0C10))
-                                )
-                            }
-                        }
-
-                        // Recessed pointer slot + illuminated Nixie needle
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 5.dp)
-                                .width(7.dp)
-                                .height(25.dp)
-                                .clip(RoundedCornerShape(3.5.dp))
-                                .background(Color(0xFF090A0E))
-                                .padding(1.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(2.5.dp))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color(0xFFFFD180),
-                                                AmberNixie,
-                                                Color(0xFFD86800)
-                                            )
-                                        )
-                                    )
-                            )
-                        }
-                    }
-
-                    // Raised 3D Domed Cap inside the knurled bevel
-                    Box(
-                        modifier = Modifier
-                            .size(112.dp)
-                            .shadow(10.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(Color(0xFF424A5B), Color(0xFF232834), Color(0xFF101319))
-                                )
-                            )
-                            .border(
-                                width = 1.5.dp,
-                                brush = Brush.linearGradient(
-                                    colors = listOf(Color(0xFF6B748B), Color(0xFF11141B))
-                                ),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // Top-left dome specular sheen
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color(0x2EFFFFFF),
-                                            Color(0x0AFFFFFF),
-                                            Color.Transparent
-                                        )
-                                    )
-                                )
-                        )
-                    }
-
-                    // Re-draw glowing tip segment over the raised cap edge so the pointer reads continuously
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .rotate(animatedAngle)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 6.dp)
-                                .width(5.dp)
-                                .height(22.dp)
-                                .clip(RoundedCornerShape(2.5.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color(0xFFFFDA96),
-                                            AmberNixie,
-                                            Color(0xFFE06D00)
-                                        )
-                                    )
-                                )
-                        )
-                    }
-
-                    // Non-rotating sunken 3D Nixie core (inverted bevel: dark top-left, lit bottom-right)
-                    Box(
-                        modifier = Modifier
-                            .size(70.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(Color(0xFF060709), StudioScreenDark, Color(0xFF171C25))
-                                )
-                            )
-                            .border(
-                                width = 2.5.dp,
-                                brush = Brush.linearGradient(
-                                    colors = listOf(Color(0xFF050608), Color(0xFF474F61))
-                                ),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AnimatedContent(
-                            targetState = selectedAmperes,
-                            transitionSpec = {
-                                if (targetState > initialState) {
-                                    (slideInVertically { height -> height } + fadeIn()).togetherWith(
-                                        slideOutVertically { height -> -height } + fadeOut()
+                        Text(
+                            text = "${stop}A",
+                            style = TextStyle(
+                                fontSize = if (isCurrent) 17.sp else 16.sp,
+                                fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (isCurrent) Color(0xFFFF9F1C) else Color(0xFF8E97A8),
+                                shadow = if (isCurrent) {
+                                    Shadow(
+                                        color = Color(0xB8FF9F1C),
+                                        offset = Offset.Zero,
+                                        blurRadius = 16f
                                     )
                                 } else {
-                                    (slideInVertically { height -> -height } + fadeIn()).togetherWith(
-                                        slideOutVertically { height -> height } + fadeOut()
-                                    )
+                                    null
+                                }
+                            ),
+                            modifier = Modifier
+                                .offset(x = offsetX, y = offsetY)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    onAmperageSelected(stop)
+                                }
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    // 140dp 3D Recessed Socket + Sculpted Chamfered Cam Switch Canvas
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .pointerInput(stops, currentIndex) {
+                                detectTapGestures { offset ->
+                                    val isRightSide = offset.x >= (size.width / 2f)
+                                    val newIdx = if (isRightSide) {
+                                        (currentIndex + 1).coerceAtMost(stops.lastIndex)
+                                    } else {
+                                        (currentIndex - 1).coerceAtLeast(0)
+                                    }
+                                    if (newIdx != currentIndex) {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                        onAmperageSelected(stops[newIdx])
+                                    }
                                 }
                             },
-                            label = "amperageOdometerAnim"
-                        ) { amp ->
-                            Text(
-                                text = "${amp}A",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Black,
-                                fontFamily = FontFamily.Monospace,
-                                color = AmberNixie
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val w = size.width
+                            val h = size.height
+                            val cx = w / 2f
+                            val cy = h / 2f
+                            val centerOffset = Offset(cx, cy)
+
+                            val outerBezelRadius = w * 0.48f
+                            val wellRadius = w * 0.472f
+                            val discRadius = w * 0.407f
+
+                            // 1. Machined recessed housing well & shadow cavity (static)
+                            drawCircle(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF07090D), Color(0xFF0C0E14), Color(0xFF191D26)),
+                                    start = Offset(w * 0.15f, h * 0.15f),
+                                    end = Offset(w * 0.85f, h * 0.85f)
+                                ),
+                                radius = wellRadius,
+                                center = centerOffset
                             )
+                            drawCircle(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF090B0F), Color(0xFF1D222D), Color(0xFF2E3545)),
+                                    start = Offset(w * 0.15f, h * 0.15f),
+                                    end = Offset(w * 0.85f, h * 0.85f)
+                                ),
+                                radius = outerBezelRadius,
+                                center = centerOffset,
+                                style = Stroke(width = 1.6.dp.toPx())
+                            )
+                            drawCircle(
+                                color = Color(0x99000000),
+                                radius = w * 0.456f,
+                                center = centerOffset,
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+
+                            // Cast drop shadow beneath raised cylindrical dial disc
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xC0030407),
+                                        Color(0x52030407),
+                                        Color.Transparent
+                                    ),
+                                    center = Offset(cx + w * 0.015f, cy + w * 0.03f),
+                                    radius = discRadius * 1.12f
+                                ),
+                                radius = discRadius * 1.12f,
+                                center = Offset(cx + w * 0.015f, cy + w * 0.03f)
+                            )
+
+                            // 2. Satin gunmetal circular dial base disc (static light direction)
+                            drawCircle(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF383F4E), Color(0xFF282E3A), Color(0xFF1B2029)),
+                                    start = Offset(w * 0.15f, h * 0.10f),
+                                    end = Offset(w * 0.85f, h * 0.90f)
+                                ),
+                                radius = discRadius,
+                                center = centerOffset
+                            )
+                            drawCircle(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF535D70), Color(0xFF2E3442), Color(0xFF12151C)),
+                                    start = Offset(w * 0.12f, h * 0.12f),
+                                    end = Offset(w * 0.88f, h * 0.88f)
+                                ),
+                                radius = discRadius,
+                                center = centerOffset,
+                                style = Stroke(width = 1.3.dp.toPx())
+                            )
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.05f),
+                                radius = discRadius - 1.5.dp.toPx(),
+                                center = centerOffset,
+                                style = Stroke(width = 0.8.dp.toPx())
+                            )
+
+                            // 3. Rotating Chamfered Bar Handle with World-Space Cast Shadow
+                            val discClip = Path().apply {
+                                addOval(
+                                    Rect(
+                                        left = cx - discRadius + 0.8f,
+                                        top = cy - discRadius + 0.8f,
+                                        right = cx + discRadius - 0.8f,
+                                        bottom = cy + discRadius - 0.8f
+                                    )
+                                )
+                            }
+
+                            val plateauWidth = w * 0.20f
+                            val plateauHeight = w * 0.77f
+                            val plateauLeft = cx - plateauWidth / 2f
+                            val plateauTop = cy - plateauHeight / 2f
+                            val plateauRadius = w * 0.057f
+
+                            // World-space shadow cast by handle onto disc
+                            clipPath(discClip) {
+                                translate(left = 3.dp.toPx(), top = 4.dp.toPx()) {
+                                    rotate(degrees = animatedAngle, pivot = centerOffset) {
+                                        drawRoundRect(
+                                            color = Color(0x88040508),
+                                            topLeft = Offset(cx - w * 0.145f, cy - w * 0.405f),
+                                            size = Size(w * 0.29f, w * 0.81f),
+                                            cornerRadius = CornerRadius(w * 0.09f, w * 0.09f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Sculpted left & right sloped chamfer skirts clipped flush to disc rim
+                            clipPath(discClip) {
+                                rotate(degrees = animatedAngle, pivot = centerOffset) {
+                                    val skirtTop = cy - w * 0.428f
+                                    val skirtBottom = cy + w * 0.428f
+                                    val shoulderUpper = cy - w * 0.27f
+                                    val shoulderLower = cy + w * 0.27f
+                                    val outerX = w * 0.164f
+                                    val waistX = w * 0.143f
+
+                                    val leftSkirt = Path().apply {
+                                        moveTo(cx - outerX, skirtTop)
+                                        lineTo(cx, skirtTop)
+                                        lineTo(cx, skirtBottom)
+                                        lineTo(cx - outerX, skirtBottom)
+                                        cubicTo(
+                                            cx - w * 0.15f, cy + w * 0.37f,
+                                            cx - waistX, cy + w * 0.32f,
+                                            cx - waistX, shoulderLower
+                                        )
+                                        lineTo(cx - waistX, shoulderUpper)
+                                        cubicTo(
+                                            cx - waistX, cy - w * 0.32f,
+                                            cx - w * 0.15f, cy - w * 0.37f,
+                                            cx - outerX, skirtTop
+                                        )
+                                        close()
+                                    }
+                                    drawPath(
+                                        path = leftSkirt,
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(Color(0xFF485163), Color(0xFF2E3543)),
+                                            start = Offset(cx - outerX, skirtTop),
+                                            end = Offset(cx, skirtBottom)
+                                        )
+                                    )
+
+                                    val rightSkirt = Path().apply {
+                                        moveTo(cx, skirtTop)
+                                        lineTo(cx + outerX, skirtTop)
+                                        cubicTo(
+                                            cx + w * 0.15f, cy - w * 0.37f,
+                                            cx + waistX, cy - w * 0.32f,
+                                            cx + waistX, shoulderUpper
+                                        )
+                                        lineTo(cx + waistX, shoulderLower)
+                                        cubicTo(
+                                            cx + waistX, cy + w * 0.32f,
+                                            cx + w * 0.15f, cy + w * 0.37f,
+                                            cx + outerX, skirtBottom
+                                        )
+                                        lineTo(cx, skirtBottom)
+                                        close()
+                                    }
+                                    drawPath(
+                                        path = rightSkirt,
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(Color(0xFF20252F), Color(0xFF13161D)),
+                                            start = Offset(cx, skirtTop),
+                                            end = Offset(cx + outerX, skirtBottom)
+                                        )
+                                    )
+                                }
+                            }
+
+                            // Raised satin flat front plateau + recessed indicator slot + warm amber LED pill
+                            rotate(degrees = animatedAngle, pivot = centerOffset) {
+                                drawRoundRect(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(Color(0xFF383F4D), Color(0xFF2C323E), Color(0xFF212630)),
+                                        start = Offset(plateauLeft, plateauTop),
+                                        end = Offset(plateauLeft + plateauWidth, plateauTop + plateauHeight)
+                                    ),
+                                    topLeft = Offset(plateauLeft, plateauTop),
+                                    size = Size(plateauWidth, plateauHeight),
+                                    cornerRadius = CornerRadius(plateauRadius, plateauRadius)
+                                )
+                                drawRoundRect(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(Color(0xFF5D677B), Color(0xFF323946), Color(0xFF171A22)),
+                                        start = Offset(plateauLeft, plateauTop),
+                                        end = Offset(plateauLeft + plateauWidth, plateauTop + plateauHeight)
+                                    ),
+                                    topLeft = Offset(plateauLeft, plateauTop),
+                                    size = Size(plateauWidth, plateauHeight),
+                                    cornerRadius = CornerRadius(plateauRadius, plateauRadius),
+                                    style = Stroke(width = 1.1.dp.toPx())
+                                )
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.07f),
+                                    topLeft = Offset(plateauLeft + 1.2.dp.toPx(), plateauTop + 1.2.dp.toPx()),
+                                    size = Size(plateauWidth - 2.4.dp.toPx(), plateauHeight - 2.4.dp.toPx()),
+                                    cornerRadius = CornerRadius(plateauRadius * 0.88f, plateauRadius * 0.88f),
+                                    style = Stroke(width = 0.7.dp.toPx())
+                                )
+
+                                // Deep recessed vertical slot track
+                                val trackWidth = w * 0.068f
+                                val trackHeight = w * 0.282f
+                                val trackLeft = cx - trackWidth / 2f
+                                val trackTop = plateauTop + w * 0.046f
+                                val trackRadius = trackWidth / 2f
+
+                                drawRoundRect(
+                                    color = Color(0xFF07090D),
+                                    topLeft = Offset(trackLeft, trackTop),
+                                    size = Size(trackWidth, trackHeight),
+                                    cornerRadius = CornerRadius(trackRadius, trackRadius)
+                                )
+                                drawRoundRect(
+                                    color = Color(0xFF222732),
+                                    topLeft = Offset(trackLeft, trackTop),
+                                    size = Size(trackWidth, trackHeight),
+                                    cornerRadius = CornerRadius(trackRadius, trackRadius),
+                                    style = Stroke(width = 0.9.dp.toPx())
+                                )
+
+                                // Soft amber bloom halo inside upper slot
+                                val pillWidth = w * 0.048f
+                                val pillHeight = w * 0.122f
+                                val pillLeft = cx - pillWidth / 2f
+                                val pillTop = trackTop + w * 0.011f
+                                val pillRadius = pillWidth / 2f
+                                val glowCenter = Offset(cx, pillTop + pillHeight / 2f)
+
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0x66FF9500),
+                                            Color(0x22FF8800),
+                                            Color.Transparent
+                                        ),
+                                        center = glowCenter,
+                                        radius = w * 0.12f
+                                    ),
+                                    radius = w * 0.12f,
+                                    center = glowCenter
+                                )
+
+                                // Glowing Amber LED Pill inside Upper Half of Track
+                                drawRoundRect(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(Color(0xFFFFE285), Color(0xFFFFA51F), Color(0xFFD95B00)),
+                                        start = Offset(pillLeft, pillTop),
+                                        end = Offset(pillLeft + pillWidth, pillTop + pillHeight)
+                                    ),
+                                    topLeft = Offset(pillLeft, pillTop),
+                                    size = Size(pillWidth, pillHeight),
+                                    cornerRadius = CornerRadius(pillRadius, pillRadius)
+                                )
+
+                                // Hot specular filament core line inside amber pill
+                                drawRoundRect(
+                                    color = Color(0xB8FFF3C4),
+                                    topLeft = Offset(cx - w * 0.01f, pillTop + w * 0.015f),
+                                    size = Size(w * 0.02f, pillHeight - w * 0.032f),
+                                    cornerRadius = CornerRadius(w * 0.01f, w * 0.01f)
+                                )
+                            }
                         }
                     }
-                }
                 }
             }
         }

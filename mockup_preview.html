@@ -385,92 +385,52 @@
     }
     .rotary-stage-v41 {
       position: relative;
-      width: 234px;
-      height: 184px;
+      width: 100%;
+      height: 174px;
+      background: transparent;
+      border: none;
       display: flex;
       justify-content: center;
       align-items: center;
-      margin: 0 auto;
+      margin: 2px auto 0 auto;
+      overflow: hidden;
     }
-    .rotary-stage-v41 .g-6a  { left: 30px;  top: 135px; }
-    .rotary-stage-v41 .g-8a  { left: 41px;  top: 50px;  }
-    .rotary-stage-v41 .g-10a { left: 117px; top: 10px;  }
-    .rotary-stage-v41 .g-12a { left: 193px; top: 50px;  }
-    .rotary-stage-v41 .g-16a { left: 204px; top: 135px; }
-    .rotary-collar-v41 {
-      margin-top: 22px;
-      width: 148px;
-      height: 148px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #090A0E 0%, #191D26 100%);
-      border: 1px solid #1E232E;
-      box-shadow: inset 3px 4px 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.06);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .rotary-stage-v41 .knob-grad-val {
+      font-size: 16.5px;
+      font-weight: 800;
+      font-family: 'Inter', 'JetBrains Mono', sans-serif;
+      color: #8E97A8;
+      padding: 4px 6px;
+      border-radius: 6px;
+      z-index: 6;
+      letter-spacing: 0.01em;
+      transition: color 0.2s ease, text-shadow 0.2s ease, transform 0.2s ease;
     }
-    .rotary-knob-v41 {
-      width: 136px;
-      height: 136px;
-      border-radius: 50%;
-      background:
-        repeating-conic-gradient(from -2deg, rgba(8,10,14,0.85) 0deg 3deg, rgba(255,255,255,0.05) 3deg 15deg),
-        linear-gradient(135deg, #4F576A 0%, #20242F 55%, #0B0D12 100%);
-      border: 2px solid #596278;
-      box-shadow:
-        4px 12px 24px rgba(0,0,0,0.92),
-        0 2px 6px rgba(0,0,0,0.85),
-        inset 2px 2px 3px rgba(255,255,255,0.28),
-        inset -3px -3px 6px rgba(0,0,0,0.8);
+    .rotary-stage-v41 .knob-grad-val.active-target {
+      font-size: 17px;
+      font-weight: 900;
+      color: #FF9F1C;
+      background: transparent;
+      box-shadow: none;
+      text-shadow: 0 0 12px rgba(255, 159, 28, 0.72), 0 0 22px rgba(255, 140, 0, 0.35);
+    }
+    .rotary-stage-v41 .g-6a  { left: calc(50% - 96px); top: 128px; }
+    .rotary-stage-v41 .g-8a  { left: calc(50% - 96px); top: 68px;  }
+    .rotary-stage-v41 .g-10a { left: 50%;              top: 17px;  }
+    .rotary-stage-v41 .g-12a { left: calc(50% + 96px); top: 68px;  }
+    .rotary-stage-v41 .g-16a { left: calc(50% + 96px); top: 128px; }
+    .hager-switch-wrap {
       position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 140px;
+      height: 140px;
+      margin-top: 22px;
       cursor: grab;
       user-select: none;
       z-index: 5;
-      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
     }
-    .rotary-cap-v41 {
-      width: 112px;
-      height: 112px;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18) 0%, transparent 55%),
-        linear-gradient(135deg, #424A5B 0%, #232834 58%, #101319 100%);
-      border: 1.5px solid #485063;
-      box-shadow: 0 6px 14px rgba(0,0,0,0.75), inset 0 1px 2px rgba(255,255,255,0.25);
-      pointer-events: none;
-    }
-    .knob-marker-v41 {
-      position: absolute;
-      top: 6px;
-      width: 5px;
-      height: 22px;
-      background: linear-gradient(180deg, #FFDA96 0%, #FF9900 50%, #E06D00 100%);
-      border-radius: 3px;
-      box-shadow: 0 0 10px rgba(255,153,0,0.85), 0 0 2px #000;
-      z-index: 6;
-      pointer-events: none;
-    }
-    .knob-core-v41 {
-      position: absolute;
-      width: 70px;
-      height: 70px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #060709 0%, #0D0F14 55%, #171C25 100%);
-      border: 2.5px solid #2A303E;
-      box-shadow: inset 3px 4px 10px rgba(0,0,0,0.95), inset -1px -1px 3px rgba(255,255,255,0.12);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #FF9900;
-      font-size: 22px;
-      font-weight: 900;
-      font-family: 'JetBrains Mono', monospace;
-      text-shadow: 0 0 12px rgba(255,153,0,0.65);
-      z-index: 8;
-      pointer-events: none;
+    .hager-rotor-g {
+      transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+      transform-origin: 70px 70px;
     }
     .timer-grid-v41 {
       display: grid;
@@ -602,12 +562,103 @@
               <span class="knob-grad-val g-12a" id="g1-12" onclick="setKnob1(12)">12A</span>
               <span class="knob-grad-val g-16a" id="g1-16" onclick="setKnob1(16)">16A</span>
 
-              <div class="rotary-collar-v41">
-                <div class="rotary-knob-v41" id="knob-1">
-                  <div class="rotary-cap-v41"></div>
-                  <div class="knob-marker-v41"></div>
-                </div>
-                <div class="knob-core-v41" id="knob-val-1">10A</div>
+              <div class="hager-switch-wrap" id="knob-1-wrap">
+                <svg viewBox="0 0 140 140" width="140" height="140" style="overflow:visible;">
+                  <defs>
+                    <linearGradient id="wellCavityGrad" x1="15%" y1="15%" x2="85%" y2="85%">
+                      <stop offset="0%" stop-color="#07090D"/>
+                      <stop offset="55%" stop-color="#0C0E14"/>
+                      <stop offset="100%" stop-color="#191D26"/>
+                    </linearGradient>
+                    <linearGradient id="wellOuterRimGrad" x1="15%" y1="15%" x2="85%" y2="85%">
+                      <stop offset="0%" stop-color="#090B0F"/>
+                      <stop offset="65%" stop-color="#1D222D"/>
+                      <stop offset="100%" stop-color="#2E3545"/>
+                    </linearGradient>
+                    <linearGradient id="dialFaceGrad" x1="15%" y1="10%" x2="85%" y2="90%">
+                      <stop offset="0%" stop-color="#383F4E"/>
+                      <stop offset="50%" stop-color="#282E3A"/>
+                      <stop offset="100%" stop-color="#1B2029"/>
+                    </linearGradient>
+                    <linearGradient id="dialRimGrad" x1="12%" y1="12%" x2="88%" y2="88%">
+                      <stop offset="0%" stop-color="#535D70"/>
+                      <stop offset="50%" stop-color="#2E3442"/>
+                      <stop offset="100%" stop-color="#12151C"/>
+                    </linearGradient>
+                    <linearGradient id="skirtLeftGrad" x1="0%" y1="10%" x2="100%" y2="90%">
+                      <stop offset="0%" stop-color="#485163"/>
+                      <stop offset="100%" stop-color="#2E3543"/>
+                    </linearGradient>
+                    <linearGradient id="skirtRightGrad" x1="0%" y1="10%" x2="100%" y2="90%">
+                      <stop offset="0%" stop-color="#20252F"/>
+                      <stop offset="100%" stop-color="#13161D"/>
+                    </linearGradient>
+                    <linearGradient id="plateauTopGrad" x1="20%" y1="0%" x2="80%" y2="100%">
+                      <stop offset="0%" stop-color="#383F4D"/>
+                      <stop offset="55%" stop-color="#2C323E"/>
+                      <stop offset="100%" stop-color="#212630"/>
+                    </linearGradient>
+                    <linearGradient id="plateauEdgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#5D677B"/>
+                      <stop offset="50%" stop-color="#323946"/>
+                      <stop offset="100%" stop-color="#171A22"/>
+                    </linearGradient>
+                    <linearGradient id="amberPillGrad" x1="20%" y1="0%" x2="80%" y2="100%">
+                      <stop offset="0%" stop-color="#FFE285"/>
+                      <stop offset="38%" stop-color="#FFA51F"/>
+                      <stop offset="100%" stop-color="#D95B00"/>
+                    </linearGradient>
+                    <filter id="discDropShadow" x="-25%" y="-25%" width="150%" height="150%">
+                      <feDropShadow dx="2" dy="4" stdDeviation="3.5" flood-color="#040507" flood-opacity="0.72"/>
+                    </filter>
+                    <filter id="handleWorldDrop" x="-30%" y="-25%" width="160%" height="160%">
+                      <feDropShadow dx="3" dy="4" stdDeviation="3" flood-color="#050609" flood-opacity="0.65"/>
+                    </filter>
+                    <filter id="amberBloom" x="-120%" y="-80%" width="340%" height="260%">
+                      <feGaussianBlur stdDeviation="3.8"/>
+                    </filter>
+                    <clipPath id="dialDiscClip">
+                      <circle cx="70" cy="70" r="56.4"/>
+                    </clipPath>
+                  </defs>
+
+                  <!-- Outer machined housing ring & recessed circular well -->
+                  <circle cx="70" cy="70" r="67" fill="url(#wellCavityGrad)" stroke="url(#wellOuterRimGrad)" stroke-width="1.6"/>
+                  <circle cx="70" cy="70" r="64.5" fill="none" stroke="rgba(0,0,0,0.6)" stroke-width="1.5"/>
+
+                  <!-- Raised Circular Satin Charcoal Dial Base Disc -->
+                  <circle cx="70" cy="70" r="57" fill="url(#dialFaceGrad)" stroke="url(#dialRimGrad)" stroke-width="1.2" filter="url(#discDropShadow)"/>
+                  <circle cx="70" cy="70" r="55.4" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.8"/>
+
+                  <!-- Static World-Space Shadow Host for the Rotating Chamfered Toggle Bar -->
+                  <g filter="url(#handleWorldDrop)">
+                    <g id="knob-1" class="hager-rotor-g">
+                      <g clip-path="url(#dialDiscClip)">
+                        <!-- Left & Right Sculpted Sloped Chamfer Skirts merging cleanly to the disc perimeter -->
+                        <path d="M47,10 L70,10 L70,130 L47,130 C49,122 50,115 50,108 L50,32 C50,25 49,18 47,10 Z" fill="url(#skirtLeftGrad)"/>
+                        <path d="M70,10 L93,10 C91,18 90,25 90,32 L90,108 C90,115 91,122 93,130 L70,130 Z" fill="url(#skirtRightGrad)"/>
+                        <!-- Smooth curved outer shoulder fillet contour -->
+                        <path d="M51,14 Q53,24 53,36 L53,104 Q53,116 51,126 M89,14 Q87,24 87,36 L87,104 Q87,116 89,126" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+                      </g>
+
+                      <!-- Raised Satin Flat Front Plateau -->
+                      <rect x="56" y="16" width="28" height="108" rx="8" fill="url(#plateauTopGrad)" stroke="url(#plateauEdgeGrad)" stroke-width="1.1"/>
+                      <!-- Subtle top-left inner catchlight on plateau ridge -->
+                      <rect x="57.2" y="17.2" width="25.6" height="105.6" rx="7" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="0.7"/>
+
+                      <!-- Deep Recessed Vertical Slot Track -->
+                      <rect x="65.2" y="22.5" width="9.6" height="39.5" rx="4.8" fill="#07090D" stroke="#222732" stroke-width="0.9"/>
+                      <!-- Inner bottom wall catchlight inside track -->
+                      <path d="M66.6,58.5 A3.6,3.6 0 0,0 73.4,58.5" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="0.8"/>
+
+                      <!-- Warm Glowing Amber LED Pill inside Upper ~55% of Recessed Track -->
+                      <rect x="66" y="23.5" width="8" height="18.5" rx="4" fill="#FF9500" opacity="0.58" filter="url(#amberBloom)"/>
+                      <rect x="66.6" y="24" width="6.8" height="17" rx="3.4" fill="url(#amberPillGrad)"/>
+                      <!-- Hot specular filament center line inside pill -->
+                      <rect x="68.6" y="26" width="2.8" height="12" rx="1.4" fill="#FFF3C4" opacity="0.72"/>
+                    </g>
+                  </g>
+                </svg>
               </div>
             </div>
           </div>
@@ -811,7 +862,7 @@
 
   <script>
     const ampValues = [6, 8, 10, 12, 16];
-    const knobAngles = { 6: -110, 8: -55, 10: 0, 12: 55, 16: 110 };
+    const knobAngles = { 6: -114, 8: -58, 10: 0, 12: 58, 16: 114 };
 
     let currentAmp1 = 10;
     let currentAmp2 = 10;
@@ -820,9 +871,10 @@
     function setKnob1(v) {
       currentAmp1 = v;
       const ang = knobAngles[v];
-      document.getElementById('knob-1').style.transform = `rotate(${ang}deg)`;
-      const valEl = document.getElementById('knob-val-1');
-      valEl.innerText = `${v}A`;
+      const rotor = document.getElementById('knob-1');
+      if (rotor) {
+        rotor.style.transform = `rotate(${ang}deg)`;
+      }
       const kw = ((218 * v) / 1000).toFixed(2);
       document.getElementById('kw-cap-1').innerText = `${kw} kW`;
       ampValues.forEach(val => {
@@ -1029,7 +1081,7 @@
       g.innerHTML = html;
     }
 
-    attachRotaryPhysics('knob-1', setKnob1, stepKnob1);
+    attachRotaryPhysics('knob-1-wrap', setKnob1, stepKnob1);
     attachRotaryPhysics('knob-2', setKnob2, stepKnob2);
     attachRotaryPhysics('knob-3', setKnob3, stepKnob3);
   </script>

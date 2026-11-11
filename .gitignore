@@ -39,3 +39,6 @@ google-services.json
 # macOS
 .DS_Store
 
+
+# Local review notes
+CODE_REVIEW.md
