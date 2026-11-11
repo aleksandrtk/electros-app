@@ -399,15 +399,6 @@ class ElectrosWebScraper(
         )
     }
 
-    suspend fun resetKwh(): Result<Unit> = withContext(Dispatchers.IO) {
-        val serial = currentSerial()
-        if (serial.isNotBlank()) {
-            sendCommandWebSocket("site $serial\nresetkwt")
-        } else {
-            Result.failure(IllegalStateException("Номер пристрою не налаштовано"))
-        }
-    }
-
     fun amperageToIndex(amperes: Int): Int {
         val evenAmperes = if (amperes % 2 != 0) amperes - 1 else amperes
         return ((32 - evenAmperes) / 2).coerceIn(0, 13)

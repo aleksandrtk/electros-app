@@ -10,10 +10,7 @@ class ChargingStateMachineTest {
 
     @Test
     fun stateMachine_happyPathToTargetReached() {
-        val fsm = ChargingStateMachine(SessionStatus.IDLE)
-        assertThat(fsm.getState()).isEqualTo(SessionStatus.IDLE)
-
-        fsm.transition(StateEvent.StartTriggered(targetKwh = 30.0, amperage = 16))
+        val fsm = ChargingStateMachine(SessionStatus.CHARGING)
         assertThat(fsm.getState()).isEqualTo(SessionStatus.CHARGING)
 
         fsm.transition(StateEvent.TargetQuotaReached)
@@ -59,7 +56,6 @@ class ChargingStateMachineTest {
     @Test
     fun stateMachine_outageRecoveryAccepts180VAndDirectResume() {
         val fsm = ChargingStateMachine(SessionStatus.CHARGING)
-        fsm.transition(StateEvent.StartTriggered(targetKwh = 0.0, amperage = 12))
         assertThat(fsm.getState()).isEqualTo(SessionStatus.CHARGING)
 
         fsm.transition(StateEvent.OutageDetected)

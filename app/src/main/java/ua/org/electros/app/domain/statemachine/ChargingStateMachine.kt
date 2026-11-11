@@ -3,7 +3,6 @@ package ua.org.electros.app.domain.statemachine
 import ua.org.electros.app.data.local.entity.SessionStatus
 
 sealed class StateEvent {
-    data class StartTriggered(val targetKwh: Double, val amperage: Int) : StateEvent()
     object OutageDetected : StateEvent()
     data class GridRestored(val voltage: Int) : StateEvent()
     object VoltageStable : StateEvent()
@@ -25,10 +24,7 @@ class ChargingStateMachine(
 
     fun transition(event: StateEvent): SessionStatus {
         currentStatus = when (currentStatus) {
-            SessionStatus.IDLE -> when (event) {
-                is StateEvent.StartTriggered -> SessionStatus.CHARGING
-                else -> currentStatus
-            }
+            SessionStatus.IDLE -> currentStatus
 
             SessionStatus.CHARGING -> when (event) {
                 is StateEvent.OutageDetected -> {
@@ -106,10 +102,7 @@ class ChargingStateMachine(
 
             SessionStatus.TARGET_REACHED,
             SessionStatus.VEHICLE_STOPPED,
-            SessionStatus.CANCELLED -> when (event) {
-                is StateEvent.StartTriggered -> SessionStatus.CHARGING
-                else -> currentStatus
-            }
+            SessionStatus.CANCELLED -> currentStatus
         }
         return currentStatus
     }

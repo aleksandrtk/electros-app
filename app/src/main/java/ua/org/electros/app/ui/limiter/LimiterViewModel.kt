@@ -19,7 +19,6 @@ data class LimiterUiState(
     val startTime: String = "23:00",
     val stopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
-    val isStopAtTariffBoundaryEnabled: Boolean = false,
     val isScheduleSaved: Boolean = false,
     val isVoltageBalancingEnabled: Boolean = true,
     val voltageLowThreshold: Int = 185,
@@ -48,21 +47,26 @@ class LimiterViewModel(
         authPreferences.unregisterListener(prefListener)
     }
 
-    private fun readStateFromPrefs(): LimiterUiState = LimiterUiState(
-        isKwhLimitEnabled = authPreferences.isKwhLimitEnabled,
-        targetKwh = authPreferences.targetKwhLimit,
-        isDurationTimerEnabled = authPreferences.isDurationTimerEnabled,
-        targetDurationHours = authPreferences.targetDurationHours,
-        isScheduleEnabled = authPreferences.isScheduleEnabled,
-        startTime = authPreferences.scheduleStartTime,
-        stopTime = authPreferences.scheduleStopTime,
-        isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
-        isStopAtTariffBoundaryEnabled = authPreferences.stopAtTariffBoundary,
-        isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
-        voltageLowThreshold = authPreferences.voltageLowThreshold,
-        voltageHighThreshold = authPreferences.voltageHighThreshold,
-        voltageMaxAmperage = authPreferences.voltageMaxAmperage
-    )
+    private fun readStateFromPrefs(): LimiterUiState {
+        val (low, high) = normalizeThresholds(
+            authPreferences.voltageLowThreshold,
+            authPreferences.voltageHighThreshold
+        )
+        return LimiterUiState(
+            isKwhLimitEnabled = authPreferences.isKwhLimitEnabled,
+            targetKwh = authPreferences.targetKwhLimit,
+            isDurationTimerEnabled = authPreferences.isDurationTimerEnabled,
+            targetDurationHours = authPreferences.targetDurationHours,
+            isScheduleEnabled = authPreferences.isScheduleEnabled,
+            startTime = authPreferences.scheduleStartTime,
+            stopTime = authPreferences.scheduleStopTime,
+            isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
+            isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
+            voltageLowThreshold = low,
+            voltageHighThreshold = high,
+            voltageMaxAmperage = authPreferences.voltageMaxAmperage
+        )
+    }
 
     fun toggleDurationTimer(enabled: Boolean) {
         authPreferences.isDurationTimerEnabled = enabled
@@ -124,11 +128,6 @@ class LimiterViewModel(
         _uiState.value = _uiState.value.copy(isAutoResumeEnabled = enabled)
     }
 
-    fun toggleStopAtTariff(enabled: Boolean) {
-        authPreferences.stopAtTariffBoundary = enabled
-        _uiState.value = _uiState.value.copy(isStopAtTariffBoundaryEnabled = enabled)
-    }
-
     fun applyScheduleToStation() {
         viewModelScope.launch {
             if (_uiState.value.isScheduleEnabled) {
@@ -146,13 +145,13 @@ class LimiterViewModel(
     }
 
     fun setVoltageLowThreshold(threshold: Int) {
-        val clamped = threshold.coerceIn(160, 200)
+        val clamped = clampLowThreshold(threshold, authPreferences.voltageHighThreshold)
         authPreferences.voltageLowThreshold = clamped
         _uiState.value = _uiState.value.copy(voltageLowThreshold = clamped)
     }
 
     fun setVoltageHighThreshold(threshold: Int) {
-        val clamped = threshold.coerceIn(195, 230)
+        val clamped = clampHighThreshold(threshold, authPreferences.voltageLowThreshold)
         authPreferences.voltageHighThreshold = clamped
         _uiState.value = _uiState.value.copy(voltageHighThreshold = clamped)
     }
@@ -161,5 +160,26 @@ class LimiterViewModel(
         val clamped = amperage.coerceIn(6, 16)
         authPreferences.voltageMaxAmperage = clamped
         _uiState.value = _uiState.value.copy(voltageMaxAmperage = clamped)
+    }
+
+    companion object {
+        const val MIN_HYSTERESIS_V = 10
+
+        internal fun clampLowThreshold(requestedLow: Int, currentHigh: Int): Int {
+            val maxLow = (currentHigh - MIN_HYSTERESIS_V).coerceAtLeast(160)
+            return requestedLow.coerceIn(160, minOf(200, maxLow))
+        }
+
+        internal fun clampHighThreshold(requestedHigh: Int, currentLow: Int): Int {
+            val minHigh = (currentLow + MIN_HYSTERESIS_V).coerceAtMost(230)
+            return requestedHigh.coerceIn(maxOf(195, minHigh), 230)
+        }
+
+        internal fun normalizeThresholds(rawLow: Int, rawHigh: Int): Pair<Int, Int> {
+            val low = rawLow.coerceIn(160, 200)
+            val high = clampHighThreshold(rawHigh, low)
+            val adjustedLow = clampLowThreshold(low, high)
+            return adjustedLow to high
+        }
     }
 }

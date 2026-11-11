@@ -42,6 +42,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import ua.org.electros.app.ui.theme.*
 import java.util.Locale
@@ -55,6 +58,13 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner, viewModel) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.pollWhileVisible()
+        }
+    }
 
     LaunchedEffect(state.activeSession?.id, state.activeSession?.status) {
         if (state.activeSession != null) {
@@ -125,7 +135,9 @@ fun DashboardScreen(
                 lowThreshold = state.voltageLowThreshold,
                 voltage = telemetry?.voltageCurrent,
                 isOnline = telemetry?.isOnline ?: false,
-                isCharging = telemetry?.isChargingActive ?: false
+                isCharging = telemetry?.isChargingActive ?: false,
+                selectedAmperes = state.selectedAmperes,
+                voltageMaxAmperage = state.voltageMaxAmperage
             )
 
             // 5. Charge Timer Status & Duration Picker Card (1-12H with Outage Continuation)
@@ -731,7 +743,9 @@ private fun StudioClassicDlbCard(
     lowThreshold: Int,
     voltage: Int?,
     isOnline: Boolean,
-    isCharging: Boolean
+    isCharging: Boolean,
+    selectedAmperes: Int,
+    voltageMaxAmperage: Int
 ) {
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -739,45 +753,58 @@ private fun StudioClassicDlbCard(
         border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(StudioPanelBorder, StudioPanelBorder))),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = "DLB AUTO-DERATE",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = TextSecondaryDark,
-                fontWeight = FontWeight.Bold
-            )
-
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                val (statusText, statusColor) = when {
-                    !isDlbEnabled -> Pair("DISABLED", TextTertiaryDark)
-                    !isOnline || voltage == null || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
-                    voltage < lowThreshold -> Pair("STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
-                    else -> Pair("ENGAGED (>${lowThreshold}V)", StudioGreen)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
                 Text(
-                    text = statusText,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = statusColor
+                    text = "DLB AUTO-DERATE",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = TextSecondaryDark,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val (statusText, statusColor) = when {
+                        !isDlbEnabled -> Pair("DISABLED", TextTertiaryDark)
+                        !isOnline || voltage == null || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
+                        voltage < lowThreshold -> Pair("STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
+                        else -> Pair("ENGAGED (>${lowThreshold}V)", StudioGreen)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Text(
+                        text = statusText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = statusColor
+                    )
+                }
+            }
+
+            if (isDlbEnabled && selectedAmperes > voltageMaxAmperage) {
+                Text(
+                    text = "Максимум відновлення DLB: ${voltageMaxAmperage} А (обрано ${selectedAmperes} А)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = StudioAmberWarn
                 )
             }
         }

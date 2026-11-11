@@ -95,5 +95,17 @@ class VoltageLoadBalancerTest {
         // Next 1 tick low should not trigger
         assertThat(balancer.evaluate(180, 10)).isNull()
     }
+
+    @Test
+    fun evaluate_invalidThresholdOrder_returnsNullSafely() {
+        val inverted = VoltageLoadBalancer(lowThresholdV = 200, highThresholdV = 195)
+        assertThat(inverted.evaluate(180, 12)).isNull()
+        assertThat(inverted.evaluate(180, 12)).isNull()
+        assertThat(inverted.evaluate(210, 8)).isNull()
+
+        val equal = VoltageLoadBalancer(lowThresholdV = 200, highThresholdV = 200)
+        assertThat(equal.evaluate(190, 12)).isNull()
+        assertThat(equal.evaluate(190, 12)).isNull()
+    }
 }
 

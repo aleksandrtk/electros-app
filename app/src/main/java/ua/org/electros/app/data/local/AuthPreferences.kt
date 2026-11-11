@@ -49,10 +49,6 @@ class AuthPreferences(context: Context) {
         get() = prefs.getBoolean("KEY_AUTO_RESUME", true)
         set(value) = prefs.edit().putBoolean("KEY_AUTO_RESUME", value).apply()
 
-    var stopAtTariffBoundary: Boolean
-        get() = prefs.getBoolean("KEY_STOP_AT_TARIFF", false)
-        set(value) = prefs.edit().putBoolean("KEY_STOP_AT_TARIFF", value).apply()
-
     var isVoltageBalancingEnabled: Boolean
         get() = prefs.getBoolean("KEY_VOLTAGE_BALANCING_ENABLED", true)
         set(value) = prefs.edit().putBoolean("KEY_VOLTAGE_BALANCING_ENABLED", value).apply()

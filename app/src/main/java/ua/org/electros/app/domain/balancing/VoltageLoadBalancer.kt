@@ -17,7 +17,7 @@ class VoltageLoadBalancer(
      * Returns the recommended new amperage to apply, or null if no change is needed.
      */
     fun evaluate(currentVoltage: Int, currentAmperage: Int): Int? {
-        if (!isEnabled || currentVoltage <= 0) {
+        if (!isEnabled || currentVoltage <= 0 || highThresholdV <= lowThresholdV) {
             consecutiveLowTicks = 0
             consecutiveHighTicks = 0
             return null

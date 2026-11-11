@@ -1,5 +1,6 @@
 package ua.org.electros.app.service
 
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -13,13 +14,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ua.org.electros.app.ElectrosApplication
 import ua.org.electros.app.data.local.AuthPreferences
+import ua.org.electros.app.data.local.entity.ChargeSessionEntity
+import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.data.local.entity.SliceEndReason
+import ua.org.electros.app.data.model.TelemetryData
 import ua.org.electros.app.data.repository.ChargeRepository
-import ua.org.electros.app.domain.accumulator.EnergyAccumulator
 import ua.org.electros.app.domain.balancing.VoltageLoadBalancer
-import ua.org.electros.app.domain.statemachine.ChargingStateMachine
-import ua.org.electros.app.domain.statemachine.StateEvent
+import ua.org.electros.app.domain.monitor.SessionMonitorGateway
+import ua.org.electros.app.domain.monitor.SessionSupervisor
+import ua.org.electros.app.domain.monitor.SupervisorEvent
 
 class ChargeMonitorService : Service() {
 
@@ -30,24 +34,11 @@ class ChargeMonitorService : Service() {
     private lateinit var authPreferences: AuthPreferences
     private lateinit var notificationHelper: NotificationHelper
     private lateinit var powerManager: PowerManager
+    private lateinit var supervisor: SessionSupervisor
     private var wakeLock: PowerManager.WakeLock? = null
 
-    private var stateMachine = ChargingStateMachine(SessionStatus.CHARGING)
     private val voltageLoadBalancer = VoltageLoadBalancer()
     private var monitoringJob: Job? = null
-    private var activeSessionId: String? = null
-    private var activeTargetKwh: Double = 0.0
-    private var activeTargetDurationMinutes: Int = 0
-    private var accumulatedChargingMs: Long = 0L
-    private var lastActiveChargingSampleAt: Long = 0L
-    private var lastSampledCounterKwh: Double = 0.0
-    private var lastKnownAmperes: Int = 10
-    private var zeroCurrentConsecutiveTicks = 0
-    private var consecutiveFailureTicks = 0
-    private var hasAlertedConnectionLost = false
-    private var hasAlertedManualResume = false
-    private var pendingStopIsManual = false
-    private var hasAlertedStopFailed = false
     private var foregroundStarted = false
 
     override fun onCreate() {
@@ -59,6 +50,10 @@ class ChargeMonitorService : Service() {
         notificationHelper = NotificationHelper(this)
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
 
+        supervisor = SessionSupervisor(
+            gateway = RepositoryGateway(),
+            voltageLoadBalancer = voltageLoadBalancer
+        )
         syncLoadBalancerPrefs()
 
         wakeLock = powerManager.newWakeLock(
@@ -82,10 +77,10 @@ class ChargeMonitorService : Service() {
         val initialNotification = notificationHelper.buildForegroundNotification(
             powerKw = 0.0,
             deliveredKwh = 0.0,
-            targetKwh = activeTargetKwh,
+            targetKwh = supervisor.activeTargetKwh,
             statusText = "Ініціалізація...",
-            targetDurationMinutes = activeTargetDurationMinutes,
-            accumulatedChargingMs = accumulatedChargingMs
+            targetDurationMinutes = supervisor.activeTargetDurationMinutes,
+            accumulatedChargingMs = supervisor.accumulatedChargingMs
         )
         startForeground(NotificationHelper.NOTIFICATION_ID_STATUS, initialNotification)
         foregroundStarted = true
@@ -119,24 +114,11 @@ class ChargeMonitorService : Service() {
             }
         }
 
-        val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
-        val isNewSession = incomingSessionId != null && incomingSessionId != activeSessionId
-        activeSessionId = incomingSessionId
-        activeTargetKwh = intent?.getDoubleExtra(EXTRA_TARGET_KWH, 0.0) ?: 0.0
-        activeTargetDurationMinutes = intent?.getIntExtra(EXTRA_TARGET_DURATION_MIN, 0) ?: 0
-
-        if (isNewSession) {
-            accumulatedChargingMs = 0L
-            lastActiveChargingSampleAt = 0L
-            lastSampledCounterKwh = 0.0
-            zeroCurrentConsecutiveTicks = 0
-            consecutiveFailureTicks = 0
-            hasAlertedConnectionLost = false
-            hasAlertedManualResume = false
-            pendingStopIsManual = false
-            hasAlertedStopFailed = false
-            stateMachine = ChargingStateMachine(SessionStatus.CHARGING)
-        }
+        supervisor.onSessionStarted(
+            sessionId = intent?.getStringExtra(EXTRA_SESSION_ID),
+            targetKwh = intent?.getDoubleExtra(EXTRA_TARGET_KWH, 0.0) ?: 0.0,
+            targetDurationMinutes = intent?.getIntExtra(EXTRA_TARGET_DURATION_MIN, 0) ?: 0
+        )
 
         ensureForegroundStarted()
         // Keep PARTIAL_WAKE_LOCK across the whole session so Doze does not stretch poll intervals.
@@ -149,413 +131,74 @@ class ChargeMonitorService : Service() {
     private fun startMonitoringLoop() {
         monitoringJob?.cancel()
         monitoringJob = scope.launch {
-            // Hydrate state from Room DB so reboots/service restarts preserve duration and outage status
-            activeSessionId?.let { id ->
-                repository.getSessionById(id)?.let { dbSession ->
-                    activeTargetKwh = dbSession.targetKwh
-                    activeTargetDurationMinutes = dbSession.targetDurationMinutes
-                    accumulatedChargingMs = dbSession.accumulatedChargingMs
-                    lastKnownAmperes = dbSession.amperageSetting
-                    stateMachine = ChargingStateMachine(dbSession.status)
-                }
-            }
+            supervisor.hydrateFromDatabase()
 
             while (isActive) {
                 acquireSessionWakeLock()
 
-                if (stateMachine.getState().isTerminal) {
+                if (supervisor.currentStatus().isTerminal) {
                     stopSelf()
                     break
                 }
 
-                pollTelemetryAndEvaluateState()
+                syncLoadBalancerPrefs()
+                val outcome = supervisor.tick()
+                dispatchSupervisorEvents(outcome.events)
 
-                val postStatus = stateMachine.getState()
-                if (postStatus.isTerminal) {
+                if (outcome.shouldStopService) {
                     stopSelf()
                     break
                 }
 
                 // Adaptive delay: 10 seconds while charging/stabilizing, 60 seconds during outage
-                val pollDelayMs = if (postStatus == SessionStatus.OUTAGE_DETECTED) 60_000L else 10_000L
+                val pollDelayMs = if (outcome.status == SessionStatus.OUTAGE_DETECTED) 60_000L else 10_000L
                 delay(pollDelayMs)
             }
         }
     }
 
-    private suspend fun pollTelemetryAndEvaluateState() {
-        syncLoadBalancerPrefs()
-
-        val result = repository.fetchLatestTelemetry(isMonitorServiceRunning = true)
-
-        val sessionId = activeSessionId ?: return
-        val dbSession = repository.getSessionById(sessionId)
-        if (dbSession == null || dbSession.status.isTerminal) {
-            stateMachine.transition(StateEvent.CancelRequested)
-            return
-        }
-
-        if (dbSession.status == SessionStatus.STOP_PENDING && stateMachine.getState() != SessionStatus.STOP_PENDING) {
-            stateMachine.transition(StateEvent.StopPending)
-        }
-
-        // Sync live targets from Room in case user adjusted duration timer mid-session
-        activeTargetKwh = dbSession.targetKwh
-        activeTargetDurationMinutes = dbSession.targetDurationMinutes
-
-        result.onSuccess { data ->
-            consecutiveFailureTicks = 0
-            hasAlertedConnectionLost = false
-            lastKnownAmperes = data.selectedCurrentAmperes
-            val slices = repository.getSlicesForSession(sessionId)
-            val latestSlice = slices.lastOrNull()
-            val sliceStart = latestSlice?.stationCounterStartKwh ?: data.consumedEnergyKwh
-
-            // Check for counter regression (rapid station reboot)
-            if (EnergyAccumulator.isCounterRegression(data.consumedEnergyKwh, lastSampledCounterKwh)) {
-                lastActiveChargingSampleAt = 0L
-                stateMachine.transition(StateEvent.OutageDetected)
-                repository.handleOutageDetected(sessionId, lastSampledCounterKwh)
-                val outageDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
-                    finalizedSlices = slices.filter { it.endedAt != null },
-                    activeSliceStartKwh = sliceStart,
-                    currentStationCounterKwh = lastSampledCounterKwh
-                )
-                if (authPreferences.autoResumeAfterOutage) {
-                    val resumeRes = repository.resumeAfterOutage(sessionId)
-                    if (resumeRes.isSuccess) {
-                        stateMachine.transition(StateEvent.ResumeCommandSent)
-                        hasAlertedManualResume = false
-                        notificationHelper.cancelManualResumeAlert()
-                        notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
-                    }
-                } else if (!hasAlertedManualResume) {
-                    hasAlertedManualResume = true
-                    notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, outageDelivered)
-                }
-            }
-            lastSampledCounterKwh = data.consumedEnergyKwh
-
-            val totalDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
-                finalizedSlices = slices.filter { it.endedAt != null },
-                activeSliceStartKwh = sliceStart,
-                currentStationCounterKwh = data.consumedEnergyKwh
-            )
-
-            // Evaluate state machine events
-            if (!data.isOnline) {
-                lastActiveChargingSampleAt = 0L
-                repository.updateDurationProgress(sessionId, accumulatedChargingMs, 0L)
-                if (stateMachine.getState() == SessionStatus.CHARGING ||
-                    stateMachine.getState() == SessionStatus.OUTAGE_STABILIZING ||
-                    stateMachine.getState() == SessionStatus.AUTO_RESUMING
-                ) {
-                    stateMachine.transition(StateEvent.OutageDetected)
-                    hasAlertedManualResume = false
-                    repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
-                    notificationHelper.showOutageAlert(totalDelivered, authPreferences.autoResumeAfterOutage)
-                }
-            } else {
-                // If station came back online and is already actively charging (e.g. brief phone drop or auto-recovery)
-                if (data.isChargingActive && (stateMachine.getState() == SessionStatus.OUTAGE_DETECTED ||
-                        stateMachine.getState() == SessionStatus.OUTAGE_STABILIZING ||
-                        stateMachine.getState() == SessionStatus.AUTO_RESUMING)
-                ) {
-                    stateMachine.transition(StateEvent.ResumeCommandSent)
-                    hasAlertedManualResume = false
+    private fun dispatchSupervisorEvents(events: List<SupervisorEvent>) {
+        for (event in events) {
+            when (event) {
+                is SupervisorEvent.ShowOutageAlert ->
+                    notificationHelper.showOutageAlert(event.deliveredKwh, event.autoResumeEnabled)
+                is SupervisorEvent.ShowManualResumeAvailable ->
+                    notificationHelper.showManualResumeAvailableAlert(event.amperage, event.deliveredKwh)
+                SupervisorEvent.CancelManualResumeAlert ->
                     notificationHelper.cancelManualResumeAlert()
-                    repository.restoreChargingFromExistingSlice(sessionId)
-                }
-
-                when (stateMachine.getState()) {
-                    SessionStatus.OUTAGE_DETECTED -> {
-                        if (!authPreferences.autoResumeAfterOutage) {
-                            if (!hasAlertedManualResume) {
-                                hasAlertedManualResume = true
-                                notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
-                            }
-                        } else {
-                            val voltage = data.voltageCurrent
-                            if (voltage != null) {
-                                val nextState = stateMachine.transition(StateEvent.GridRestored(voltage))
-                                if (nextState == SessionStatus.OUTAGE_STABILIZING) {
-                                    repository.handleOutageStabilizing(sessionId)
-                                }
-                            }
-                        }
-                    }
-                    SessionStatus.OUTAGE_STABILIZING -> {
-                        if (!authPreferences.autoResumeAfterOutage) {
-                            stateMachine.transition(StateEvent.OutageDetected)
-                            repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
-                            if (!hasAlertedManualResume) {
-                                hasAlertedManualResume = true
-                                notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
-                            }
-                        } else {
-                            val voltage = data.voltageCurrent
-                            if (voltage != null && voltage in 180..250) {
-                                val nextState = stateMachine.transition(StateEvent.VoltageStable)
-                                if (nextState == SessionStatus.AUTO_RESUMING) {
-                                    val resumeRes = repository.resumeAfterOutage(sessionId)
-                                    if (resumeRes.isSuccess) {
-                                        stateMachine.transition(StateEvent.ResumeCommandSent)
-                                        lastActiveChargingSampleAt = 0L
-                                        hasAlertedManualResume = false
-                                        notificationHelper.cancelManualResumeAlert()
-                                        notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
-                                    }
-                                }
-                            } else if (voltage != null) {
-                                stateMachine.transition(StateEvent.VoltageUnstable)
-                                repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
-                            }
-                        }
-                    }
-                    SessionStatus.AUTO_RESUMING -> {
-                        if (!authPreferences.autoResumeAfterOutage) {
-                            stateMachine.transition(StateEvent.OutageDetected)
-                            repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
-                            if (!hasAlertedManualResume) {
-                                hasAlertedManualResume = true
-                                notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
-                            }
-                        } else {
-                            val resumeRes = repository.resumeAfterOutage(sessionId)
-                            if (resumeRes.isSuccess) {
-                                stateMachine.transition(StateEvent.ResumeCommandSent)
-                                lastActiveChargingSampleAt = 0L
-                                hasAlertedManualResume = false
-                                notificationHelper.cancelManualResumeAlert()
-                                notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
-                            }
-                        }
-                    }
-                    SessionStatus.CHARGING -> {
-                        val now = System.currentTimeMillis()
-                        if (data.isChargingActive) {
-                            if (lastActiveChargingSampleAt > 0L) {
-                                val deltaMs = (now - lastActiveChargingSampleAt).coerceIn(0L, 120_000L)
-                                accumulatedChargingMs += deltaMs
-                            }
-                            lastActiveChargingSampleAt = now
-                            repository.updateDurationProgress(sessionId, accumulatedChargingMs, now)
-                        } else {
-                            if (lastActiveChargingSampleAt > 0L) {
-                                val deltaMs = (now - lastActiveChargingSampleAt).coerceIn(0L, 15_000L)
-                                accumulatedChargingMs += deltaMs
-                                lastActiveChargingSampleAt = 0L
-                            }
-                            repository.updateDurationProgress(sessionId, accumulatedChargingMs, 0L)
-                        }
-
-                        // 1. Check if Duration Timer target reached
-                        if (activeTargetDurationMinutes > 0) {
-                            val targetDurationMs = activeTargetDurationMinutes * 60_000L
-                            if (accumulatedChargingMs >= targetDurationMs) {
-                                val finished = attemptTargetStopAndFinish(
-                                    sessionId = sessionId,
-                                    consumedKwh = data.consumedEnergyKwh,
-                                    totalDelivered = totalDelivered,
-                                    isDurationTarget = true
-                                )
-                                if (finished) return
-                            }
-                        }
-
-                        // 2. Check if kWh quota target reached (strictly when > 0.0)
-                        if (stateMachine.getState() == SessionStatus.CHARGING &&
-                            activeTargetKwh > 0.0 &&
-                            totalDelivered >= activeTargetKwh
-                        ) {
-                            val finished = attemptTargetStopAndFinish(
-                                sessionId = sessionId,
-                                consumedKwh = data.consumedEnergyKwh,
-                                totalDelivered = totalDelivered,
-                                isDurationTarget = false
-                            )
-                            if (finished) return
-                        }
-
-                        // 3. Check if car finished charging (current < 0.5A for 5 min / 30 consecutive ticks)
-                        if (stateMachine.getState() == SessionStatus.CHARGING &&
-                            data.measuredCurrentAmperes < 0.5 &&
-                            data.isChargingActive
-                        ) {
-                            zeroCurrentConsecutiveTicks++
-                            if (zeroCurrentConsecutiveTicks >= 30) {
-                                stateMachine.transition(StateEvent.VehicleStoppedCharging)
-                                repository.markSessionVehicleStopped(sessionId, data.consumedEnergyKwh)
-                                stopSelf()
-                                return
-                            }
-                        } else {
-                            zeroCurrentConsecutiveTicks = 0
-                        }
-
-                        // 4. Dynamic Load Balancing (DLB) by Grid Voltage
-                        val currentVoltage = data.voltageCurrent
-                        if (stateMachine.getState() == SessionStatus.CHARGING &&
-                            voltageLoadBalancer.isEnabled &&
-                            data.isChargingActive &&
-                            currentVoltage != null
-                        ) {
-                            val recommendedA = voltageLoadBalancer.evaluate(
-                                currentVoltage = currentVoltage,
-                                currentAmperage = data.selectedCurrentAmperes
-                            )
-                            if (recommendedA != null && recommendedA != data.selectedCurrentAmperes) {
-                                val prevA = data.selectedCurrentAmperes
-                                val updateRes = repository.setAmperage(recommendedA)
-                                if (updateRes.isSuccess) {
-                                    lastKnownAmperes = recommendedA
-                                    repository.updateSessionAmperage(sessionId, recommendedA)
-                                    repository.refreshDeadManTimer(sessionId, currentVoltage, totalDelivered)
-                                    notificationHelper.showBalancingAlert(prevA, recommendedA, currentVoltage)
-                                }
-                            }
-                        }
-                    }
-                    SessionStatus.STOP_PENDING -> {
-                        val reachedKwh = activeTargetKwh > 0.0 && totalDelivered >= activeTargetKwh
-                        val reachedDur = activeTargetDurationMinutes > 0 && accumulatedChargingMs >= activeTargetDurationMinutes * 60_000L
-                        val isManualStop = pendingStopIsManual || (!reachedKwh && !reachedDur)
-
-                        val stopped = if (!data.isChargingActive) {
-                            true
-                        } else {
-                            repository.stopAndConfirm(allowOfflineConfirmation = isManualStop)
-                        }
-
-                        if (stopped) {
-                            val finalKwh = repository.telemetryState.value?.consumedEnergyKwh ?: data.consumedEnergyKwh
-                            finalizeStopConfirmed(
-                                sessionId = sessionId,
-                                finalKwh = finalKwh,
-                                totalDelivered = totalDelivered,
-                                isManualStop = isManualStop,
-                                isDurationTarget = reachedDur
-                            )
-                            return
-                        } else if (!hasAlertedStopFailed) {
-                            hasAlertedStopFailed = true
-                            notificationHelper.showStopFailedAlert()
-                        }
-                    }
-                    else -> {}
-                }
-            }
-
-            // Update ongoing notification
-            val ongoingStatusText = if (stateMachine.getState() == SessionStatus.STOP_PENDING) {
-                "Очікування зупинки..."
-            } else {
-                data.statusText
-            }
-            val notification = notificationHelper.buildForegroundNotification(
-                powerKw = data.powerKw,
-                deliveredKwh = totalDelivered,
-                targetKwh = activeTargetKwh,
-                statusText = ongoingStatusText,
-                targetDurationMinutes = activeTargetDurationMinutes,
-                accumulatedChargingMs = accumulatedChargingMs
-            )
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            notificationManager.notify(NotificationHelper.NOTIFICATION_ID_STATUS, notification)
-        }.onFailure {
-            consecutiveFailureTicks++
-            if (consecutiveFailureTicks >= 3) {
-                lastActiveChargingSampleAt = 0L
-                repository.updateDurationProgress(sessionId, accumulatedChargingMs, 0L)
-                if (!hasAlertedConnectionLost) {
-                    hasAlertedConnectionLost = true
-                    notificationHelper.showConnectionLostAlert(lastKnownAmperes)
-                }
-                if (stateMachine.getState() == SessionStatus.CHARGING) {
-                    stateMachine.transition(StateEvent.OutageDetected)
-                    hasAlertedManualResume = false
-                    repository.handleOutageDetected(sessionId, lastSampledCounterKwh)
+                is SupervisorEvent.ShowOutageResumed ->
+                    notificationHelper.showOutageResumedAlert(event.amperage)
+                is SupervisorEvent.ShowTargetReached ->
+                    notificationHelper.showTargetReachedAlert(event.deliveredKwh)
+                is SupervisorEvent.ShowDurationTargetReached ->
+                    notificationHelper.showDurationTargetReachedAlert(event.targetDurationMinutes, event.deliveredKwh)
+                SupervisorEvent.ShowStopFailed ->
+                    notificationHelper.showStopFailedAlert()
+                is SupervisorEvent.ShowBalancingAlert ->
+                    notificationHelper.showBalancingAlert(event.oldAmperage, event.newAmperage, event.voltage)
+                is SupervisorEvent.ShowConnectionLost ->
+                    notificationHelper.showConnectionLostAlert(event.lastKnownAmperes)
+                is SupervisorEvent.UpdateOngoingNotification -> {
+                    val notification = notificationHelper.buildForegroundNotification(
+                        powerKw = event.powerKw,
+                        deliveredKwh = event.deliveredKwh,
+                        targetKwh = event.targetKwh,
+                        statusText = event.statusText,
+                        targetDurationMinutes = event.targetDurationMinutes,
+                        accumulatedChargingMs = event.accumulatedChargingMs
+                    )
+                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    notificationManager.notify(NotificationHelper.NOTIFICATION_ID_STATUS, notification)
                 }
             }
         }
-    }
-
-    private suspend fun attemptTargetStopAndFinish(
-        sessionId: String,
-        consumedKwh: Double,
-        totalDelivered: Double,
-        isDurationTarget: Boolean
-    ): Boolean {
-        pendingStopIsManual = false
-        val stopped = repository.markSessionTargetReached(sessionId, consumedKwh)
-        return if (stopped) {
-            stateMachine.transition(StateEvent.TargetQuotaReached)
-            if (isDurationTarget) {
-                notificationHelper.showDurationTargetReachedAlert(activeTargetDurationMinutes, totalDelivered)
-            } else {
-                notificationHelper.showTargetReachedAlert(totalDelivered)
-            }
-            stopSelf()
-            true
-        } else {
-            stateMachine.transition(StateEvent.StopPending)
-            if (!hasAlertedStopFailed) {
-                hasAlertedStopFailed = true
-                notificationHelper.showStopFailedAlert()
-            }
-            false
-        }
-    }
-
-    private suspend fun finalizeStopConfirmed(
-        sessionId: String,
-        finalKwh: Double,
-        totalDelivered: Double,
-        isManualStop: Boolean,
-        isDurationTarget: Boolean
-    ) {
-        if (isManualStop) {
-            repository.finalizeSessionStopped(
-                sessionId = sessionId,
-                lastCounter = finalKwh,
-                sliceReason = SliceEndReason.MANUAL_STOP,
-                finalStatus = SessionStatus.CANCELLED
-            )
-            stateMachine.transition(StateEvent.CancelRequested)
-        } else {
-            repository.finalizeSessionStopped(
-                sessionId = sessionId,
-                lastCounter = finalKwh,
-                sliceReason = SliceEndReason.TARGET_REACHED,
-                finalStatus = SessionStatus.TARGET_REACHED
-            )
-            stateMachine.transition(StateEvent.TargetQuotaReached)
-            if (isDurationTarget) {
-                notificationHelper.showDurationTargetReachedAlert(activeTargetDurationMinutes, totalDelivered)
-            } else {
-                notificationHelper.showTargetReachedAlert(totalDelivered)
-            }
-        }
-        stopSelf()
     }
 
     private fun handleManualStop() {
         scope.launch {
-            val id = activeSessionId
-            if (id != null) {
-                val res = repository.stopActiveSession(id)
-                if (res.isSuccess) {
-                    stateMachine.transition(StateEvent.CancelRequested)
-                    stopSelf()
-                } else {
-                    pendingStopIsManual = true
-                    stateMachine.transition(StateEvent.StopPending)
-                    if (!hasAlertedStopFailed) {
-                        hasAlertedStopFailed = true
-                        notificationHelper.showStopFailedAlert()
-                    }
-                }
-            } else {
+            val outcome = supervisor.handleManualStop()
+            dispatchSupervisorEvents(outcome.events)
+            if (outcome.shouldStopService) {
                 stopSelf()
             }
         }
@@ -563,28 +206,12 @@ class ChargeMonitorService : Service() {
 
     private fun handleManualResume() {
         scope.launch {
-            val id = activeSessionId ?: repository.getActiveSession()?.id
-            if (id == null) {
+            val (events, startLoopNeeded) = supervisor.handleManualResume()
+            dispatchSupervisorEvents(events)
+            if (supervisor.activeSessionId == null) {
                 stopSelf()
-                return@launch
-            }
-            activeSessionId = id
-            val dbSession = repository.getSessionById(id)
-            val res = repository.resumeAfterOutage(id, isManual = true)
-            if (res.isSuccess) {
-                stateMachine.transition(StateEvent.ResumeCommandSent)
-                lastActiveChargingSampleAt = 0L
-                hasAlertedManualResume = false
-                notificationHelper.cancelManualResumeAlert()
-                notificationHelper.showOutageResumedAlert(dbSession?.amperageSetting ?: lastKnownAmperes)
-                if (monitoringJob?.isActive != true) {
-                    startMonitoringLoop()
-                }
-            } else {
-                notificationHelper.showManualResumeAvailableAlert(
-                    dbSession?.amperageSetting ?: lastKnownAmperes,
-                    dbSession?.totalKwhDelivered ?: 0.0
-                )
+            } else if (startLoopNeeded && monitoringJob?.isActive != true) {
+                startMonitoringLoop()
             }
         }
     }
@@ -599,6 +226,72 @@ class ChargeMonitorService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private inner class RepositoryGateway : SessionMonitorGateway {
+        override suspend fun fetchTelemetry(): Result<TelemetryData> =
+            repository.fetchLatestTelemetry(isMonitorServiceRunning = true)
+
+        override suspend fun getSessionById(sessionId: String): ChargeSessionEntity? =
+            repository.getSessionById(sessionId)
+
+        override suspend fun getActiveSession(): ChargeSessionEntity? =
+            repository.getActiveSession()
+
+        override suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> =
+            repository.getSlicesForSession(sessionId)
+
+        override suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long) =
+            repository.updateDurationProgress(sessionId, accumulatedMs, lastTickAt)
+
+        override suspend fun handleOutageDetected(sessionId: String, lastCounter: Double) =
+            repository.handleOutageDetected(sessionId, lastCounter)
+
+        override suspend fun handleOutageStabilizing(sessionId: String) =
+            repository.handleOutageStabilizing(sessionId)
+
+        override suspend fun restoreChargingFromExistingSlice(sessionId: String) =
+            repository.restoreChargingFromExistingSlice(sessionId)
+
+        override suspend fun resumeAfterOutage(sessionId: String, isManual: Boolean): Result<Unit> =
+            repository.resumeAfterOutage(sessionId, isManual = isManual)
+
+        override suspend fun markSessionTargetReached(sessionId: String, finalCounter: Double): Boolean =
+            repository.markSessionTargetReached(sessionId, finalCounter)
+
+        override suspend fun markSessionVehicleStopped(sessionId: String, finalCounter: Double) =
+            repository.markSessionVehicleStopped(sessionId, finalCounter)
+
+        override suspend fun finalizeSessionStopped(
+            sessionId: String,
+            lastCounter: Double,
+            sliceReason: SliceEndReason,
+            finalStatus: SessionStatus
+        ) = repository.finalizeSessionStopped(sessionId, lastCounter, sliceReason, finalStatus)
+
+        override suspend fun stopAndConfirm(allowOfflineConfirmation: Boolean): Boolean =
+            repository.stopAndConfirm(allowOfflineConfirmation = allowOfflineConfirmation)
+
+        override suspend fun stopActiveSession(sessionId: String): Result<Unit> =
+            repository.stopActiveSession(sessionId)
+
+        override suspend fun setAmperage(amperes: Int): Result<Unit> =
+            repository.setAmperage(amperes)
+
+        override suspend fun updateSessionAmperage(sessionId: String, amperes: Int) =
+            repository.updateSessionAmperage(sessionId, amperes)
+
+        override suspend fun refreshDeadManTimer(
+            sessionId: String,
+            currentVoltage: Int,
+            currentDeliveredKwh: Double
+        ) = repository.refreshDeadManTimer(sessionId, currentVoltage, currentDeliveredKwh)
+
+        override fun latestCounterOr(fallback: Double): Double =
+            repository.telemetryState.value?.consumedEnergyKwh ?: fallback
+
+        override fun isAutoResumeEnabled(): Boolean =
+            authPreferences.autoResumeAfterOutage
+    }
 
     companion object {
         const val EXTRA_SESSION_ID = "EXTRA_SESSION_ID"
@@ -644,4 +337,3 @@ class ChargeMonitorService : Service() {
         }
     }
 }
-

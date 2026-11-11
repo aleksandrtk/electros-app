@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.model.StationConfig
+import ua.org.electros.app.data.repository.ChargeRepository
 
 data class SettingsUiState(
     val deviceSerial: String,
@@ -15,7 +16,8 @@ data class SettingsUiState(
 )
 
 class SettingsViewModel(
-    private val authPreferences: AuthPreferences
+    private val authPreferences: AuthPreferences,
+    private val repository: ChargeRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -40,7 +42,7 @@ class SettingsViewModel(
     }
 
     fun logout() {
-        authPreferences.clearCredentials()
+        repository?.logout() ?: authPreferences.clearCredentials()
         _uiState.value = _uiState.value.copy(
             deviceSerial = "",
             hasCredentials = false

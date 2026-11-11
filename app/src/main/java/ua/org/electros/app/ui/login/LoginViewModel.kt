@@ -38,6 +38,13 @@ class LoginViewModel(
         _uiState.value = _uiState.value.copy(password = password, errorMessage = null)
     }
 
+    fun reloadFromPreferences() {
+        _uiState.value = LoginUiState(
+            deviceSerial = authPreferences.deviceSerial,
+            password = authPreferences.internetPassword
+        )
+    }
+
     fun login(onSuccess: () -> Unit) {
         val serial = _uiState.value.deviceSerial.trim()
         val password = _uiState.value.password.trim()

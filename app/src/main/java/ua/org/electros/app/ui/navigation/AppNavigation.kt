@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import ua.org.electros.app.ElectrosApplication
 import ua.org.electros.app.R
 import ua.org.electros.app.ota.OtaViewModel
@@ -33,7 +34,8 @@ enum class NavTab(val title: String, val iconRes: Int) {
 
 @Composable
 fun AppNavigation(application: ElectrosApplication) {
-    val otaViewModel = remember { OtaViewModel() }
+    val factory = remember(application) { AppViewModelFactory(application) }
+    val otaViewModel: OtaViewModel = viewModel(factory = factory)
     val showUpdateDialog by otaViewModel.showUpdateDialog.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -49,8 +51,9 @@ fun AppNavigation(application: ElectrosApplication) {
     }
 
     if (!isLoggedIn) {
-        val loginViewModel = remember {
-            LoginViewModel(application.repository, application.authPreferences)
+        val loginViewModel: LoginViewModel = viewModel(factory = factory)
+        LaunchedEffect(Unit) {
+            loginViewModel.reloadFromPreferences()
         }
         LoginScreen(
             viewModel = loginViewModel,
@@ -59,18 +62,10 @@ fun AppNavigation(application: ElectrosApplication) {
     } else {
         var currentTab by remember { mutableStateOf(NavTab.CHARGING) }
 
-        val dashboardViewModel = remember {
-            DashboardViewModel(application.repository, application.authPreferences)
-        }
-        val limiterViewModel = remember {
-            LimiterViewModel(application.repository, application.authPreferences)
-        }
-        val historyViewModel = remember {
-            HistoryViewModel(application.repository)
-        }
-        val settingsViewModel = remember {
-            SettingsViewModel(application.authPreferences)
-        }
+        val dashboardViewModel: DashboardViewModel = viewModel(factory = factory)
+        val limiterViewModel: LimiterViewModel = viewModel(factory = factory)
+        val historyViewModel: HistoryViewModel = viewModel(factory = factory)
+        val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
 
         Scaffold(
             containerColor = StudioChassisDark,

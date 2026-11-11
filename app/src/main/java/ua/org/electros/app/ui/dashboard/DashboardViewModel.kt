@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +33,7 @@ data class DashboardUiState(
     val isRefreshing: Boolean = false,
     val isVoltageBalancingEnabled: Boolean = true,
     val voltageLowThreshold: Int = 185,
+    val voltageMaxAmperage: Int = 12,
     val isDurationTimerEnabled: Boolean = false,
     val targetDurationHours: Int = 2,
     val activeTargetDurationMinutes: Int = 0,
@@ -78,6 +80,7 @@ class DashboardViewModel(
         val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
         val isDlbEnabled = authPreferences.isVoltageBalancingEnabled
         val dlbThreshold = authPreferences.voltageLowThreshold
+        val dlbMaxAmperage = authPreferences.voltageMaxAmperage
         val isTimerEnabled = authPreferences.isDurationTimerEnabled
         val durationHours = authPreferences.targetDurationHours
         val isSchedEnabled = authPreferences.isScheduleEnabled
@@ -135,6 +138,7 @@ class DashboardViewModel(
             isRefreshing = refreshing,
             isVoltageBalancingEnabled = isDlbEnabled,
             voltageLowThreshold = dlbThreshold,
+            voltageMaxAmperage = dlbMaxAmperage,
             isDurationTimerEnabled = isTimerEnabled,
             targetDurationHours = durationHours,
             activeTargetDurationMinutes = activeTargetMin,
@@ -152,6 +156,7 @@ class DashboardViewModel(
             selectedAmperes = authPreferences.preferredAmperage,
             isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
             voltageLowThreshold = authPreferences.voltageLowThreshold,
+            voltageMaxAmperage = authPreferences.voltageMaxAmperage,
             isDurationTimerEnabled = authPreferences.isDurationTimerEnabled,
             targetDurationHours = authPreferences.targetDurationHours,
             isScheduleEnabled = authPreferences.isScheduleEnabled,
@@ -162,7 +167,6 @@ class DashboardViewModel(
 
     init {
         authPreferences.registerListener(prefListener)
-        startTelemetryPolling()
     }
 
     override fun onCleared() {
@@ -170,14 +174,11 @@ class DashboardViewModel(
         authPreferences.unregisterListener(prefListener)
     }
 
-    private fun startTelemetryPolling() {
-        viewModelScope.launch {
-            repository.cancelStaleSessionsIfOffline()
+    suspend fun pollWhileVisible() {
+        repository.cancelStaleSessionsIfOffline()
+        while (currentCoroutineContext().isActive) {
             repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
-            while (isActive) {
-                delay(60_000L)
-                repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
-            }
+            delay(60_000L)
         }
     }
 

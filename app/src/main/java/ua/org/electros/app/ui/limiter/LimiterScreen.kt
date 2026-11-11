@@ -508,7 +508,7 @@ fun LimiterScreen(
                                 )
                             }
                             Slider(
-                                value = state.voltageLowThreshold.toFloat(),
+                                value = state.voltageLowThreshold.toFloat().coerceIn(170f, 195f),
                                 onValueChange = { viewModel.setVoltageLowThreshold(it.toInt()) },
                                 valueRange = 170f..195f,
                                 steps = 24,
@@ -540,7 +540,7 @@ fun LimiterScreen(
                                 )
                             }
                             Slider(
-                                value = state.voltageHighThreshold.toFloat(),
+                                value = state.voltageHighThreshold.toFloat().coerceIn(200f, 225f),
                                 onValueChange = { viewModel.setVoltageHighThreshold(it.toInt()) },
                                 valueRange = 200f..225f,
                                 steps = 24,
@@ -550,6 +550,11 @@ fun LimiterScreen(
                                     inactiveTrackColor = SurfaceContainerHighestDark
                                 ),
                                 modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = "Мінімальний розрив між порогами — 10 В",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondaryDark
                             )
                         }
 
@@ -572,7 +577,7 @@ fun LimiterScreen(
                                 )
                             }
                             Slider(
-                                value = state.voltageMaxAmperage.toFloat(),
+                                value = state.voltageMaxAmperage.toFloat().coerceIn(8f, 16f),
                                 onValueChange = { viewModel.setVoltageMaxAmperage(it.toInt()) },
                                 valueRange = 8f..16f,
                                 steps = 3,
@@ -582,6 +587,11 @@ fun LimiterScreen(
                                     inactiveTrackColor = SurfaceContainerHighestDark
                                 ),
                                 modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = "При відновленні напруги DLB не підніме струм вище ${state.voltageMaxAmperage} А.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondaryDark
                             )
                         }
                     }
