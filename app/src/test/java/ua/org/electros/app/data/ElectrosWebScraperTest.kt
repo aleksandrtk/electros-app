@@ -283,4 +283,29 @@ class ElectrosWebScraperTest {
         assertThat(telemetry.consumedEnergyKwh).isWithin(0.001).of(12.5)
         assertThat(telemetry.powerKw).isWithin(0.001).of(3.68)
     }
+
+    @Test
+    fun parseTelemetryDocument_whenErrorOrForbidden_setsIsChargingActiveFalse() {
+        val scraper = ElectrosWebScraper()
+        val forbiddenHtml = """
+            <!DOCTYPE html><html><body>
+            <div>Стан: <span>Заборона заряджання</span></div>
+            <div>Напруга: 224 В</div>
+            </body></html>
+        """.trimIndent()
+        val errorHtml = """
+            <!DOCTYPE html><html><body>
+            <div>Стан: <span>Помилка заряджання</span></div>
+            <div>Напруга: 224 В</div>
+            </body></html>
+        """.trimIndent()
+
+        val forbidden = scraper.parseTelemetryDocument(Jsoup.parse(forbiddenHtml))
+        val error = scraper.parseTelemetryDocument(Jsoup.parse(errorHtml))
+
+        assertThat(forbidden.isOnline).isTrue()
+        assertThat(forbidden.isChargingActive).isFalse()
+        assertThat(error.isOnline).isTrue()
+        assertThat(error.isChargingActive).isFalse()
+    }
 }

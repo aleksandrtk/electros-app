@@ -343,5 +343,9 @@ class ChargeMonitorService : Service() {
                 NotificationHelper(context.applicationContext).showMonitorRestartRequiredAlert()
             }
         }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, ChargeMonitorService::class.java))
+        }
     }
 }

@@ -696,8 +696,12 @@ class ElectrosWebScraper(
             }
         }
 
+        val isStatusCharging = statusText.contains("Заряд", ignoreCase = true) &&
+                !statusText.contains("Немає заряду", ignoreCase = true) &&
+                !statusText.contains("Помилка", ignoreCase = true) &&
+                !statusText.contains("Заборон", ignoreCase = true)
         val isChargingActive = isOnline &&
-                (measuredA > 0.5 || powerKw > 0.1 || (statusText.contains("Заряд", ignoreCase = true) && !statusText.contains("Немає заряду", ignoreCase = true)))
+                (measuredA > 0.5 || powerKw > 0.1 || isStatusCharging)
 
         return TelemetryData(
             statusText = statusText,

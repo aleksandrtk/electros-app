@@ -42,12 +42,15 @@ data class DashboardUiState(
     val isScheduleEnabled: Boolean = false,
     val scheduleStartTime: String = "23:00",
     val scheduleStopTime: String = "07:00",
+    val isAutoResumeEnabled: Boolean = true,
     val errorMessage: String? = null
 )
 
 class DashboardViewModel(
     private val repository: ChargeRepository,
-    private val settingsStore: SettingsStore
+    private val settingsStore: SettingsStore,
+    private val isMonitorServiceRunning: () -> Boolean = { ChargeMonitorService.isRunning },
+    private val clockMs: () -> Long = { System.currentTimeMillis() }
 ) : ViewModel() {
 
     private val _isBusy = MutableStateFlow(false)
@@ -118,13 +121,25 @@ class DashboardViewModel(
             SessionStatus.AUTO_RESUMING
         )
         val isStopPendingSession = activeSession?.status == SessionStatus.STOP_PENDING
-
-        val effectiveSession = if (activeSession != null &&
+        val hasRecordedProgress = activeSession != null && (
+            activeSession.totalKwhDelivered > 0.0 ||
+                activeSession.accumulatedChargingMs > 0L ||
+                activeSession.lastTickAt > 0L
+            )
+        val isStaleIdleOnlineSession = activeSession != null &&
             !isTrackedOutage &&
             !isStopPendingSession &&
-            (!isOnline || !isCharging) &&
-            activeSession.totalKwhDelivered == 0.0 &&
-            activeSession.accumulatedChargingMs == 0L
+            isOnline &&
+            !isCharging &&
+            !isMonitorServiceRunning() &&
+            (clockMs() - activeSession.startedAt) >= STALE_IDLE_SESSION_GRACE_MS
+
+        val effectiveSession = if (activeSession != null &&
+            ((!isTrackedOutage &&
+                !isStopPendingSession &&
+                (!isOnline || !isCharging) &&
+                !hasRecordedProgress) ||
+                isStaleIdleOnlineSession)
         ) {
             null
         } else {
@@ -141,11 +156,9 @@ class DashboardViewModel(
                 !isStopPending &&
                 (effectiveSession.totalKwhDelivered > 0.0 ||
                     effectiveSession.accumulatedChargingMs > 0L ||
-                    effectiveSession.targetDurationMinutes > 0 ||
+                    effectiveSession.lastTickAt > 0L ||
                     isTrackedOutage) &&
-                (effectiveSession.status == SessionStatus.OUTAGE_DETECTED ||
-                    effectiveSession.status == SessionStatus.OUTAGE_STABILIZING ||
-                    !isOnline)
+                (isTrackedOutage || (telemetry != null && !isOnline))
 
         return DashboardUiState(
             telemetry = telemetry,
@@ -169,21 +182,22 @@ class DashboardViewModel(
             isScheduleEnabled = isSchedEnabled,
             scheduleStartTime = schedStart,
             scheduleStopTime = schedStop,
+            isAutoResumeEnabled = settings.autoResumeAfterOutage,
             errorMessage = error
         )
     }
 
     suspend fun pollWhileVisible() {
-        repository.cancelStaleSessionsIfOffline()
+        repository.cancelStaleSessionsIfOffline(isMonitorServiceRunning = isMonitorServiceRunning())
         while (currentCoroutineContext().isActive) {
-            repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
+            repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             delay(60_000L)
         }
     }
 
     fun ensureMonitorServiceRunning(context: Context) {
         val active = uiState.value.activeSession ?: return
-        if (!ChargeMonitorService.isRunning) {
+        if (!isMonitorServiceRunning()) {
             ChargeMonitorService.start(
                 context,
                 active.id,
@@ -196,7 +210,7 @@ class DashboardViewModel(
     fun refreshTelemetry() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
+            repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             _isRefreshing.value = false
         }
     }
@@ -212,7 +226,7 @@ class DashboardViewModel(
             // WS setAmperage sends a "start" frame on Electros firmware, so only push it while charging.
             if (currentState.telemetry?.isChargingActive == true) {
                 repository.setAmperage(amperes)
-                repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
+                repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             }
         }
     }
@@ -228,7 +242,7 @@ class DashboardViewModel(
         viewModelScope.launch {
             if (existingSession != null) {
                 repository.updateTargetDurationMinutes(existingSession.id, durationMinutes)
-                if (!ChargeMonitorService.isRunning) {
+                if (!isMonitorServiceRunning()) {
                     ChargeMonitorService.start(
                         context,
                         existingSession.id,
@@ -286,7 +300,7 @@ class DashboardViewModel(
         }
     }
 
-    fun onStopClicked() {
+    fun onStopClicked(context: Context? = null) {
         viewModelScope.launch {
             _isBusy.value = true
             _errorMessage.value = null
@@ -296,11 +310,18 @@ class DashboardViewModel(
             } else {
                 repository.stopActiveSession("manual_immediate")
             }
+            if (res.isSuccess && context != null) {
+                ChargeMonitorService.stop(context)
+            }
             res.onFailure { err ->
                 _errorMessage.value = err.message ?: "Не вдалося зупинити станцію"
             }
-            repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
+            repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             _isBusy.value = false
         }
+    }
+
+    companion object {
+        private const val STALE_IDLE_SESSION_GRACE_MS = 30_000L
     }
 }

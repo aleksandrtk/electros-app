@@ -52,6 +52,7 @@ class ChargingStateMachine(
                     SessionStatus.CHARGING
                 }
                 is StateEvent.StopPending -> SessionStatus.STOP_PENDING
+                is StateEvent.VehicleStoppedCharging -> SessionStatus.VEHICLE_STOPPED
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
             }
@@ -78,6 +79,7 @@ class ChargingStateMachine(
                     SessionStatus.CHARGING
                 }
                 is StateEvent.StopPending -> SessionStatus.STOP_PENDING
+                is StateEvent.VehicleStoppedCharging -> SessionStatus.VEHICLE_STOPPED
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
             }
@@ -89,6 +91,7 @@ class ChargingStateMachine(
                     SessionStatus.OUTAGE_DETECTED
                 }
                 is StateEvent.StopPending -> SessionStatus.STOP_PENDING
+                is StateEvent.VehicleStoppedCharging -> SessionStatus.VEHICLE_STOPPED
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
             }

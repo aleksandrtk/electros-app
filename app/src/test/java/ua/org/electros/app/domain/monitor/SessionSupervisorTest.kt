@@ -461,5 +461,119 @@ class SessionSupervisorTest {
             nextTelemetry.getOrNull()?.consumedEnergyKwh ?: fallback
         override fun isAutoResumeEnabled(): Boolean = autoResume
     }
+
+    @Test
+    fun onlineIdleWithoutCharging_afterThreeTicks_cancelsSessionInsteadOfWaitingForever() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-idle"),
+            slices = mutableListOf(slice("s-idle", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-idle", targetKwh = 0.0, targetDurationMinutes = 0)
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 50.0, voltage = 225))
+
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        val tick3 = supervisor.tick()
+
+        assertThat(tick3.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(tick3.shouldStopService).isTrue()
+        assertThat(gateway.finalizedStatus).isEqualTo(SessionStatus.CANCELLED)
+    }
+
+    @Test
+    fun onlineIdleAfterCharging_afterThreeTicks_marksVehicleStopped() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-stopped"),
+            slices = mutableListOf(slice("s-stopped", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-stopped", targetKwh = 0.0, targetDurationMinutes = 0)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 51.0, voltage = 225))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 51.0, voltage = 225))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        val tick4 = supervisor.tick()
+
+        assertThat(tick4.status).isEqualTo(SessionStatus.VEHICLE_STOPPED)
+        assertThat(tick4.shouldStopService).isTrue()
+        assertThat(gateway.session.status).isEqualTo(SessionStatus.VEHICLE_STOPPED)
+    }
+
+    @Test
+    fun offlineBeforeAnyCharging_cancelsSessionWithoutOutageAlert() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-unstarted-offline"),
+            slices = mutableListOf(slice("s-unstarted-offline", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-unstarted-offline", targetKwh = 0.0, targetDurationMinutes = 0)
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = false, isCharging = false, counterKwh = 50.0, voltage = null))
+
+        val outcome = supervisor.tick()
+
+        assertThat(outcome.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(outcome.shouldStopService).isTrue()
+        assertThat(outcome.events.filterIsInstance<SupervisorEvent.ShowOutageAlert>()).isEmpty()
+        assertThat(gateway.finalizedStatus).isEqualTo(SessionStatus.CANCELLED)
+    }
+
+    @Test
+    fun connectionLossBeforeAnyCharging_afterThreeFailures_cancelsWithoutOutageAlert() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-unstarted-fail"),
+            slices = mutableListOf(slice("s-unstarted-fail", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-unstarted-fail", targetKwh = 0.0, targetDurationMinutes = 0)
+        gateway.nextTelemetry = Result.failure(IllegalStateException("timeout"))
+
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        val tick3 = supervisor.tick()
+
+        assertThat(tick3.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(tick3.shouldStopService).isTrue()
+        assertThat(tick3.events.filterIsInstance<SupervisorEvent.ShowOutageAlert>()).isEmpty()
+    }
+
+    @Test
+    fun outageReturningWithUnpluggedStatus_closesAsVehicleStoppedAndCancelsAlert() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-unplugged"),
+            slices = mutableListOf(slice("s-unplugged", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-unplugged", targetKwh = 0.0, targetDurationMinutes = 0)
+
+        // Car actively charges first, then garage power cuts out (offline reports 0.0 kWh)
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 52.0, voltage = 225))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = false, isCharging = false, counterKwh = 0.0, voltage = null))
+        val outageOutcome = supervisor.tick()
+        assertThat(outageOutcome.status).isEqualTo(SessionStatus.OUTAGE_DETECTED)
+        assertThat(gateway.autoResumeCalls).isEqualTo(0)
+
+        // Power returns, but driver unplugged car while power was out
+        gateway.nextTelemetry = Result.success(
+            telemetry(isOnline = true, isCharging = false, counterKwh = 0.0, voltage = 225)
+                .copy(statusText = "Чекаю підключення до авто")
+        )
+        val recoverOutcome = supervisor.tick()
+
+        assertThat(recoverOutcome.status).isEqualTo(SessionStatus.VEHICLE_STOPPED)
+        assertThat(recoverOutcome.shouldStopService).isTrue()
+        assertThat(recoverOutcome.events).contains(SupervisorEvent.CancelManualResumeAlert)
+        assertThat(gateway.autoResumeCalls).isEqualTo(0)
+    }
 }
 

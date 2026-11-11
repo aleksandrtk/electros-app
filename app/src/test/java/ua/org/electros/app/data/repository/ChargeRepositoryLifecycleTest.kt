@@ -251,6 +251,143 @@ class ChargeRepositoryLifecycleTest {
         assertThat(restoreCmd).contains("\n23:00\n07:00\n")
     }
 
+    @Test
+    fun fetchLatestTelemetry_whenMonitorInactiveAndOnlineIdleWithProgress_marksVehicleStoppedEvenWithAutoResumeEnabled() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s-idle-prog",
+                targetKwh = 10.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L,
+                totalKwhDelivered = 2.5,
+                lastTickAt = 40_000L
+            )
+        )
+        dao.insertSlice(
+            ChargeSliceEntity(
+                sessionId = "s-idle-prog",
+                sliceIndex = 0,
+                stationCounterStartKwh = 10.0,
+                stationCounterLastKwh = 12.5,
+                startedAt = 1_000L
+            )
+        )
+        val wsCommands = CopyOnWriteArrayList<String>()
+        val scraper = buildScraper(wsCommands) {
+            wsPayload(statusCode = 1, selectedA = 16, energyKwh = 12.5, voltageV = 228)
+        }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            isAutoResumeEnabledProvider = { true },
+            clockMs = { 60_000L }
+        )
+
+        val result = repo.fetchLatestTelemetry(isMonitorServiceRunning = false)
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(dao.getActiveSession()).isNull()
+        assertThat(dao.getSessionById("s-idle-prog")?.status).isEqualTo(SessionStatus.VEHICLE_STOPPED)
+    }
+
+    @Test
+    fun fetchLatestTelemetry_whenMonitorInactiveAndOnlineIdleWithoutProgress_cancelsSession() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s-idle-empty",
+                targetKwh = 0.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L
+            )
+        )
+        dao.insertSlice(
+            ChargeSliceEntity(
+                sessionId = "s-idle-empty",
+                sliceIndex = 0,
+                stationCounterStartKwh = 10.0,
+                stationCounterLastKwh = 10.0,
+                startedAt = 1_000L
+            )
+        )
+        val wsCommands = CopyOnWriteArrayList<String>()
+        val scraper = buildScraper(wsCommands) {
+            wsPayload(statusCode = 1, selectedA = 16, energyKwh = 10.0, voltageV = 228)
+        }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            isAutoResumeEnabledProvider = { true },
+            clockMs = { 60_000L }
+        )
+
+        repo.fetchLatestTelemetry(isMonitorServiceRunning = false)
+
+        assertThat(dao.getActiveSession()).isNull()
+        assertThat(dao.getSessionById("s-idle-empty")?.status).isEqualTo(SessionStatus.CANCELLED)
+    }
+
+    @Test
+    fun fetchLatestTelemetry_whenMonitorInactiveAndOfflineWithoutCharging_cancelsUnstartedSessionDespiteAutoResume() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s-offline-empty",
+                targetKwh = 10.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L
+            )
+        )
+        dao.insertSlice(
+            ChargeSliceEntity(
+                sessionId = "s-offline-empty",
+                sliceIndex = 0,
+                stationCounterStartKwh = 10.0,
+                stationCounterLastKwh = 10.0,
+                startedAt = 1_000L
+            )
+        )
+        val wsCommands = CopyOnWriteArrayList<String>()
+        val scraper = buildScraper(wsCommands) {
+            wsPayload(statusCode = 7, selectedA = 16, energyKwh = 0.0, voltageV = 0)
+        }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            isAutoResumeEnabledProvider = { true },
+            clockMs = { 5_000L }
+        )
+
+        repo.fetchLatestTelemetry(isMonitorServiceRunning = false)
+
+        assertThat(dao.getActiveSession()).isNull()
+        assertThat(dao.getSessionById("s-offline-empty")?.status).isEqualTo(SessionStatus.CANCELLED)
+    }
+
+    @Test
+    fun startNewSession_whenVehicleUnplugged_failsAndCreatesNoActiveSession() = runBlocking {
+        val dao = FakeChargeDao()
+        val wsCommands = CopyOnWriteArrayList<String>()
+        val scraper = buildScraper(wsCommands) {
+            wsPayload(statusCode = 0, selectedA = 16, energyKwh = 10.0, voltageV = 228)
+        }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            clockMs = { 5_000L }
+        )
+
+        val result = repo.startNewSession(targetKwh = 0.0, amperage = 16, targetDurationMinutes = 0)
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(dao.getActiveSession()).isNull()
+        assertThat(wsCommands.any { it.contains("\nstart\n") }).isFalse()
+    }
+
     private class FakeChargeDao : ChargeDao {
         private val sessions = linkedMapOf<String, ChargeSessionEntity>()
         private val slices = mutableListOf<ChargeSliceEntity>()

@@ -110,7 +110,11 @@ fun DashboardScreen(
                     deliveredKwh = state.totalDeliveredKwh,
                     targetKwh = state.targetQuotaKwh,
                     isLimitEnabled = state.isKwhLimitEnabled,
-                    remainingTimerText = remMinText
+                    isAutoResumeEnabled = state.isAutoResumeEnabled,
+                    isStationOnline = telemetry?.isOnline == true,
+                    isBusy = state.isStartingOrStopping,
+                    remainingTimerText = remMinText,
+                    onCancelOutage = { viewModel.onStopClicked(context) }
                 )
             } else if (telemetry != null && !telemetry.isOnline) {
                 OfflineWarningCard()
@@ -172,7 +176,7 @@ fun DashboardScreen(
                 isDurationTimerEnabled = state.isDurationTimerEnabled,
                 targetDurationHours = state.targetDurationHours,
                 onStart = { viewModel.onStartClicked(context) },
-                onStop = { viewModel.onStopClicked() }
+                onStop = { viewModel.onStopClicked(context) }
             )
         }
     }
@@ -1356,8 +1360,51 @@ private fun OutageBanner(
     deliveredKwh: Double,
     targetKwh: Double,
     isLimitEnabled: Boolean,
-    remainingTimerText: String? = null
+    isAutoResumeEnabled: Boolean,
+    isStationOnline: Boolean,
+    isBusy: Boolean,
+    remainingTimerText: String? = null,
+    onCancelOutage: () -> Unit
 ) {
+    val timerSuffix = if (remainingTimerText != null) " • Залишок таймера: %s".format(remainingTimerText) else ""
+    val titleText = if (!isAutoResumeEnabled && isStationOnline) {
+        "ЖИВЛЕННЯ ВІДНОВЛЕНО • ОЧІКУЄ ЗАПУСКУ"
+    } else {
+        "ЗНИКЛО СВІТЛО В ГАРАЖІ"
+    }
+    val bodyText = when {
+        !isAutoResumeEnabled && isStationOnline ->
+            "Збережено %.1f кВт⋅год%s. Автопродовження вимкнене — натисніть СТАРТ, щоб продовжити, або скасуйте сесію.".format(
+                deliveredKwh,
+                timerSuffix
+            )
+        !isAutoResumeEnabled ->
+            "Збережено %.1f кВт⋅год%s. Автопродовження вимкнене в налаштуваннях — після появи світла зарядка не запуститься сама.".format(
+                deliveredKwh,
+                timerSuffix
+            )
+        remainingTimerText != null && isLimitEnabled ->
+            "Збережено %.1f кВт⋅год (таймер: %s). Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(
+                deliveredKwh,
+                remainingTimerText,
+                targetKwh
+            )
+        remainingTimerText != null ->
+            "Збережено %.1f кВт⋅год%s. Зарядка продовжиться автоматично при відновленні живлення.".format(
+                deliveredKwh,
+                timerSuffix
+            )
+        isLimitEnabled ->
+            "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(
+                deliveredKwh,
+                targetKwh
+            )
+        else ->
+            "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично при відновленні живлення.".format(
+                deliveredKwh
+            )
+    }
+
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
@@ -1370,40 +1417,42 @@ private fun OutageBanner(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = "⚠️", fontSize = 20.sp)
-            Column {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = "ЗНИКЛО СВІТЛО В ГАРАЖІ",
+                    text = titleText,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     color = StudioAmberWarn
                 )
                 Text(
-                    text = when {
-                        remainingTimerText != null && isLimitEnabled ->
-                            "Збережено %.1f кВт⋅год (таймер: %s). Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(
-                                deliveredKwh,
-                                remainingTimerText,
-                                targetKwh
-                            )
-                        remainingTimerText != null ->
-                            "Збережено %.1f кВт⋅год • Залишок таймера: %s. Зарядка продовжиться автоматично при відновленні живлення.".format(
-                                deliveredKwh,
-                                remainingTimerText
-                            )
-                        isLimitEnabled ->
-                            "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(
-                                deliveredKwh,
-                                targetKwh
-                            )
-                        else ->
-                            "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично при відновленні живлення.".format(
-                                deliveredKwh
-                            )
-                    },
+                    text = bodyText,
                     fontSize = 11.sp,
                     color = TextPrimaryDark
                 )
+                Card(
+                    onClick = onCancelOutage,
+                    enabled = !isBusy,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isBusy) StudioPanelDark else StudioAmberWarn.copy(alpha = 0.14f)
+                    ),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = Brush.linearGradient(listOf(StudioAmberWarn, StudioAmberWarn))
+                    )
+                ) {
+                    Text(
+                        text = if (isBusy) "СКАСУВАННЯ..." else "СКАСУВАТИ СЕСІЮ",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = StudioAmberWarn
+                    )
+                }
             }
         }
     }

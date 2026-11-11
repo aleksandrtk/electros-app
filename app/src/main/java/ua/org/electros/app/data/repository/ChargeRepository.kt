@@ -26,7 +26,8 @@ class ChargeRepository(
     private val settingsStore: SettingsStore? = null,
     private val isAutoResumeEnabledProvider: (() -> Boolean)? = null,
     private val scheduleConfigProvider: (() -> Triple<Boolean, String, String>)? = null,
-    private val localTimeProvider: () -> LocalTime = { LocalTime.now() }
+    private val localTimeProvider: () -> LocalTime = { LocalTime.now() },
+    private val clockMs: () -> Long = { System.currentTimeMillis() }
 ) {
 
     private suspend fun isAutoResumeEnabled(): Boolean {
@@ -83,21 +84,81 @@ class ChargeRepository(
     suspend fun fetchLatestTelemetry(isMonitorServiceRunning: Boolean = false): Result<TelemetryData> {
         val result = scraper.fetchTelemetry()
         result.onSuccess { data ->
-            _telemetryState.value = data
             if (!isMonitorServiceRunning && (!data.isOnline || !data.isChargingActive)) {
-                val active = chargeDao.getActiveSession()
-                if (active != null && active.status != SessionStatus.STOP_PENDING) {
-                    val isManagedOutageSession = active.targetDurationMinutes > 0 ||
-                        active.targetKwh > 0.0 ||
-                        isAutoResumeEnabled()
-                    val ageHours = (System.currentTimeMillis() - active.startedAt) / 3_600_000L
-                    if (!isManagedOutageSession || (active.totalKwhDelivered == 0.0 && active.accumulatedChargingMs == 0L && ageHours >= 24L)) {
-                        chargeDao.cancelAllActiveSessions()
-                    }
-                }
+                reconcileInactiveSessionOutsideMonitor(data)
             }
+            _telemetryState.value = data
         }
         return result
+    }
+
+    private suspend fun reconcileInactiveSessionOutsideMonitor(data: TelemetryData) {
+        val active = chargeDao.getActiveSession() ?: return
+        if (active.status == SessionStatus.STOP_PENDING) return
+
+        val isTrackedOutage = active.status == SessionStatus.OUTAGE_DETECTED ||
+            active.status == SessionStatus.OUTAGE_STABILIZING ||
+            active.status == SessionStatus.AUTO_RESUMING
+        val slices = chargeDao.getSlicesForSession(active.id)
+        val hasFinalizedEnergy = slices.any { it.finalizedKwh > 0.0 }
+        val latestSlice = slices.lastOrNull()
+        val hasOpenSliceEnergy = data.isOnline &&
+            latestSlice != null &&
+            latestSlice.endedAt == null &&
+            data.consumedEnergyKwh > latestSlice.stationCounterStartKwh + 0.05
+        val hasChargingProgress = active.totalKwhDelivered > 0.0 ||
+            active.accumulatedChargingMs > 0L ||
+            active.lastTickAt > 0L ||
+            hasFinalizedEnergy ||
+            hasOpenSliceEnergy
+        val hasEnergyOrDuration = active.totalKwhDelivered > 0.0 ||
+            active.accumulatedChargingMs > 0L ||
+            hasFinalizedEnergy ||
+            hasOpenSliceEnergy
+
+        val now = clockMs()
+        val sessionAgeMs = (now - active.startedAt).coerceAtLeast(0L)
+        val lastActivityMs = (now - maxOf(active.startedAt, active.lastTickAt)).coerceAtLeast(0L)
+
+        if (data.isOnline && !data.isChargingActive) {
+            if (!isTrackedOutage) {
+                if (sessionAgeMs >= STARTUP_GRACE_MS) {
+                    closeReconciledSession(active.id, data.consumedEnergyKwh, hasEnergyOrDuration)
+                }
+            } else if (data.statusText.contains("Чекаю підключення", ignoreCase = true) ||
+                (!hasChargingProgress && sessionAgeMs >= STALE_OUTAGE_MS)
+            ) {
+                closeReconciledSession(active.id, data.consumedEnergyKwh, hasEnergyOrDuration)
+            }
+            return
+        }
+
+        if (!data.isOnline) {
+            val neverCharged = !hasChargingProgress
+            val isStaleUntrackedCharging = !isTrackedOutage && lastActivityMs >= STALE_OFFLINE_CHARGING_MS
+            val isStaleEmptyOutage = isTrackedOutage && !hasEnergyOrDuration && sessionAgeMs >= STALE_OUTAGE_MS
+            if (neverCharged || isStaleUntrackedCharging || isStaleEmptyOutage) {
+                val safeCounter = maxOf(data.consumedEnergyKwh, latestSlice?.stationCounterLastKwh ?: 0.0)
+                closeReconciledSession(active.id, safeCounter, hasEnergyOrDuration)
+            }
+        }
+    }
+
+    private suspend fun closeReconciledSession(
+        sessionId: String,
+        finalCounter: Double,
+        preserveAsVehicleStopped: Boolean
+    ) {
+        if (preserveAsVehicleStopped) {
+            markSessionVehicleStopped(sessionId, finalCounter)
+        } else {
+            finalizeSessionStopped(
+                sessionId = sessionId,
+                lastCounter = finalCounter,
+                sliceReason = SliceEndReason.MANUAL_STOP,
+                finalStatus = SessionStatus.CANCELLED
+            )
+        }
     }
 
     private suspend fun fetchFreshTelemetryForAnchor(): TelemetryData? {
@@ -153,12 +214,18 @@ class ChargeRepository(
         if (preStartTelemetry != null && !preStartTelemetry.isOnline) {
             return Result.failure(IllegalStateException("Станція вимкнена з розетки (OFFLINE). Підключіть живлення до станції."))
         }
+        if (preStartTelemetry != null &&
+            !preStartTelemetry.isChargingActive &&
+            preStartTelemetry.statusText.contains("Чекаю підключення", ignoreCase = true)
+        ) {
+            return Result.failure(IllegalStateException("Авто не підключено до станції."))
+        }
 
         // Clear any leftover inactive/stale sessions before starting clean
-        chargeDao.cancelAllActiveSessions()
+        chargeDao.cancelAllActiveSessions(clockMs())
 
         val sessionId = UUID.randomUUID().toString()
-        val now = System.currentTimeMillis()
+        val now = clockMs()
         val session = ChargeSessionEntity(
             id = sessionId,
             targetKwh = targetKwh,
@@ -175,14 +242,32 @@ class ChargeRepository(
         if (startResult.isSuccess) {
             val anchorTelemetry = fetchFreshTelemetryForAnchor()
             if (anchorTelemetry == null) {
-                chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED))
+                chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED, completedAt = clockMs()))
                 return Result.failure(IOException("No telemetry to anchor slice"))
             }
-            chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh)
-            armDeadManTimer(session, anchorTelemetry.voltageCurrent ?: 230, 0.0)
+            if (!anchorTelemetry.isOnline) {
+                chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED, completedAt = clockMs()))
+                return Result.failure(IllegalStateException("Станція вимкнена з розетки (OFFLINE). Підключіть живлення до станції."))
+            }
+            if (!anchorTelemetry.isChargingActive &&
+                anchorTelemetry.statusText.contains("Чекаю підключення", ignoreCase = true)
+            ) {
+                chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED, completedAt = clockMs()))
+                return Result.failure(IllegalStateException("Авто не підключено до станції."))
+            }
+            val anchorNow = clockMs()
+            val activeSession = if (anchorTelemetry.isChargingActive) {
+                session.copy(lastTickAt = anchorNow).also {
+                    chargeDao.updateDurationProgress(sessionId, 0L, anchorNow)
+                }
+            } else {
+                session
+            }
+            chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh, anchorNow)
+            armDeadManTimer(activeSession, anchorTelemetry.voltageCurrent ?: 230, 0.0)
             return Result.success(sessionId)
         } else {
-            chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED))
+            chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED, completedAt = clockMs()))
             return Result.failure(startResult.exceptionOrNull() ?: Exception("Start command failed"))
         }
     }
@@ -322,19 +407,11 @@ class ChargeRepository(
         return Result.success(Unit)
     }
 
-    suspend fun cancelStaleSessionsIfOffline() {
-        val telemetry = _telemetryState.value
-        if (telemetry != null && !telemetry.isOnline) {
-            val active = chargeDao.getActiveSession()
-            if (active != null &&
-                active.status != SessionStatus.STOP_PENDING &&
-                active.totalKwhDelivered == 0.0 &&
-                active.targetDurationMinutes == 0 &&
-                active.targetKwh == 0.0 &&
-                !isAutoResumeEnabled()
-            ) {
-                chargeDao.cancelAllActiveSessions()
-            }
+    suspend fun cancelStaleSessionsIfOffline(isMonitorServiceRunning: Boolean = false) {
+        if (isMonitorServiceRunning) return
+        val telemetry = _telemetryState.value ?: return
+        if (!telemetry.isOnline) {
+            reconcileInactiveSessionOutsideMonitor(telemetry)
         }
     }
 
@@ -412,7 +489,7 @@ class ChargeRepository(
             chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh)
             val resumed = session.copy(
                 status = SessionStatus.CHARGING,
-                lastTickAt = 0L
+                lastTickAt = if (anchorTelemetry.isChargingActive) clockMs() else 0L
             )
             chargeDao.updateSession(resumed)
             armDeadManTimer(resumed, anchorTelemetry.voltageCurrent ?: 230, sumDelivered)
@@ -466,6 +543,12 @@ class ChargeRepository(
             )
         )
         restoreScheduleTimer(session = session)
+    }
+
+    companion object {
+        private const val STARTUP_GRACE_MS = 30_000L
+        private const val STALE_OFFLINE_CHARGING_MS = 2 * 3_600_000L
+        private const val STALE_OUTAGE_MS = 24 * 3_600_000L
     }
 }
 
