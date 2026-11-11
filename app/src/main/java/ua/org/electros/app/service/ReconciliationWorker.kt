@@ -19,7 +19,8 @@ class ReconciliationWorker(
             ChargeMonitorService.start(
                 applicationContext,
                 activeSession.id,
-                activeSession.targetKwh
+                activeSession.targetKwh,
+                activeSession.targetDurationMinutes
             )
         }
         return Result.success()

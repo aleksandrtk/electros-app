@@ -1,6 +1,7 @@
 package ua.org.electros.app.ui.limiter
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -157,6 +158,127 @@ fun LimiterScreen(
                         Text(text = "1 кВт⋅год", fontSize = 11.sp, color = TextSecondaryDark)
                         Text(text = "50 кВт⋅год", fontSize = 11.sp, color = TextSecondaryDark)
                         Text(text = "100 кВт⋅год", fontSize = 11.sp, color = TextSecondaryDark)
+                    }
+                }
+            }
+        }
+
+        // Charge Duration Timer Card (1-12 hours with Outage Survival)
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "ТАЙМЕР ТРИВАЛОСТІ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AmberNixie
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Зарядка на заданий час (1–12 год)",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimaryDark
+                        )
+                    }
+
+                    Switch(
+                        checked = state.isDurationTimerEnabled,
+                        onCheckedChange = { viewModel.toggleDurationTimer(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimaryDark,
+                            checkedTrackColor = AmberNixie
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (!state.isDurationTimerEnabled) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(SurfaceContainerHighDark)
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Вимкнено: таймер тривалості заряджання не заданий.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondaryDark
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(SurfaceContainerHighDark)
+                            .padding(14.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Обраний час зарядки", fontSize = 13.sp, color = TextSecondaryDark)
+                                Text(
+                                    text = "${state.targetDurationHours} год",
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = AmberNixie
+                                )
+                            }
+
+                            // 2-row 1..12h quick grid
+                            val rows = listOf((1..6).toList(), (7..12).toList())
+                            rows.forEach { rowHours ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    rowHours.forEach { h ->
+                                        val isSelected = state.targetDurationHours == h
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (isSelected) AmberNixie.copy(alpha = 0.2f) else StudioScreenDark)
+                                                .border(
+                                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                                    color = if (isSelected) AmberNixie else StudioScreenBorder,
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                                .clickable { viewModel.setTargetDurationHours(h) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${h}ч",
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
+                                                color = if (isSelected) AmberNixie else TextSecondaryDark
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = "⚡ Якщо світло зникне (OFFLINE), таймер встане на паузу та автоматично продовжить зарядку після відновлення живлення.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondaryDark,
+                                lineHeight = 17.sp
+                            )
+                        }
                     }
                 }
             }

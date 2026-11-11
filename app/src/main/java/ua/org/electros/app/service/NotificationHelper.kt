@@ -55,7 +55,9 @@ class NotificationHelper(private val context: Context) {
         powerKw: Double,
         deliveredKwh: Double,
         targetKwh: Double,
-        statusText: String
+        statusText: String,
+        targetDurationMinutes: Int = 0,
+        accumulatedChargingMs: Long = 0L
     ): Notification {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -77,11 +79,24 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val progress = if (targetKwh > 0.0) ((deliveredKwh / targetKwh) * 100).toInt() else 0
-        val contentText = if (targetKwh > 0.0) {
-            "Заряджено %.1f з %.0f кВт⋅год (%d%%)".format(deliveredKwh, targetKwh, progress)
-        } else {
-            "Заряджено %.1f кВт⋅год (без ліміту)".format(deliveredKwh)
+        val timerPart = if (targetDurationMinutes > 0) {
+            val targetMs = targetDurationMinutes * 60_000L
+            val remSec = ((targetMs - accumulatedChargingMs).coerceAtLeast(0L) / 1000L)
+            val h = remSec / 3600
+            val m = (remSec % 3600) / 60
+            " • Таймер %02d:%02d".format(h, m)
+        } else ""
+
+        val progress = when {
+            targetKwh > 0.0 -> ((deliveredKwh / targetKwh) * 100).toInt().coerceIn(0, 100)
+            targetDurationMinutes > 0 -> ((accumulatedChargingMs.toDouble() / (targetDurationMinutes * 60_000.0)) * 100).toInt().coerceIn(0, 100)
+            else -> 0
+        }
+
+        val contentText = when {
+            targetKwh > 0.0 -> "Заряджено %.1f з %.0f кВт⋅год (%d%%)$timerPart".format(deliveredKwh, targetKwh, progress)
+            targetDurationMinutes > 0 -> "Залито %.1f кВт⋅год$timerPart".format(deliveredKwh)
+            else -> "Заряджено %.1f кВт⋅год (без ліміту)".format(deliveredKwh)
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CHARGING)
@@ -93,7 +108,7 @@ class NotificationHelper(private val context: Context) {
             .addAction(android.R.drawable.ic_media_pause, "Зупинити", stopPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
 
-        if (targetKwh > 0.0) {
+        if (targetKwh > 0.0 || targetDurationMinutes > 0) {
             builder.setProgress(100, progress, false)
         }
 
@@ -167,6 +182,31 @@ class NotificationHelper(private val context: Context) {
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 2, builder.build())
+    }
+
+    fun showDurationTargetReachedAlert(targetDurationMinutes: Int, deliveredKwh: Double) {
+        val hours = targetDurationMinutes / 60
+        val mins = targetDurationMinutes % 60
+        val durLabel = if (mins == 0) "$hours год" else "${hours}г ${mins}хв"
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("⏱️ Таймер зарядки завершено!")
+            .setContentText("Відпрацьовано %s. Залито %.1f кВт⋅год. Станцію зупинено.".format(durLabel, deliveredKwh))
+            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
+    }
+
+    fun showOutageResumedAlert(amperes: Int) {
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("⚡ Світло повернулось — зарядку відновлено")
+            .setContentText("Станцію знову запущено на $amperes А. Таймер і лічильник продовжено.")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_ALERT + 3, builder.build())
     }
 }
 

@@ -33,6 +33,15 @@ interface ChargeDao {
     @Query("UPDATE charge_sessions SET status = 'CANCELLED', completedAt = :currentTime WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING')")
     suspend fun cancelAllActiveSessions(currentTime: Long = System.currentTimeMillis())
 
+    @Query("UPDATE charge_sessions SET accumulatedChargingMs = :accumulatedMs, lastTickAt = :lastTickAt WHERE id = :sessionId")
+    suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long)
+
+    @Query("UPDATE charge_sessions SET targetDurationMinutes = :targetDurationMinutes WHERE id = :sessionId")
+    suspend fun updateTargetDurationMinutes(sessionId: String, targetDurationMinutes: Int)
+
+    @Query("UPDATE charge_sessions SET amperageSetting = :amperes WHERE id = :sessionId")
+    suspend fun updateSessionAmperage(sessionId: String, amperes: Int)
+
     @Query("SELECT * FROM charge_sessions ORDER BY startedAt DESC")
     fun getAllSessions(): Flow<List<ChargeSessionEntity>>
 

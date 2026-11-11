@@ -83,6 +83,14 @@ class AuthPreferences(context: Context) {
         get() = prefs.getInt("KEY_VOLTAGE_MIN_AMPERAGE", 6)
         set(value) = prefs.edit().putInt("KEY_VOLTAGE_MIN_AMPERAGE", value).apply()
 
+    var isDurationTimerEnabled: Boolean
+        get() = prefs.getBoolean("KEY_DURATION_TIMER_ENABLED", false)
+        set(value) = prefs.edit().putBoolean("KEY_DURATION_TIMER_ENABLED", value).apply()
+
+    var targetDurationHours: Int
+        get() = prefs.getInt("KEY_TARGET_DURATION_HOURS", 2).coerceIn(1, 12)
+        set(value) = prefs.edit().putInt("KEY_TARGET_DURATION_HOURS", value.coerceIn(1, 12)).apply()
+
     fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }

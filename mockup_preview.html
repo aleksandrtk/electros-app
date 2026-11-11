@@ -362,6 +362,119 @@
       box-shadow: 0 0 8px #10B981;
     }
 
+    /* Variation 4.1 3D Dial & Timer Upgrades */
+    .rotary-stage-v41 {
+      position: relative;
+      width: 234px;
+      height: 204px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0 auto;
+    }
+    .rotary-stage-v41 .g-6a  { left: 31px;  top: 133px; }
+    .rotary-stage-v41 .g-8a  { left: 42px;  top: 49px;  }
+    .rotary-stage-v41 .g-10a { left: 117px; top: 10px;  }
+    .rotary-stage-v41 .g-12a { left: 192px; top: 49px;  }
+    .rotary-stage-v41 .g-16a { left: 203px; top: 133px; }
+    .rotary-collar-v41 {
+      width: 148px;
+      height: 148px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #090A0E 0%, #191D26 100%);
+      border: 1px solid #1E232E;
+      box-shadow: inset 3px 4px 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .rotary-knob-v41 {
+      width: 136px;
+      height: 136px;
+      border-radius: 50%;
+      background:
+        repeating-conic-gradient(from -2deg, rgba(8,10,14,0.85) 0deg 3deg, rgba(255,255,255,0.05) 3deg 15deg),
+        linear-gradient(135deg, #4F576A 0%, #20242F 55%, #0B0D12 100%);
+      border: 2px solid #596278;
+      box-shadow:
+        4px 12px 24px rgba(0,0,0,0.92),
+        0 2px 6px rgba(0,0,0,0.85),
+        inset 2px 2px 3px rgba(255,255,255,0.28),
+        inset -3px -3px 6px rgba(0,0,0,0.8);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      user-select: none;
+      z-index: 5;
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    }
+    .rotary-cap-v41 {
+      width: 112px;
+      height: 112px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18) 0%, transparent 55%),
+        linear-gradient(135deg, #424A5B 0%, #232834 58%, #101319 100%);
+      border: 1.5px solid #485063;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.75), inset 0 1px 2px rgba(255,255,255,0.25);
+      pointer-events: none;
+    }
+    .knob-marker-v41 {
+      position: absolute;
+      top: 6px;
+      width: 5px;
+      height: 22px;
+      background: linear-gradient(180deg, #FFDA96 0%, #FF9900 50%, #E06D00 100%);
+      border-radius: 3px;
+      box-shadow: 0 0 10px rgba(255,153,0,0.85), 0 0 2px #000;
+      z-index: 6;
+      pointer-events: none;
+    }
+    .knob-core-v41 {
+      position: absolute;
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #060709 0%, #0D0F14 55%, #171C25 100%);
+      border: 2.5px solid #2A303E;
+      box-shadow: inset 3px 4px 10px rgba(0,0,0,0.95), inset -1px -1px 3px rgba(255,255,255,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #FF9900;
+      font-size: 22px;
+      font-weight: 900;
+      font-family: 'JetBrains Mono', monospace;
+      text-shadow: 0 0 12px rgba(255,153,0,0.65);
+      z-index: 8;
+      pointer-events: none;
+    }
+    .timer-grid-v41 {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .timer-chip-v41 {
+      background: #0D0F14;
+      border: 1px solid #262B36;
+      border-radius: 6px;
+      color: #8E95A5;
+      font-size: 10px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: center;
+      padding: 5px 0;
+      cursor: pointer;
+    }
+    .timer-chip-v41.active {
+      background: #2B1D0A;
+      border-color: #FF9900;
+      color: #FF9900;
+    }
+
     /* =========================================================
        VARIATION 4.2: DUAL-DISPLAY WITH GRID SAG VOLTAGE METER
        ========================================================= */
@@ -440,17 +553,12 @@
       <div class="phone-meta">
         <div class="var-tag">Variation 4.1</div>
         <div class="var-title">Studio Classic (4.1)</div>
-        <div class="var-desc">The exact original look: 118px notched potentiometer, amber nixie voltage display, and mechanical halt switch.</div>
+        <div class="var-desc">Clean header, 136px 3D machined potentiometer, DLB indicator, and 1–12h charge timer with outage auto-resume.</div>
       </div>
       <div class="phone-chassis">
         <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
-        <div class="status-bar"><span>14:00</span><span>DC/AC PWR</span></div>
+        <div class="status-bar"><span>14:00</span><span>ONLINE • 218V</span></div>
         <div class="studio-viewport">
-          <div class="studio-subhead">
-            <span class="studio-model-code">STUDIO CONTROLLER</span>
-            <span class="studio-serial">REV. 2.2</span>
-          </div>
-
           <!-- RMS Line Voltage Panel -->
           <div class="tactile-face">
             <div style="font-size:10px; font-weight:800; color:#8E95A5; letter-spacing:0.06em; margin-bottom:6px;">LINE VOLTAGE (RMS)</div>
@@ -460,23 +568,25 @@
             </div>
           </div>
 
-          <!-- Central Rotary Current Knob Panel -->
+          <!-- Central 3D Rotary Current Knob Panel -->
           <div class="tactile-face rotary-panel">
             <div class="rotary-panel-label">SELECTABLE CHARGE CURRENT</div>
-            <div class="rotary-stage" id="stage-1">
+            <div class="rotary-stage-v41" id="stage-1">
               <span class="knob-grad-val g-6a" id="g1-6" onclick="setKnob1(6)">6A</span>
               <span class="knob-grad-val g-8a" id="g1-8" onclick="setKnob1(8)">8A</span>
               <span class="knob-grad-val g-10a active-target" id="g1-10" onclick="setKnob1(10)">10A</span>
               <span class="knob-grad-val g-12a" id="g1-12" onclick="setKnob1(12)">12A</span>
               <span class="knob-grad-val g-16a" id="g1-16" onclick="setKnob1(16)">16A</span>
 
-              <div class="rotary-knob-heavy" id="knob-1">
-                <div class="knob-marker-line"></div>
-                <div class="knob-center-core" id="knob-val-1">10A</div>
+              <div class="rotary-collar-v41">
+                <div class="rotary-knob-v41" id="knob-1">
+                  <div class="rotary-cap-v41"></div>
+                  <div class="knob-marker-v41"></div>
+                </div>
+                <div class="knob-core-v41" id="knob-val-1">10A</div>
               </div>
             </div>
             <div class="rotary-caption" id="kw-cap-1">OUTPUT: 2.18 kW ACTIVE</div>
-            <div style="font-size:10px; color:#6B7280; margin-top:4px; font-family:'JetBrains Mono';">TAP KNOB TO CYCLE STEP</div>
           </div>
 
           <!-- DLB Auto-Derate Status -->
@@ -486,6 +596,19 @@
               <span class="dlb-val" id="dlb-status-1">
                 <span class="lamp"></span> ENGAGED (&gt;185V)
               </span>
+            </div>
+          </div>
+
+          <!-- Charge Timer Status + 1-12H Picker -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill" onclick="toggleTimerDrawer1()" style="cursor: pointer;">
+              <span class="dlb-lbl">CHARGE TIMER ▾</span>
+              <span class="dlb-val" id="timer-status-1" style="color:#FF9900;">
+                <span class="lamp" id="timer-lamp-1" style="background:#FF9900; box-shadow:0 0 8px #FF9900;"></span> ON • 02:00:00
+              </span>
+            </div>
+            <div id="timer-drawer-1" style="display:none;">
+              <div class="timer-grid-v41" id="timer-grid-1"></div>
             </div>
           </div>
 
@@ -666,7 +789,6 @@
       const ang = knobAngles[v];
       document.getElementById('knob-1').style.transform = `rotate(${ang}deg)`;
       const valEl = document.getElementById('knob-val-1');
-      valEl.style.transform = `rotate(${-ang}deg)`;
       valEl.innerText = `${v}A`;
       const kw = ((218.4 * v) / 1000).toFixed(2);
       document.getElementById('kw-cap-1').innerText = `OUTPUT: ${kw} kW ACTIVE`;
@@ -824,6 +946,41 @@
         el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> DISABLED';
         el.style.color = '#8E95A5';
       }
+    }
+
+    let timer1Enabled = true;
+    let timer1Hours = 2;
+    function toggleTimerDrawer1() {
+      const d = document.getElementById('timer-drawer-1');
+      d.style.display = d.style.display === 'none' ? 'block' : 'none';
+      renderTimerGrid1();
+    }
+    function setTimer1(enabled, hrs) {
+      timer1Enabled = enabled;
+      if (hrs) timer1Hours = hrs;
+      const el = document.getElementById('timer-status-1');
+      if (timer1Enabled) {
+        const hh = String(timer1Hours).padStart(2, '0');
+        el.innerHTML = `<span class="lamp" style="background:#FF9900; box-shadow:0 0 8px #FF9900;"></span> ON • ${hh}:00:00`;
+        el.style.color = '#FF9900';
+      } else {
+        el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> OFF';
+        el.style.color = '#8E95A5';
+      }
+      renderTimerGrid1();
+    }
+    function renderTimerGrid1() {
+      const g = document.getElementById('timer-grid-1');
+      if (!g) return;
+      let html = '';
+      for (let h = 1; h <= 11; h++) {
+        const act = timer1Enabled && timer1Hours === h ? ' active' : '';
+        html += `<div class="timer-chip-v41${act}" onclick="event.stopPropagation(); setTimer1(true, ${h})">${h}H</div>`;
+      }
+      const act12 = timer1Enabled && timer1Hours === 12 ? ' active' : '';
+      html += `<div class="timer-chip-v41${act12}" onclick="event.stopPropagation(); setTimer1(true, 12)">12H</div>`;
+      html += `<div class="timer-chip-v41${!timer1Enabled ? ' active' : ''}" style="grid-column: span 6;" onclick="event.stopPropagation(); setTimer1(false)">DISABLE TIMER (OFF)</div>`;
+      g.innerHTML = html;
     }
 
     attachRotaryPhysics('knob-1', setKnob1, stepKnob1);

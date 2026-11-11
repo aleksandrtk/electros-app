@@ -55,5 +55,27 @@ class ChargingStateMachineTest {
         fsm.transition(StateEvent.VehicleStoppedCharging)
         assertThat(fsm.getState()).isEqualTo(SessionStatus.VEHICLE_STOPPED)
     }
+
+    @Test
+    fun stateMachine_outageRecoveryAccepts180VAndDirectResume() {
+        val fsm = ChargingStateMachine(SessionStatus.CHARGING)
+        fsm.transition(StateEvent.StartTriggered(targetKwh = 0.0, amperage = 12))
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.CHARGING)
+
+        fsm.transition(StateEvent.OutageDetected)
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.OUTAGE_DETECTED)
+
+        // Too low voltage must stay in OUTAGE_DETECTED
+        fsm.transition(StateEvent.GridRestored(voltage = 175))
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.OUTAGE_DETECTED)
+
+        // 180V should be accepted for Ukrainian low-voltage winter grids
+        fsm.transition(StateEvent.GridRestored(voltage = 180))
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.OUTAGE_STABILIZING)
+
+        // If hardware auto-resumed during stabilization, ResumeCommandSent restores CHARGING
+        fsm.transition(StateEvent.ResumeCommandSent)
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.CHARGING)
+    }
 }
 

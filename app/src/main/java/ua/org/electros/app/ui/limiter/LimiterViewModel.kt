@@ -1,5 +1,6 @@
 package ua.org.electros.app.ui.limiter
 
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +13,8 @@ import ua.org.electros.app.data.repository.ChargeRepository
 data class LimiterUiState(
     val isKwhLimitEnabled: Boolean = false,
     val targetKwh: Double = 15.0,
+    val isDurationTimerEnabled: Boolean = false,
+    val targetDurationHours: Int = 2,
     val isScheduleEnabled: Boolean = false,
     val startTime: String = "23:00",
     val stopTime: String = "07:00",
@@ -29,22 +32,67 @@ class LimiterViewModel(
     private val authPreferences: AuthPreferences
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        LimiterUiState(
-            isKwhLimitEnabled = authPreferences.isKwhLimitEnabled,
-            targetKwh = authPreferences.targetKwhLimit,
-            isScheduleEnabled = authPreferences.isScheduleEnabled,
-            startTime = authPreferences.scheduleStartTime,
-            stopTime = authPreferences.scheduleStopTime,
-            isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
-            isStopAtTariffBoundaryEnabled = authPreferences.stopAtTariffBoundary,
-            isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
-            voltageLowThreshold = authPreferences.voltageLowThreshold,
-            voltageHighThreshold = authPreferences.voltageHighThreshold,
-            voltageMaxAmperage = authPreferences.voltageMaxAmperage
-        )
-    )
+    private val _uiState = MutableStateFlow(readStateFromPrefs())
     val uiState: StateFlow<LimiterUiState> = _uiState.asStateFlow()
+
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        _uiState.value = readStateFromPrefs().copy(isScheduleSaved = _uiState.value.isScheduleSaved)
+    }
+
+    init {
+        authPreferences.registerListener(prefListener)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        authPreferences.unregisterListener(prefListener)
+    }
+
+    private fun readStateFromPrefs(): LimiterUiState = LimiterUiState(
+        isKwhLimitEnabled = authPreferences.isKwhLimitEnabled,
+        targetKwh = authPreferences.targetKwhLimit,
+        isDurationTimerEnabled = authPreferences.isDurationTimerEnabled,
+        targetDurationHours = authPreferences.targetDurationHours,
+        isScheduleEnabled = authPreferences.isScheduleEnabled,
+        startTime = authPreferences.scheduleStartTime,
+        stopTime = authPreferences.scheduleStopTime,
+        isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
+        isStopAtTariffBoundaryEnabled = authPreferences.stopAtTariffBoundary,
+        isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
+        voltageLowThreshold = authPreferences.voltageLowThreshold,
+        voltageHighThreshold = authPreferences.voltageHighThreshold,
+        voltageMaxAmperage = authPreferences.voltageMaxAmperage
+    )
+
+    fun toggleDurationTimer(enabled: Boolean) {
+        authPreferences.isDurationTimerEnabled = enabled
+        if (enabled) {
+            authPreferences.autoResumeAfterOutage = true
+        }
+        val hours = authPreferences.targetDurationHours
+        _uiState.value = _uiState.value.copy(
+            isDurationTimerEnabled = enabled,
+            isAutoResumeEnabled = authPreferences.autoResumeAfterOutage
+        )
+        viewModelScope.launch {
+            repository.getActiveSession()?.let { active ->
+                repository.updateTargetDurationMinutes(active.id, if (enabled) hours * 60 else 0)
+            }
+        }
+    }
+
+    fun setTargetDurationHours(hours: Int) {
+        val clamped = hours.coerceIn(1, 12)
+        authPreferences.targetDurationHours = clamped
+        _uiState.value = _uiState.value.copy(targetDurationHours = clamped)
+        if (_uiState.value.isDurationTimerEnabled) {
+            viewModelScope.launch {
+                repository.getActiveSession()?.let { active ->
+                    repository.updateTargetDurationMinutes(active.id, clamped * 60)
+                }
+            }
+        }
+    }
 
     fun toggleKwhLimit(enabled: Boolean) {
         authPreferences.isKwhLimitEnabled = enabled

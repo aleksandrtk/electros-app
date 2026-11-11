@@ -42,12 +42,16 @@ class ChargingStateMachine(
 
             SessionStatus.OUTAGE_DETECTED -> when (event) {
                 is StateEvent.GridRestored -> {
-                    if (event.voltage in 198..242) {
+                    if (event.voltage in 180..250) {
                         stableVoltageTicksCount = 1
                         SessionStatus.OUTAGE_STABILIZING
                     } else {
                         currentStatus
                     }
+                }
+                is StateEvent.ResumeCommandSent -> {
+                    stableVoltageTicksCount = 0
+                    SessionStatus.CHARGING
                 }
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
@@ -69,6 +73,10 @@ class ChargingStateMachine(
                 is StateEvent.OutageDetected -> {
                     stableVoltageTicksCount = 0
                     SessionStatus.OUTAGE_DETECTED
+                }
+                is StateEvent.ResumeCommandSent -> {
+                    stableVoltageTicksCount = 0
+                    SessionStatus.CHARGING
                 }
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus

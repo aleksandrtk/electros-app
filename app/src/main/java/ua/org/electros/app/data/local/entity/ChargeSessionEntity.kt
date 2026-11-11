@@ -23,6 +23,9 @@ data class ChargeSessionEntity(
     val status: SessionStatus,
     val startedAt: Long,
     val completedAt: Long? = null,
-    val totalKwhDelivered: Double = 0.0
+    val totalKwhDelivered: Double = 0.0,
+    val targetDurationMinutes: Int = 0,
+    val accumulatedChargingMs: Long = 0L,
+    val lastTickAt: Long = 0L
 )
 
