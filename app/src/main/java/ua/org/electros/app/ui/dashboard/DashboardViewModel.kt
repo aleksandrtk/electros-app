@@ -218,9 +218,6 @@ class DashboardViewModel(
         val clampedHours = hours.coerceIn(1, 12)
         authPreferences.isDurationTimerEnabled = enabled
         authPreferences.targetDurationHours = clampedHours
-        if (enabled) {
-            authPreferences.autoResumeAfterOutage = true
-        }
         _prefsTrigger.value += 1
 
         val durationMinutes = if (enabled) clampedHours * 60 else 0

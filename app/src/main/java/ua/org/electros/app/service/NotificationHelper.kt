@@ -17,8 +17,22 @@ class NotificationHelper(private val context: Context) {
         const val CHANNEL_ID_ALERTS = "charging_alerts_channel"
         const val NOTIFICATION_ID_STATUS = 1001
         const val NOTIFICATION_ID_ALERT = 1002
+        const val NOTIFICATION_ID_RESUME_ALERT = 1007
 
         const val ACTION_STOP_CHARGE = "ua.org.electros.app.ACTION_STOP_CHARGE"
+        const val ACTION_RESUME_CHARGE = "ua.org.electros.app.ACTION_RESUME_CHARGE"
+    }
+
+    private fun buildServiceActionPendingIntent(requestCode: Int, action: String): PendingIntent {
+        val intent = Intent(context, ChargeMonitorService::class.java).apply {
+            this.action = action
+        }
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(context, requestCode, intent, flags)
+        } else {
+            PendingIntent.getService(context, requestCode, intent, flags)
+        }
     }
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -69,15 +83,7 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val stopIntent = Intent(context, ChargeMonitorService::class.java).apply {
-            action = ACTION_STOP_CHARGE
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            context,
-            1,
-            stopIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val stopPendingIntent = buildServiceActionPendingIntent(1, ACTION_STOP_CHARGE)
 
         val timerPart = if (targetDurationMinutes > 0) {
             val targetMs = targetDurationMinutes * 60_000L
@@ -115,15 +121,48 @@ class NotificationHelper(private val context: Context) {
         return builder.build()
     }
 
-    fun showOutageAlert(retainedKwh: Double) {
+    fun showOutageAlert(retainedKwh: Double, autoResumeEnabled: Boolean = true) {
+        val text = if (autoResumeEnabled) {
+            "Станція OFFLINE. Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично.".format(retainedKwh)
+        } else {
+            "Станція OFFLINE. Збережено %.1f кВт⋅год. Автоматичне відновлення вимкнено.".format(retainedKwh)
+        }
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚠️ Світло в гаражі зникло!")
-            .setContentText("Станція OFFLINE. Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично.".format(retainedKwh))
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
+    }
+
+    fun showManualResumeAvailableAlert(amperes: Int, retainedKwh: Double) {
+        val resumePendingIntent = buildServiceActionPendingIntent(5, ACTION_RESUME_CHARGE)
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            context,
+            6,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("⚡ Світло з'явилось — станція в мережі")
+            .setContentText("Збережено %.1f кВт⋅год. Натисніть «Відновити заряд» для запуску на %d А.".format(retainedKwh, amperes))
+            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setContentIntent(openAppPendingIntent)
+            .addAction(android.R.drawable.ic_media_play, "Відновити заряд", resumePendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_RESUME_ALERT, builder.build())
+    }
+
+    fun cancelManualResumeAlert() {
+        notificationManager.cancel(NOTIFICATION_ID_RESUME_ALERT)
     }
 
     fun showTargetReachedAlert(deliveredKwh: Double) {

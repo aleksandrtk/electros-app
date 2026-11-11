@@ -273,9 +273,13 @@ fun LimiterScreen(
                             }
 
                             Text(
-                                text = "⚡ Якщо світло зникне (OFFLINE), таймер встане на паузу та автоматично продовжить зарядку після відновлення живлення.",
+                                text = if (state.isAutoResumeEnabled) {
+                                    "⚡ Якщо світло зникне (OFFLINE), таймер встане на паузу та автоматично продовжить зарядку після відновлення живлення."
+                                } else {
+                                    "⏸ Якщо світло зникне (OFFLINE), таймер встане на паузу. Автоматичне відновлення вимкнено — після появи світла прийде сповіщення з кнопкою «Відновити заряд»."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondaryDark,
+                                color = if (state.isAutoResumeEnabled) TextSecondaryDark else WarningAmber,
                                 lineHeight = 17.sp
                             )
                         }

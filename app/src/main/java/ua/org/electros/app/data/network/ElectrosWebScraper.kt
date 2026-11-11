@@ -289,6 +289,8 @@ class ElectrosWebScraper(
             val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") { it.isChargingActive }
             if (wsResult.isSuccess) return@withContext wsResult
         }
+        // Apply amperage via HTTP only on the HTTP fallback path to avoid duplicate WS connections.
+        setAmperageHttp(amperes)
         executeAction("start")
     }
 
@@ -308,7 +310,10 @@ class ElectrosWebScraper(
             val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") { it.selectedCurrentAmperes == amperes }
             if (wsResult.isSuccess) return@withContext wsResult
         }
+        setAmperageHttp(amperes)
+    }
 
+    private fun setAmperageHttp(amperes: Int): Result<Unit> {
         val formBuilder = FormBody.Builder()
             .add("action", "set_current")
             .add("current", "$amperes A")
@@ -325,9 +330,10 @@ class ElectrosWebScraper(
             .post(formBuilder.build())
             .build()
 
-        try {
-            val response = client.newCall(request).execute()
-            if (response.isSuccessful) Result.success(Unit) else Result.failure(IOException("HTTP ${response.code}"))
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) Result.success(Unit) else Result.failure(IOException("HTTP ${response.code}"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -15,12 +15,22 @@ import ua.org.electros.app.data.model.TelemetryData
 import ua.org.electros.app.data.network.ElectrosWebScraper
 import ua.org.electros.app.domain.accumulator.EnergyAccumulator
 import java.io.IOException
+import java.time.LocalTime
 import java.util.UUID
 
 class ChargeRepository(
     private val scraper: ElectrosWebScraper,
     private val chargeDao: ChargeDao,
-    private val authPreferences: AuthPreferences? = null
+    private val authPreferences: AuthPreferences? = null,
+    private val isAutoResumeEnabledProvider: () -> Boolean = { authPreferences?.autoResumeAfterOutage ?: true },
+    private val scheduleConfigProvider: () -> Triple<Boolean, String, String> = {
+        Triple(
+            authPreferences?.isScheduleEnabled == true,
+            authPreferences?.scheduleStartTime ?: "23:00",
+            authPreferences?.scheduleStopTime ?: "07:00"
+        )
+    },
+    private val localTimeProvider: () -> LocalTime = { LocalTime.now() }
 ) {
 
     private val _telemetryState = MutableStateFlow<TelemetryData?>(null)
@@ -66,7 +76,7 @@ class ChargeRepository(
                 if (active != null && active.status != SessionStatus.STOP_PENDING) {
                     val isManagedOutageSession = active.targetDurationMinutes > 0 ||
                         active.targetKwh > 0.0 ||
-                        (authPreferences?.autoResumeAfterOutage == true)
+                        isAutoResumeEnabledProvider()
                     val ageHours = (System.currentTimeMillis() - active.startedAt) / 3_600_000L
                     if (!isManagedOutageSession || (active.totalKwhDelivered == 0.0 && active.accumulatedChargingMs == 0L && ageHours >= 24L)) {
                         chargeDao.cancelAllActiveSessions()
@@ -77,13 +87,57 @@ class ChargeRepository(
         return result
     }
 
+    private suspend fun fetchFreshTelemetryForAnchor(): TelemetryData? {
+        val fresh = scraper.fetchTelemetry().getOrNull()
+        if (fresh != null) {
+            _telemetryState.value = fresh
+            return fresh
+        }
+        return _telemetryState.value
+    }
+
+    suspend fun armDeadManTimer(
+        session: ChargeSessionEntity,
+        voltageVolts: Int,
+        deliveredKwh: Double
+    ) {
+        val (schedEnabled, schedStart, schedStop) = scheduleConfigProvider()
+        val window = EnergyAccumulator.computeDeadManScheduleWindow(
+            now = localTimeProvider(),
+            targetKwh = session.targetKwh,
+            deliveredKwh = deliveredKwh,
+            targetDurationMinutes = session.targetDurationMinutes,
+            accumulatedChargingMs = session.accumulatedChargingMs,
+            voltageVolts = voltageVolts,
+            amperes = session.amperageSetting,
+            isScheduleEnabled = schedEnabled,
+            scheduleStartTime = schedStart,
+            scheduleStopTime = schedStop
+        ) ?: return
+        runCatching { scraper.setTimer(window.first, window.second) }
+    }
+
+    suspend fun refreshDeadManTimer(sessionId: String, voltageVolts: Int, deliveredKwh: Double) {
+        val session = chargeDao.getSessionById(sessionId) ?: return
+        armDeadManTimer(session, voltageVolts, deliveredKwh)
+    }
+
+    private suspend fun restoreScheduleTimer(forceRestore: Boolean = false, session: ChargeSessionEntity? = null) {
+        val shouldRestore = forceRestore || (session != null && (session.targetKwh > 0.0 || session.targetDurationMinutes > 0))
+        if (!shouldRestore) return
+        val (schedEnabled, schedStart, schedStop) = scheduleConfigProvider()
+        val targetStart = if (schedEnabled) schedStart else "00:00"
+        val targetStop = if (schedEnabled) schedStop else "00:00"
+        runCatching { scraper.setTimer(targetStart, targetStop) }
+    }
+
     suspend fun startNewSession(
         targetKwh: Double,
         amperage: Int,
         targetDurationMinutes: Int = 0
     ): Result<String> {
-        val currentTelemetry = _telemetryState.value
-        if (currentTelemetry != null && !currentTelemetry.isOnline) {
+        val preStartTelemetry = fetchFreshTelemetryForAnchor()
+        if (preStartTelemetry != null && !preStartTelemetry.isOnline) {
             return Result.failure(IllegalStateException("Станція вимкнена з розетки (OFFLINE). Підключіть живлення до станції."))
         }
 
@@ -104,15 +158,15 @@ class ChargeRepository(
         )
         chargeDao.insertSession(session)
 
-        // Set amperage on station first
-        scraper.setAmperage(amperage)
-
-        // Start station
         val startResult = scraper.startCharge(amperage)
         if (startResult.isSuccess) {
-            val telemetry = _telemetryState.value
-            val currentCounter = telemetry?.consumedEnergyKwh ?: 0.0
-            chargeDao.startNewSlice(sessionId, currentCounter)
+            val anchorTelemetry = fetchFreshTelemetryForAnchor()
+            if (anchorTelemetry == null) {
+                chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED))
+                return Result.failure(IOException("No telemetry to anchor slice"))
+            }
+            chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh)
+            armDeadManTimer(session, anchorTelemetry.voltageCurrent, 0.0)
             return Result.success(sessionId)
         } else {
             chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED))
@@ -125,11 +179,11 @@ class ChargeRepository(
         amperage: Int,
         targetDurationMinutes: Int
     ): Result<String> {
+        val anchorTelemetry = fetchFreshTelemetryForAnchor()
+            ?: return Result.failure(IOException("No telemetry to anchor slice"))
         chargeDao.cancelAllActiveSessions()
         val sessionId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        val telemetry = _telemetryState.value
-        val currentCounter = telemetry?.consumedEnergyKwh ?: 0.0
         val session = ChargeSessionEntity(
             id = sessionId,
             targetKwh = targetKwh,
@@ -141,7 +195,8 @@ class ChargeRepository(
             lastTickAt = now
         )
         chargeDao.insertSession(session)
-        chargeDao.startNewSlice(sessionId, currentCounter, now)
+        chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh, now)
+        armDeadManTimer(session, anchorTelemetry.voltageCurrent, 0.0)
         return Result.success(sessionId)
     }
 
@@ -150,7 +205,15 @@ class ChargeRepository(
     }
 
     suspend fun updateTargetDurationMinutes(sessionId: String, targetDurationMinutes: Int) {
+        val previous = chargeDao.getSessionById(sessionId)
         chargeDao.updateTargetDurationMinutes(sessionId, targetDurationMinutes)
+        val updated = chargeDao.getSessionById(sessionId) ?: return
+        if (updated.targetKwh > 0.0 || updated.targetDurationMinutes > 0) {
+            val voltage = _telemetryState.value?.voltageCurrent ?: 230
+            armDeadManTimer(updated, voltage, updated.totalKwhDelivered)
+        } else if (previous != null && (previous.targetKwh > 0.0 || previous.targetDurationMinutes > 0)) {
+            restoreScheduleTimer(forceRestore = true)
+        }
     }
 
     suspend fun updateSessionAmperage(sessionId: String, amperes: Int) {
@@ -187,6 +250,7 @@ class ChargeRepository(
         sliceReason: SliceEndReason,
         finalStatus: SessionStatus
     ) {
+        val sessionBefore = chargeDao.getSessionById(sessionId)
         chargeDao.finalizeActiveSliceAndCommit(
             sessionId = sessionId,
             lastSampledKwh = lastCounter,
@@ -198,6 +262,7 @@ class ChargeRepository(
             completedAt = System.currentTimeMillis(),
             lastTickAt = 0L
         )
+        restoreScheduleTimer(session = sessionBefore)
     }
 
     suspend fun stopActiveSession(
@@ -223,7 +288,9 @@ class ChargeRepository(
             return Result.failure(IOException("Не вдалося зупинити станцію"))
         }
         if (session != null) {
-            val lastCounter = _telemetryState.value?.consumedEnergyKwh ?: 0.0
+            val lastCounter = _telemetryState.value?.consumedEnergyKwh
+                ?: fetchFreshTelemetryForAnchor()?.consumedEnergyKwh
+                ?: 0.0
             finalizeSessionStopped(
                 sessionId = sessionId,
                 lastCounter = lastCounter,
@@ -243,7 +310,7 @@ class ChargeRepository(
                 active.totalKwhDelivered == 0.0 &&
                 active.targetDurationMinutes == 0 &&
                 active.targetKwh == 0.0 &&
-                authPreferences?.autoResumeAfterOutage != true
+                !isAutoResumeEnabledProvider()
             ) {
                 chargeDao.cancelAllActiveSessions()
             }
@@ -293,7 +360,11 @@ class ChargeRepository(
         )
     }
 
-    suspend fun resumeAfterOutage(sessionId: String): Result<Unit> {
+    suspend fun resumeAfterOutage(sessionId: String, isManual: Boolean = false): Result<Unit> {
+        if (!isManual && !isAutoResumeEnabledProvider()) {
+            return Result.failure(IllegalStateException("Auto-resume disabled"))
+        }
+
         val session = chargeDao.getSessionById(sessionId) ?: return Result.failure(Exception("Session not found"))
         val slices = chargeDao.getSlicesForSession(sessionId)
         val sumDelivered = slices.sumOf { it.finalizedKwh }
@@ -302,6 +373,7 @@ class ChargeRepository(
             val remainingKwh = EnergyAccumulator.calculateRemainingKwh(session.targetKwh, sumDelivered)
             if (remainingKwh <= 0.1) {
                 chargeDao.updateSession(session.copy(status = SessionStatus.TARGET_REACHED, completedAt = System.currentTimeMillis(), lastTickAt = 0L))
+                restoreScheduleTimer(session = session)
                 return Result.success(Unit)
             }
         }
@@ -310,23 +382,22 @@ class ChargeRepository(
             val targetDurationMs = session.targetDurationMinutes * 60_000L
             if (session.accumulatedChargingMs >= targetDurationMs) {
                 chargeDao.updateSession(session.copy(status = SessionStatus.TARGET_REACHED, completedAt = System.currentTimeMillis(), lastTickAt = 0L))
+                restoreScheduleTimer(session = session)
                 return Result.success(Unit)
             }
         }
 
-        // Start station with configured amperage
-        scraper.setAmperage(session.amperageSetting)
         val startResult = scraper.startCharge(session.amperageSetting)
         if (startResult.isSuccess) {
-            val freshTelemetry = _telemetryState.value
-            val currentCounter = freshTelemetry?.consumedEnergyKwh ?: 0.0
-            chargeDao.startNewSlice(sessionId, currentCounter)
-            chargeDao.updateSession(
-                session.copy(
-                    status = SessionStatus.CHARGING,
-                    lastTickAt = 0L
-                )
+            val anchorTelemetry = fetchFreshTelemetryForAnchor()
+                ?: return Result.failure(IOException("No telemetry to anchor slice"))
+            chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh)
+            val resumed = session.copy(
+                status = SessionStatus.CHARGING,
+                lastTickAt = 0L
             )
+            chargeDao.updateSession(resumed)
+            armDeadManTimer(resumed, anchorTelemetry.voltageCurrent, sumDelivered)
             return Result.success(Unit)
         }
         return startResult
@@ -376,6 +447,7 @@ class ChargeRepository(
                 lastTickAt = 0L
             )
         )
+        restoreScheduleTimer(session = session)
     }
 }
 

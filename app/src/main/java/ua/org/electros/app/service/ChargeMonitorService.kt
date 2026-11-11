@@ -45,8 +45,10 @@ class ChargeMonitorService : Service() {
     private var zeroCurrentConsecutiveTicks = 0
     private var consecutiveFailureTicks = 0
     private var hasAlertedConnectionLost = false
+    private var hasAlertedManualResume = false
     private var pendingStopIsManual = false
     private var hasAlertedStopFailed = false
+    private var foregroundStarted = false
 
     override fun onCreate() {
         super.onCreate()
@@ -75,11 +77,46 @@ class ChargeMonitorService : Service() {
         voltageLoadBalancer.maxAmperage = authPreferences.voltageMaxAmperage
     }
 
+    private fun ensureForegroundStarted() {
+        if (foregroundStarted) return
+        val initialNotification = notificationHelper.buildForegroundNotification(
+            powerKw = 0.0,
+            deliveredKwh = 0.0,
+            targetKwh = activeTargetKwh,
+            statusText = "Ініціалізація...",
+            targetDurationMinutes = activeTargetDurationMinutes,
+            accumulatedChargingMs = accumulatedChargingMs
+        )
+        startForeground(NotificationHelper.NOTIFICATION_ID_STATUS, initialNotification)
+        foregroundStarted = true
+    }
+
+    private fun acquireSessionWakeLock() {
+        if (wakeLock?.isHeld != true) {
+            wakeLock?.acquire(SESSION_WAKELOCK_TIMEOUT_MS)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isRunning = true
-        if (intent?.action == NotificationHelper.ACTION_STOP_CHARGE) {
-            handleManualStop()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            NotificationHelper.ACTION_STOP_CHARGE -> {
+                ensureForegroundStarted()
+                handleManualStop()
+                return START_NOT_STICKY
+            }
+            NotificationHelper.ACTION_RESUME_CHARGE -> {
+                ensureForegroundStarted()
+                acquireSessionWakeLock()
+                handleManualResume()
+                return START_REDELIVER_INTENT
+            }
         }
 
         val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
@@ -95,21 +132,15 @@ class ChargeMonitorService : Service() {
             zeroCurrentConsecutiveTicks = 0
             consecutiveFailureTicks = 0
             hasAlertedConnectionLost = false
+            hasAlertedManualResume = false
             pendingStopIsManual = false
             hasAlertedStopFailed = false
             stateMachine = ChargingStateMachine(SessionStatus.CHARGING)
         }
 
-        val initialNotification = notificationHelper.buildForegroundNotification(
-            powerKw = 0.0,
-            deliveredKwh = 0.0,
-            targetKwh = activeTargetKwh,
-            statusText = "Ініціалізація...",
-            targetDurationMinutes = activeTargetDurationMinutes,
-            accumulatedChargingMs = accumulatedChargingMs
-        )
-        startForeground(NotificationHelper.NOTIFICATION_ID_STATUS, initialNotification)
-
+        ensureForegroundStarted()
+        // Keep PARTIAL_WAKE_LOCK across the whole session so Doze does not stretch poll intervals.
+        acquireSessionWakeLock()
         startMonitoringLoop()
 
         return START_REDELIVER_INTENT
@@ -130,6 +161,8 @@ class ChargeMonitorService : Service() {
             }
 
             while (isActive) {
+                acquireSessionWakeLock()
+
                 val preStatus = stateMachine.getState()
                 if (preStatus == SessionStatus.TARGET_REACHED ||
                     preStatus == SessionStatus.CANCELLED ||
@@ -160,15 +193,7 @@ class ChargeMonitorService : Service() {
     private suspend fun pollTelemetryAndEvaluateState() {
         syncLoadBalancerPrefs()
 
-        // Acquire wake lock strictly for the duration of the telemetry network request
-        wakeLock?.acquire(15_000L)
-        val result = try {
-            repository.fetchLatestTelemetry(isMonitorServiceRunning = true)
-        } finally {
-            if (wakeLock?.isHeld == true) {
-                wakeLock?.release()
-            }
-        }
+        val result = repository.fetchLatestTelemetry(isMonitorServiceRunning = true)
 
         val sessionId = activeSessionId ?: return
         val dbSession = repository.getSessionById(sessionId)
@@ -201,11 +226,24 @@ class ChargeMonitorService : Service() {
             // Check for counter regression (rapid station reboot)
             if (EnergyAccumulator.isCounterRegression(data.consumedEnergyKwh, lastSampledCounterKwh)) {
                 lastActiveChargingSampleAt = 0L
+                stateMachine.transition(StateEvent.OutageDetected)
                 repository.handleOutageDetected(sessionId, lastSampledCounterKwh)
-                val resumeRes = repository.resumeAfterOutage(sessionId)
-                if (resumeRes.isSuccess) {
-                    stateMachine.transition(StateEvent.ResumeCommandSent)
-                    notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
+                val outageDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
+                    finalizedSlices = slices.filter { it.endedAt != null },
+                    activeSliceStartKwh = sliceStart,
+                    currentStationCounterKwh = lastSampledCounterKwh
+                )
+                if (authPreferences.autoResumeAfterOutage) {
+                    val resumeRes = repository.resumeAfterOutage(sessionId)
+                    if (resumeRes.isSuccess) {
+                        stateMachine.transition(StateEvent.ResumeCommandSent)
+                        hasAlertedManualResume = false
+                        notificationHelper.cancelManualResumeAlert()
+                        notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
+                    }
+                } else if (!hasAlertedManualResume) {
+                    hasAlertedManualResume = true
+                    notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, outageDelivered)
                 }
             }
             lastSampledCounterKwh = data.consumedEnergyKwh
@@ -225,8 +263,9 @@ class ChargeMonitorService : Service() {
                     stateMachine.getState() == SessionStatus.AUTO_RESUMING
                 ) {
                     stateMachine.transition(StateEvent.OutageDetected)
+                    hasAlertedManualResume = false
                     repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
-                    notificationHelper.showOutageAlert(totalDelivered)
+                    notificationHelper.showOutageAlert(totalDelivered, authPreferences.autoResumeAfterOutage)
                 }
             } else {
                 // If station came back online and is already actively charging (e.g. brief phone drop or auto-recovery)
@@ -235,24 +274,42 @@ class ChargeMonitorService : Service() {
                         stateMachine.getState() == SessionStatus.AUTO_RESUMING)
                 ) {
                     stateMachine.transition(StateEvent.ResumeCommandSent)
+                    hasAlertedManualResume = false
+                    notificationHelper.cancelManualResumeAlert()
                     repository.restoreChargingFromExistingSlice(sessionId)
                 }
 
                 when (stateMachine.getState()) {
                     SessionStatus.OUTAGE_DETECTED -> {
-                        val nextState = stateMachine.transition(StateEvent.GridRestored(data.voltageCurrent))
-                        if (nextState == SessionStatus.OUTAGE_STABILIZING) {
-                            repository.handleOutageStabilizing(sessionId)
+                        if (!authPreferences.autoResumeAfterOutage) {
+                            if (!hasAlertedManualResume) {
+                                hasAlertedManualResume = true
+                                notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
+                            }
+                        } else {
+                            val nextState = stateMachine.transition(StateEvent.GridRestored(data.voltageCurrent))
+                            if (nextState == SessionStatus.OUTAGE_STABILIZING) {
+                                repository.handleOutageStabilizing(sessionId)
+                            }
                         }
                     }
                     SessionStatus.OUTAGE_STABILIZING -> {
-                        if (data.voltageCurrent in 180..250) {
+                        if (!authPreferences.autoResumeAfterOutage) {
+                            stateMachine.transition(StateEvent.OutageDetected)
+                            repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
+                            if (!hasAlertedManualResume) {
+                                hasAlertedManualResume = true
+                                notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
+                            }
+                        } else if (data.voltageCurrent in 180..250) {
                             val nextState = stateMachine.transition(StateEvent.VoltageStable)
                             if (nextState == SessionStatus.AUTO_RESUMING) {
                                 val resumeRes = repository.resumeAfterOutage(sessionId)
                                 if (resumeRes.isSuccess) {
                                     stateMachine.transition(StateEvent.ResumeCommandSent)
                                     lastActiveChargingSampleAt = 0L
+                                    hasAlertedManualResume = false
+                                    notificationHelper.cancelManualResumeAlert()
                                     notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
                                 }
                             }
@@ -262,11 +319,22 @@ class ChargeMonitorService : Service() {
                         }
                     }
                     SessionStatus.AUTO_RESUMING -> {
-                        val resumeRes = repository.resumeAfterOutage(sessionId)
-                        if (resumeRes.isSuccess) {
-                            stateMachine.transition(StateEvent.ResumeCommandSent)
-                            lastActiveChargingSampleAt = 0L
-                            notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
+                        if (!authPreferences.autoResumeAfterOutage) {
+                            stateMachine.transition(StateEvent.OutageDetected)
+                            repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
+                            if (!hasAlertedManualResume) {
+                                hasAlertedManualResume = true
+                                notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
+                            }
+                        } else {
+                            val resumeRes = repository.resumeAfterOutage(sessionId)
+                            if (resumeRes.isSuccess) {
+                                stateMachine.transition(StateEvent.ResumeCommandSent)
+                                lastActiveChargingSampleAt = 0L
+                                hasAlertedManualResume = false
+                                notificationHelper.cancelManualResumeAlert()
+                                notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
+                            }
                         }
                     }
                     SessionStatus.CHARGING -> {
@@ -346,6 +414,7 @@ class ChargeMonitorService : Service() {
                                 if (updateRes.isSuccess) {
                                     lastKnownAmperes = recommendedA
                                     repository.updateSessionAmperage(sessionId, recommendedA)
+                                    repository.refreshDeadManTimer(sessionId, data.voltageCurrent, totalDelivered)
                                     notificationHelper.showBalancingAlert(prevA, recommendedA, data.voltageCurrent)
                                 }
                             }
@@ -408,6 +477,7 @@ class ChargeMonitorService : Service() {
                 }
                 if (stateMachine.getState() == SessionStatus.CHARGING) {
                     stateMachine.transition(StateEvent.OutageDetected)
+                    hasAlertedManualResume = false
                     repository.handleOutageDetected(sessionId, lastSampledCounterKwh)
                 }
             }
@@ -495,13 +565,40 @@ class ChargeMonitorService : Service() {
         }
     }
 
+    private fun handleManualResume() {
+        scope.launch {
+            val id = activeSessionId ?: repository.getActiveSession()?.id
+            if (id == null) {
+                stopSelf()
+                return@launch
+            }
+            activeSessionId = id
+            val dbSession = repository.getSessionById(id)
+            val res = repository.resumeAfterOutage(id, isManual = true)
+            if (res.isSuccess) {
+                stateMachine.transition(StateEvent.ResumeCommandSent)
+                lastActiveChargingSampleAt = 0L
+                hasAlertedManualResume = false
+                notificationHelper.cancelManualResumeAlert()
+                notificationHelper.showOutageResumedAlert(dbSession?.amperageSetting ?: lastKnownAmperes)
+                if (monitoringJob?.isActive != true) {
+                    startMonitoringLoop()
+                }
+            } else {
+                notificationHelper.showManualResumeAvailableAlert(
+                    dbSession?.amperageSetting ?: lastKnownAmperes,
+                    dbSession?.totalKwhDelivered ?: 0.0
+                )
+            }
+        }
+    }
+
     override fun onDestroy() {
         isRunning = false
+        foregroundStarted = false
         monitoringJob?.cancel()
         serviceJob.cancel()
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-        }
+        releaseWakeLock()
         super.onDestroy()
     }
 
@@ -511,6 +608,7 @@ class ChargeMonitorService : Service() {
         const val EXTRA_SESSION_ID = "EXTRA_SESSION_ID"
         const val EXTRA_TARGET_KWH = "EXTRA_TARGET_KWH"
         const val EXTRA_TARGET_DURATION_MIN = "EXTRA_TARGET_DURATION_MIN"
+        private const val SESSION_WAKELOCK_TIMEOUT_MS = 12 * 60 * 60_000L
 
         @Volatile
         var isRunning: Boolean = false

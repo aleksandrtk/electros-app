@@ -35,6 +35,10 @@ class SettingsViewModel(
         )
     }
 
+    fun refreshBatteryOptimizationStatus(isIgnored: Boolean) {
+        _uiState.value = _uiState.value.copy(isBatteryOptimizationIgnored = isIgnored)
+    }
+
     fun logout() {
         authPreferences.clearCredentials()
         _uiState.value = _uiState.value.copy(

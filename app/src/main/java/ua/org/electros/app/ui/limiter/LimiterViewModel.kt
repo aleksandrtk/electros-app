@@ -66,13 +66,9 @@ class LimiterViewModel(
 
     fun toggleDurationTimer(enabled: Boolean) {
         authPreferences.isDurationTimerEnabled = enabled
-        if (enabled) {
-            authPreferences.autoResumeAfterOutage = true
-        }
         val hours = authPreferences.targetDurationHours
         _uiState.value = _uiState.value.copy(
-            isDurationTimerEnabled = enabled,
-            isAutoResumeEnabled = authPreferences.autoResumeAfterOutage
+            isDurationTimerEnabled = enabled
         )
         viewModelScope.launch {
             repository.getActiveSession()?.let { active ->

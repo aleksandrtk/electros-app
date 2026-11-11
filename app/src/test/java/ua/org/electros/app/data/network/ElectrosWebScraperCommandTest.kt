@@ -222,8 +222,9 @@ class ElectrosWebScraperCommandTest {
         assertTrue(result.isSuccess)
         assertEquals(2, sockets.size)
         assertEquals("site 12345\nstart\n8\n0\n", sockets[0].sentMessages.single())
-        assertEquals(1, httpPosts.size)
-        assertTrue(httpPosts[0].params.contains("action" to "start"))
+        assertEquals(2, httpPosts.size)
+        assertTrue(httpPosts[0].params.contains("action" to "set_current"))
+        assertTrue(httpPosts[1].params.contains("action" to "start"))
     }
 
     @Test
