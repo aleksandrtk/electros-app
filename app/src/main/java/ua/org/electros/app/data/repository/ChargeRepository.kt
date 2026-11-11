@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import ua.org.electros.app.data.local.AuthPreferences
+import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.local.dao.ChargeDao
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.ChargeSliceEntity
@@ -22,16 +23,27 @@ class ChargeRepository(
     private val scraper: ElectrosWebScraper,
     private val chargeDao: ChargeDao,
     private val authPreferences: AuthPreferences? = null,
-    private val isAutoResumeEnabledProvider: () -> Boolean = { authPreferences?.autoResumeAfterOutage ?: true },
-    private val scheduleConfigProvider: () -> Triple<Boolean, String, String> = {
-        Triple(
-            authPreferences?.isScheduleEnabled == true,
-            authPreferences?.scheduleStartTime ?: "23:00",
-            authPreferences?.scheduleStopTime ?: "07:00"
-        )
-    },
+    private val settingsStore: SettingsStore? = null,
+    private val isAutoResumeEnabledProvider: (() -> Boolean)? = null,
+    private val scheduleConfigProvider: (() -> Triple<Boolean, String, String>)? = null,
     private val localTimeProvider: () -> LocalTime = { LocalTime.now() }
 ) {
+
+    private suspend fun isAutoResumeEnabled(): Boolean {
+        isAutoResumeEnabledProvider?.let { return it() }
+        settingsStore?.let { return it.awaitSettings().autoResumeAfterOutage }
+        return true
+    }
+
+    private suspend fun readScheduleConfig(): Triple<Boolean, String, String> {
+        scheduleConfigProvider?.let { return it() }
+        val settings = settingsStore?.awaitSettings()
+        return if (settings != null) {
+            Triple(settings.isScheduleEnabled, settings.scheduleStartTime, settings.scheduleStopTime)
+        } else {
+            Triple(false, "23:00", "07:00")
+        }
+    }
 
     private val _telemetryState = MutableStateFlow<TelemetryData?>(null)
     val telemetryState: StateFlow<TelemetryData?> = _telemetryState.asStateFlow()
@@ -77,7 +89,7 @@ class ChargeRepository(
                 if (active != null && active.status != SessionStatus.STOP_PENDING) {
                     val isManagedOutageSession = active.targetDurationMinutes > 0 ||
                         active.targetKwh > 0.0 ||
-                        isAutoResumeEnabledProvider()
+                        isAutoResumeEnabled()
                     val ageHours = (System.currentTimeMillis() - active.startedAt) / 3_600_000L
                     if (!isManagedOutageSession || (active.totalKwhDelivered == 0.0 && active.accumulatedChargingMs == 0L && ageHours >= 24L)) {
                         chargeDao.cancelAllActiveSessions()
@@ -102,7 +114,7 @@ class ChargeRepository(
         voltageVolts: Int,
         deliveredKwh: Double
     ) {
-        val (schedEnabled, schedStart, schedStop) = scheduleConfigProvider()
+        val (schedEnabled, schedStart, schedStop) = readScheduleConfig()
         val window = EnergyAccumulator.computeDeadManScheduleWindow(
             now = localTimeProvider(),
             targetKwh = session.targetKwh,
@@ -126,7 +138,7 @@ class ChargeRepository(
     private suspend fun restoreScheduleTimer(forceRestore: Boolean = false, session: ChargeSessionEntity? = null) {
         val shouldRestore = forceRestore || (session != null && (session.targetKwh > 0.0 || session.targetDurationMinutes > 0))
         if (!shouldRestore) return
-        val (schedEnabled, schedStart, schedStop) = scheduleConfigProvider()
+        val (schedEnabled, schedStart, schedStop) = readScheduleConfig()
         val targetStart = if (schedEnabled) schedStart else "00:00"
         val targetStop = if (schedEnabled) schedStop else "00:00"
         runCatching { scraper.setTimer(targetStart, targetStop) }
@@ -311,7 +323,7 @@ class ChargeRepository(
                 active.totalKwhDelivered == 0.0 &&
                 active.targetDurationMinutes == 0 &&
                 active.targetKwh == 0.0 &&
-                !isAutoResumeEnabledProvider()
+                !isAutoResumeEnabled()
             ) {
                 chargeDao.cancelAllActiveSessions()
             }
@@ -362,7 +374,7 @@ class ChargeRepository(
     }
 
     suspend fun resumeAfterOutage(sessionId: String, isManual: Boolean = false): Result<Unit> {
-        if (!isManual && !isAutoResumeEnabledProvider()) {
+        if (!isManual && !isAutoResumeEnabled()) {
             return Result.failure(IllegalStateException("Auto-resume disabled"))
         }
 

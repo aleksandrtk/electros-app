@@ -1173,10 +1173,10 @@ private fun StudioClassicScheduleCard(
                 ) {
                     listOf(
                         Triple("FROM", draftStart.value) { delta: Int ->
-                            draftStart.value = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(draftStart.value, delta)
+                            draftStart.value = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(draftStart.value, delta)
                         },
                         Triple("TO", draftStop.value) { delta: Int ->
-                            draftStop.value = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(draftStop.value, delta)
+                            draftStop.value = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(draftStop.value, delta)
                         }
                     ).forEach { (label, valueText, onStep) ->
                         Row(

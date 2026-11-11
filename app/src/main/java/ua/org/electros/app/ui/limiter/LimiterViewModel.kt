@@ -1,13 +1,15 @@
 package ua.org.electros.app.ui.limiter
 
-import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import ua.org.electros.app.data.local.AuthPreferences
+import ua.org.electros.app.data.local.AppSettings
+import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.repository.ChargeRepository
 
 data class LimiterUiState(
@@ -28,53 +30,48 @@ data class LimiterUiState(
 
 class LimiterViewModel(
     private val repository: ChargeRepository,
-    private val authPreferences: AuthPreferences
+    private val settingsStore: SettingsStore
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(readStateFromPrefs())
-    val uiState: StateFlow<LimiterUiState> = _uiState.asStateFlow()
+    private val _isScheduleSaved = MutableStateFlow(false)
 
-    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-        _uiState.value = readStateFromPrefs().copy(isScheduleSaved = _uiState.value.isScheduleSaved)
-    }
+    val uiState: StateFlow<LimiterUiState> = combine(
+        settingsStore.settingsFlow,
+        _isScheduleSaved
+    ) { settings, isScheduleSaved ->
+        toUiState(settings, isScheduleSaved)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = toUiState(settingsStore.currentSettings(), isScheduleSaved = false)
+    )
 
-    init {
-        authPreferences.registerListener(prefListener)
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        authPreferences.unregisterListener(prefListener)
-    }
-
-    private fun readStateFromPrefs(): LimiterUiState {
+    private fun toUiState(settings: AppSettings, isScheduleSaved: Boolean): LimiterUiState {
         val (low, high) = normalizeThresholds(
-            authPreferences.voltageLowThreshold,
-            authPreferences.voltageHighThreshold
+            settings.voltageLowThreshold,
+            settings.voltageHighThreshold
         )
         return LimiterUiState(
-            isKwhLimitEnabled = authPreferences.isKwhLimitEnabled,
-            targetKwh = authPreferences.targetKwhLimit,
-            isDurationTimerEnabled = authPreferences.isDurationTimerEnabled,
-            targetDurationHours = authPreferences.targetDurationHours,
-            isScheduleEnabled = authPreferences.isScheduleEnabled,
-            startTime = authPreferences.scheduleStartTime,
-            stopTime = authPreferences.scheduleStopTime,
-            isAutoResumeEnabled = authPreferences.autoResumeAfterOutage,
-            isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
+            isKwhLimitEnabled = settings.isKwhLimitEnabled,
+            targetKwh = settings.targetKwhLimit,
+            isDurationTimerEnabled = settings.isDurationTimerEnabled,
+            targetDurationHours = settings.targetDurationHours,
+            isScheduleEnabled = settings.isScheduleEnabled,
+            startTime = settings.scheduleStartTime,
+            stopTime = settings.scheduleStopTime,
+            isAutoResumeEnabled = settings.autoResumeAfterOutage,
+            isScheduleSaved = isScheduleSaved,
+            isVoltageBalancingEnabled = settings.isVoltageBalancingEnabled,
             voltageLowThreshold = low,
             voltageHighThreshold = high,
-            voltageMaxAmperage = authPreferences.voltageMaxAmperage
+            voltageMaxAmperage = settings.voltageMaxAmperage
         )
     }
 
     fun toggleDurationTimer(enabled: Boolean) {
-        authPreferences.isDurationTimerEnabled = enabled
-        val hours = authPreferences.targetDurationHours
-        _uiState.value = _uiState.value.copy(
-            isDurationTimerEnabled = enabled
-        )
+        settingsStore.setDurationTimerEnabled(enabled)
         viewModelScope.launch {
+            val hours = settingsStore.awaitSettings().targetDurationHours
             repository.getActiveSession()?.let { active ->
                 repository.updateTargetDurationMinutes(active.id, if (enabled) hours * 60 else 0)
             }
@@ -83,10 +80,9 @@ class LimiterViewModel(
 
     fun setTargetDurationHours(hours: Int) {
         val clamped = hours.coerceIn(1, 12)
-        authPreferences.targetDurationHours = clamped
-        _uiState.value = _uiState.value.copy(targetDurationHours = clamped)
-        if (_uiState.value.isDurationTimerEnabled) {
-            viewModelScope.launch {
+        settingsStore.setTargetDurationHours(clamped)
+        viewModelScope.launch {
+            if (settingsStore.awaitSettings().isDurationTimerEnabled) {
                 repository.getActiveSession()?.let { active ->
                     repository.updateTargetDurationMinutes(active.id, clamped * 60)
                 }
@@ -95,91 +91,68 @@ class LimiterViewModel(
     }
 
     fun toggleKwhLimit(enabled: Boolean) {
-        authPreferences.isKwhLimitEnabled = enabled
-        _uiState.value = _uiState.value.copy(isKwhLimitEnabled = enabled)
+        settingsStore.setKwhLimitEnabled(enabled)
     }
 
     fun updateTargetKwh(delta: Double) {
-        val current = _uiState.value.targetKwh
-        val updated = (current + delta).coerceIn(1.0, 100.0)
-        authPreferences.targetKwhLimit = updated
-        _uiState.value = _uiState.value.copy(targetKwh = updated)
+        settingsStore.adjustTargetKwhLimit(delta)
     }
 
     fun setTargetKwh(quota: Double) {
-        val clamped = quota.coerceIn(1.0, 100.0)
-        authPreferences.targetKwhLimit = clamped
-        _uiState.value = _uiState.value.copy(targetKwh = clamped)
+        settingsStore.setTargetKwhLimit(quota)
     }
 
     fun toggleSchedule(enabled: Boolean) {
-        authPreferences.isScheduleEnabled = enabled
-        _uiState.value = _uiState.value.copy(isScheduleEnabled = enabled)
+        settingsStore.setScheduleEnabled(enabled)
     }
 
     fun setScheduleTimes(start: String, stop: String) {
-        authPreferences.scheduleStartTime = start
-        authPreferences.scheduleStopTime = stop
-        _uiState.value = _uiState.value.copy(startTime = start, stopTime = stop, isScheduleSaved = false)
+        _isScheduleSaved.value = false
+        settingsStore.setScheduleTimes(start, stop)
     }
 
     fun toggleAutoResume(enabled: Boolean) {
-        authPreferences.autoResumeAfterOutage = enabled
-        _uiState.value = _uiState.value.copy(isAutoResumeEnabled = enabled)
+        settingsStore.setAutoResumeAfterOutage(enabled)
     }
 
     fun applyScheduleToStation() {
         viewModelScope.launch {
-            if (_uiState.value.isScheduleEnabled) {
-                repository.setScheduleTimer(_uiState.value.startTime, _uiState.value.stopTime)
+            val settings = settingsStore.awaitSettings()
+            if (settings.isScheduleEnabled) {
+                repository.setScheduleTimer(settings.scheduleStartTime, settings.scheduleStopTime)
             } else {
                 repository.setScheduleTimer("00:00", "00:00")
             }
-            _uiState.value = _uiState.value.copy(isScheduleSaved = true)
+            _isScheduleSaved.value = true
         }
     }
 
     fun toggleVoltageBalancing(enabled: Boolean) {
-        authPreferences.isVoltageBalancingEnabled = enabled
-        _uiState.value = _uiState.value.copy(isVoltageBalancingEnabled = enabled)
+        settingsStore.setVoltageBalancingEnabled(enabled)
     }
 
     fun setVoltageLowThreshold(threshold: Int) {
-        val clamped = clampLowThreshold(threshold, authPreferences.voltageHighThreshold)
-        authPreferences.voltageLowThreshold = clamped
-        _uiState.value = _uiState.value.copy(voltageLowThreshold = clamped)
+        settingsStore.setVoltageLowThreshold(threshold)
     }
 
     fun setVoltageHighThreshold(threshold: Int) {
-        val clamped = clampHighThreshold(threshold, authPreferences.voltageLowThreshold)
-        authPreferences.voltageHighThreshold = clamped
-        _uiState.value = _uiState.value.copy(voltageHighThreshold = clamped)
+        settingsStore.setVoltageHighThreshold(threshold)
     }
 
     fun setVoltageMaxAmperage(amperage: Int) {
-        val clamped = amperage.coerceIn(6, 16)
-        authPreferences.voltageMaxAmperage = clamped
-        _uiState.value = _uiState.value.copy(voltageMaxAmperage = clamped)
+        settingsStore.setVoltageMaxAmperage(amperage)
     }
 
     companion object {
-        const val MIN_HYSTERESIS_V = 10
+        const val MIN_HYSTERESIS_V = AppSettings.MIN_HYSTERESIS_V
 
-        internal fun clampLowThreshold(requestedLow: Int, currentHigh: Int): Int {
-            val maxLow = (currentHigh - MIN_HYSTERESIS_V).coerceAtLeast(160)
-            return requestedLow.coerceIn(160, minOf(200, maxLow))
-        }
+        internal fun clampLowThreshold(requestedLow: Int, currentHigh: Int): Int =
+            AppSettings.clampLowThreshold(requestedLow, currentHigh)
 
-        internal fun clampHighThreshold(requestedHigh: Int, currentLow: Int): Int {
-            val minHigh = (currentLow + MIN_HYSTERESIS_V).coerceAtMost(230)
-            return requestedHigh.coerceIn(maxOf(195, minHigh), 230)
-        }
+        internal fun clampHighThreshold(requestedHigh: Int, currentLow: Int): Int =
+            AppSettings.clampHighThreshold(requestedHigh, currentLow)
 
-        internal fun normalizeThresholds(rawLow: Int, rawHigh: Int): Pair<Int, Int> {
-            val low = rawLow.coerceIn(160, 200)
-            val high = clampHighThreshold(rawHigh, low)
-            val adjustedLow = clampLowThreshold(low, high)
-            return adjustedLow to high
-        }
+        internal fun normalizeThresholds(rawLow: Int, rawHigh: Int): Pair<Int, Int> =
+            AppSettings.normalizeThresholds(rawLow, rawHigh)
     }
 }

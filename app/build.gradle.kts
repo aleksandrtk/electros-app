@@ -100,6 +100,7 @@ dependencies {
     // WorkManager & Background Service
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.datastore.preferences)
 
     // Network & HTML Parsing
     implementation(libs.okhttp)

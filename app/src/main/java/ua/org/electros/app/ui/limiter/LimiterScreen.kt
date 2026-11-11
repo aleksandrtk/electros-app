@@ -329,11 +329,11 @@ fun LimiterScreen(
                 if (state.isScheduleEnabled) {
                     val endpoints = listOf(
                         Triple("ЧАС ПОЧАТКУ", state.startTime) { delta: Int ->
-                            val nextStart = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(state.startTime, delta)
+                            val nextStart = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(state.startTime, delta)
                             viewModel.setScheduleTimes(nextStart, state.stopTime)
                         },
                         Triple("ЧАС ЗАВЕРШЕННЯ", state.stopTime) { delta: Int ->
-                            val nextStop = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(state.stopTime, delta)
+                            val nextStop = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(state.stopTime, delta)
                             viewModel.setScheduleTimes(state.startTime, nextStop)
                         }
                     )

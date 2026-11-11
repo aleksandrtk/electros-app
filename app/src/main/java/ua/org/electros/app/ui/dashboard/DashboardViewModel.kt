@@ -1,7 +1,6 @@
 package ua.org.electros.app.ui.dashboard
 
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -13,7 +12,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import ua.org.electros.app.data.local.AuthPreferences
+import ua.org.electros.app.data.local.AppSettings
+import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.data.model.TelemetryData
@@ -47,45 +47,67 @@ data class DashboardUiState(
 
 class DashboardViewModel(
     private val repository: ChargeRepository,
-    private val authPreferences: AuthPreferences
+    private val settingsStore: SettingsStore
 ) : ViewModel() {
 
-    private val _selectedAmperes = MutableStateFlow(authPreferences.preferredAmperage)
     private val _isBusy = MutableStateFlow(false)
     private val _isRefreshing = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
-    private val _prefsTrigger = MutableStateFlow(0)
-
-    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-        _prefsTrigger.value += 1
-    }
 
     private val _operationState = combine(
         _isBusy,
         _isRefreshing,
-        _errorMessage,
-        _prefsTrigger
-    ) { busy, refreshing, err, _ ->
+        _errorMessage
+    ) { busy, refreshing, err ->
         Triple(busy, refreshing, err)
     }
 
     val uiState: StateFlow<DashboardUiState> = combine(
         repository.telemetryState,
         repository.observeActiveSession(),
-        _selectedAmperes,
+        settingsStore.settingsFlow,
         _operationState
-    ) { telemetry, activeSession, amperes, opState ->
+    ) { telemetry, activeSession, settings, opState ->
         val (busy, refreshing, error) = opState
-        val isLimitEnabled = authPreferences.isKwhLimitEnabled
-        val quota = if (isLimitEnabled) authPreferences.targetKwhLimit else 0.0
-        val isDlbEnabled = authPreferences.isVoltageBalancingEnabled
-        val dlbThreshold = authPreferences.voltageLowThreshold
-        val dlbMaxAmperage = authPreferences.voltageMaxAmperage
-        val isTimerEnabled = authPreferences.isDurationTimerEnabled
-        val durationHours = authPreferences.targetDurationHours
-        val isSchedEnabled = authPreferences.isScheduleEnabled
-        val schedStart = authPreferences.scheduleStartTime
-        val schedStop = authPreferences.scheduleStopTime
+        buildUiState(
+            telemetry = telemetry,
+            activeSession = activeSession,
+            settings = settings,
+            busy = busy,
+            refreshing = refreshing,
+            error = error
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = buildUiState(
+            telemetry = null,
+            activeSession = null,
+            settings = settingsStore.currentSettings(),
+            busy = false,
+            refreshing = false,
+            error = null
+        )
+    )
+
+    private fun buildUiState(
+        telemetry: TelemetryData?,
+        activeSession: ChargeSessionEntity?,
+        settings: AppSettings,
+        busy: Boolean,
+        refreshing: Boolean,
+        error: String?
+    ): DashboardUiState {
+        val isLimitEnabled = settings.isKwhLimitEnabled
+        val quota = if (isLimitEnabled) settings.targetKwhLimit else 0.0
+        val isDlbEnabled = settings.isVoltageBalancingEnabled
+        val dlbThreshold = settings.voltageLowThreshold
+        val dlbMaxAmperage = settings.voltageMaxAmperage
+        val isTimerEnabled = settings.isDurationTimerEnabled
+        val durationHours = settings.targetDurationHours
+        val isSchedEnabled = settings.isScheduleEnabled
+        val schedStart = settings.scheduleStartTime
+        val schedStop = settings.scheduleStopTime
 
         val isOnline = telemetry?.isOnline == true
         val isCharging = telemetry?.isChargingActive == true
@@ -125,10 +147,10 @@ class DashboardViewModel(
                     effectiveSession.status == SessionStatus.OUTAGE_STABILIZING ||
                     !isOnline)
 
-        DashboardUiState(
+        return DashboardUiState(
             telemetry = telemetry,
             activeSession = effectiveSession,
-            selectedAmperes = amperes,
+            selectedAmperes = settings.preferredAmperage,
             isKwhLimitEnabled = isLimitEnabled,
             targetQuotaKwh = quota,
             totalDeliveredKwh = delivered,
@@ -149,29 +171,6 @@ class DashboardViewModel(
             scheduleStopTime = schedStop,
             errorMessage = error
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = DashboardUiState(
-            selectedAmperes = authPreferences.preferredAmperage,
-            isVoltageBalancingEnabled = authPreferences.isVoltageBalancingEnabled,
-            voltageLowThreshold = authPreferences.voltageLowThreshold,
-            voltageMaxAmperage = authPreferences.voltageMaxAmperage,
-            isDurationTimerEnabled = authPreferences.isDurationTimerEnabled,
-            targetDurationHours = authPreferences.targetDurationHours,
-            isScheduleEnabled = authPreferences.isScheduleEnabled,
-            scheduleStartTime = authPreferences.scheduleStartTime,
-            scheduleStopTime = authPreferences.scheduleStopTime
-        )
-    )
-
-    init {
-        authPreferences.registerListener(prefListener)
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        authPreferences.unregisterListener(prefListener)
     }
 
     suspend fun pollWhileVisible() {
@@ -203,8 +202,7 @@ class DashboardViewModel(
     }
 
     fun onAmperageSelected(amperes: Int) {
-        _selectedAmperes.value = amperes
-        authPreferences.preferredAmperage = amperes
+        settingsStore.setPreferredAmperage(amperes)
         val active = uiState.value.activeSession
         viewModelScope.launch {
             if (active != null) {
@@ -217,9 +215,7 @@ class DashboardViewModel(
 
     fun setDurationTimer(context: Context, enabled: Boolean, hours: Int) {
         val clampedHours = hours.coerceIn(1, 12)
-        authPreferences.isDurationTimerEnabled = enabled
-        authPreferences.targetDurationHours = clampedHours
-        _prefsTrigger.value += 1
+        settingsStore.setDurationTimer(enabled, clampedHours)
 
         val durationMinutes = if (enabled) clampedHours * 60 else 0
         val currentState = uiState.value
@@ -237,8 +233,9 @@ class DashboardViewModel(
                     )
                 }
             } else if (enabled && currentState.telemetry?.isChargingActive == true) {
-                val quota = if (authPreferences.isKwhLimitEnabled) authPreferences.targetKwhLimit else 0.0
-                val amps = currentState.selectedAmperes
+                val settings = settingsStore.awaitSettings()
+                val quota = if (settings.isKwhLimitEnabled) settings.targetKwhLimit else 0.0
+                val amps = settings.preferredAmperage
                 val attachRes = repository.attachSessionToOngoingCharge(quota, amps, durationMinutes)
                 attachRes.onSuccess { sessionId ->
                     ChargeMonitorService.start(context, sessionId, quota, durationMinutes)
@@ -248,10 +245,7 @@ class DashboardViewModel(
     }
 
     fun setScheduleTimer(enabled: Boolean, startTime: String, stopTime: String) {
-        authPreferences.isScheduleEnabled = enabled
-        authPreferences.scheduleStartTime = startTime
-        authPreferences.scheduleStopTime = stopTime
-        _prefsTrigger.value += 1
+        settingsStore.setSchedule(enabled, startTime, stopTime)
 
         viewModelScope.launch {
             if (enabled) {
@@ -273,9 +267,10 @@ class DashboardViewModel(
             _isBusy.value = true
             _errorMessage.value = null
 
-            val quota = if (authPreferences.isKwhLimitEnabled) authPreferences.targetKwhLimit else 0.0
-            val durationMin = if (authPreferences.isDurationTimerEnabled) authPreferences.targetDurationHours * 60 else 0
-            val amps = uiState.value.selectedAmperes
+            val settings = settingsStore.awaitSettings()
+            val quota = if (settings.isKwhLimitEnabled) settings.targetKwhLimit else 0.0
+            val durationMin = if (settings.isDurationTimerEnabled) settings.targetDurationHours * 60 else 0
+            val amps = settings.preferredAmperage
 
             val result = repository.startNewSession(quota, amps, durationMin)
             result.onSuccess { sessionId ->

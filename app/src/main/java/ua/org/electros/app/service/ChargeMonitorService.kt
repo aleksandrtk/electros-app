@@ -13,7 +13,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ua.org.electros.app.ElectrosApplication
-import ua.org.electros.app.data.local.AuthPreferences
+import ua.org.electros.app.data.local.AppSettings
+import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
@@ -31,7 +32,7 @@ class ChargeMonitorService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default + serviceJob)
 
     private lateinit var repository: ChargeRepository
-    private lateinit var authPreferences: AuthPreferences
+    private lateinit var settingsStore: SettingsStore
     private lateinit var notificationHelper: NotificationHelper
     private lateinit var powerManager: PowerManager
     private lateinit var supervisor: SessionSupervisor
@@ -46,7 +47,7 @@ class ChargeMonitorService : Service() {
         isRunning = true
         val app = application as ElectrosApplication
         repository = app.repository
-        authPreferences = app.authPreferences
+        settingsStore = app.settingsStore
         notificationHelper = NotificationHelper(this)
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
 
@@ -64,12 +65,12 @@ class ChargeMonitorService : Service() {
         }
     }
 
-    private fun syncLoadBalancerPrefs() {
-        voltageLoadBalancer.isEnabled = authPreferences.isVoltageBalancingEnabled
-        voltageLoadBalancer.lowThresholdV = authPreferences.voltageLowThreshold
-        voltageLoadBalancer.highThresholdV = authPreferences.voltageHighThreshold
-        voltageLoadBalancer.minAmperage = authPreferences.voltageMinAmperage
-        voltageLoadBalancer.maxAmperage = authPreferences.voltageMaxAmperage
+    private fun syncLoadBalancerPrefs(settings: AppSettings = settingsStore.currentSettings()) {
+        voltageLoadBalancer.isEnabled = settings.isVoltageBalancingEnabled
+        voltageLoadBalancer.lowThresholdV = settings.voltageLowThreshold
+        voltageLoadBalancer.highThresholdV = settings.voltageHighThreshold
+        voltageLoadBalancer.minAmperage = settings.voltageMinAmperage
+        voltageLoadBalancer.maxAmperage = settings.voltageMaxAmperage
     }
 
     private fun ensureForegroundStarted() {
@@ -131,6 +132,7 @@ class ChargeMonitorService : Service() {
     private fun startMonitoringLoop() {
         monitoringJob?.cancel()
         monitoringJob = scope.launch {
+            settingsStore.awaitSettings()
             supervisor.hydrateFromDatabase()
 
             while (isActive) {
@@ -206,6 +208,7 @@ class ChargeMonitorService : Service() {
 
     private fun handleManualResume() {
         scope.launch {
+            syncLoadBalancerPrefs(settingsStore.awaitSettings())
             val (events, startLoopNeeded) = supervisor.handleManualResume()
             dispatchSupervisorEvents(events)
             if (supervisor.activeSessionId == null) {
@@ -290,7 +293,7 @@ class ChargeMonitorService : Service() {
             repository.telemetryState.value?.consumedEnergyKwh ?: fallback
 
         override fun isAutoResumeEnabled(): Boolean =
-            authPreferences.autoResumeAfterOutage
+            settingsStore.currentSettings().autoResumeAfterOutage
     }
 
     companion object {
