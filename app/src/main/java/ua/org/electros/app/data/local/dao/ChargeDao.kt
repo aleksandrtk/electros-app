@@ -11,6 +11,7 @@ import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.data.local.entity.SliceEndReason
+import ua.org.electros.app.domain.accumulator.EnergyAccumulator
 
 @Dao
 interface ChargeDao {
@@ -110,6 +111,33 @@ interface ChargeDao {
             startedAt = startTime
         )
         insertSlice(newSlice)
+    }
+
+    @Transaction
+    suspend fun restoreActiveSliceForCharging(
+        sessionId: String,
+        currentCounterKwh: Double,
+        now: Long = System.currentTimeMillis()
+    ) {
+        val latestSlice = getLatestSliceForSession(sessionId)
+        if (latestSlice == null) {
+            startNewSlice(sessionId, currentCounterKwh, now)
+        } else if (latestSlice.endedAt != null) {
+            val rolledBack = EnergyAccumulator.isCounterRegression(
+                currentReadingKwh = currentCounterKwh,
+                lastSampledReadingKwh = latestSlice.stationCounterLastKwh
+            ) || currentCounterKwh < latestSlice.stationCounterStartKwh
+            val anchorCounter = if (rolledBack) currentCounterKwh else latestSlice.stationCounterLastKwh
+            startNewSlice(sessionId, anchorCounter, now)
+        }
+
+        val session = getSessionById(sessionId) ?: return
+        updateSession(
+            session.copy(
+                status = SessionStatus.CHARGING,
+                lastTickAt = now
+            )
+        )
     }
 }
 

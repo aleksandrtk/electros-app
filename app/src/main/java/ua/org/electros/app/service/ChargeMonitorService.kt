@@ -9,6 +9,7 @@ import android.os.PowerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -130,8 +131,9 @@ class ChargeMonitorService : Service() {
     }
 
     private fun startMonitoringLoop() {
-        monitoringJob?.cancel()
+        val previousJob = monitoringJob
         monitoringJob = scope.launch {
+            previousJob?.cancelAndJoin()
             settingsStore.awaitSettings()
             supervisor.hydrateFromDatabase()
 
@@ -201,7 +203,10 @@ class ChargeMonitorService : Service() {
             val outcome = supervisor.handleManualStop()
             dispatchSupervisorEvents(outcome.events)
             if (outcome.shouldStopService) {
+                monitoringJob?.cancel()
                 stopSelf()
+            } else if (monitoringJob?.isActive != true) {
+                startMonitoringLoop()
             }
         }
     }
@@ -252,8 +257,8 @@ class ChargeMonitorService : Service() {
         override suspend fun handleOutageStabilizing(sessionId: String) =
             repository.handleOutageStabilizing(sessionId)
 
-        override suspend fun restoreChargingFromExistingSlice(sessionId: String) =
-            repository.restoreChargingFromExistingSlice(sessionId)
+        override suspend fun restoreChargingFromExistingSlice(sessionId: String, currentCounter: Double) =
+            repository.restoreChargingFromExistingSlice(sessionId, currentCounter)
 
         override suspend fun resumeAfterOutage(sessionId: String, isManual: Boolean): Result<Unit> =
             repository.resumeAfterOutage(sessionId, isManual = isManual)

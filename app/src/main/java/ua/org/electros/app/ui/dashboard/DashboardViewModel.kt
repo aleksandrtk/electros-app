@@ -203,13 +203,17 @@ class DashboardViewModel(
 
     fun onAmperageSelected(amperes: Int) {
         settingsStore.setPreferredAmperage(amperes)
-        val active = uiState.value.activeSession
+        val currentState = uiState.value
+        val active = currentState.activeSession
         viewModelScope.launch {
             if (active != null) {
                 repository.updateSessionAmperage(active.id, amperes)
             }
-            repository.setAmperage(amperes)
-            repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
+            // WS setAmperage sends a "start" frame on Electros firmware, so only push it while charging.
+            if (currentState.telemetry?.isChargingActive == true) {
+                repository.setAmperage(amperes)
+                repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
+            }
         }
     }
 

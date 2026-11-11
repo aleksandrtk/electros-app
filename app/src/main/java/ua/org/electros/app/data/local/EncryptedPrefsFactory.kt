@@ -6,6 +6,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.io.IOException
 import java.security.GeneralSecurityException
+import java.security.KeyStore
 
 /**
  * Creates [EncryptedSharedPreferences] with corruption/keystore-loss recovery and
@@ -22,6 +23,7 @@ object EncryptedPrefsFactory {
             fileName = fileName,
             legacyPlaintextNames = legacyPlaintextNames,
             deletePrefs = { name -> context.deleteSharedPreferences(name) },
+            deleteMasterKey = ::deleteDefaultMasterKey,
             openEncrypted = { name -> buildEncryptedPrefs(context, name) }
         )
     }
@@ -30,17 +32,35 @@ object EncryptedPrefsFactory {
         fileName: String,
         legacyPlaintextNames: List<String>,
         deletePrefs: (String) -> Boolean,
+        deleteMasterKey: () -> Unit = {},
         openEncrypted: (String) -> SharedPreferences
     ): SharedPreferences {
         legacyPlaintextNames.forEach { deletePrefs(it) }
-        return try {
-            openEncrypted(fileName)
-        } catch (e: GeneralSecurityException) {
-            deletePrefs(fileName)
-            openEncrypted(fileName)
-        } catch (e: IOException) {
-            deletePrefs(fileName)
-            openEncrypted(fileName)
+        val recoverySteps: List<() -> Unit> = listOf(
+            { deletePrefs(fileName) },
+            {
+                deleteMasterKey()
+                deletePrefs(fileName)
+            }
+        )
+        for (recover in recoverySteps) {
+            try {
+                return openEncrypted(fileName)
+            } catch (e: GeneralSecurityException) {
+                recover()
+            } catch (e: IOException) {
+                recover()
+            }
+        }
+        return openEncrypted(fileName)
+    }
+
+    private fun deleteDefaultMasterKey() {
+        runCatching {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (keyStore.containsAlias(MasterKey.DEFAULT_MASTER_KEY_ALIAS)) {
+                keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+            }
         }
     }
 

@@ -72,16 +72,13 @@ class ElectrosWebScraper(
         if (serial.isNotBlank()) {
             val wsResult = queryWebSocket("site $serial")
             if (wsResult.isSuccess) {
-                val data = wsResult.getOrThrow()
-                val telemetry = parseWebSocketTelemetryOrNull(data)
-                    ?: return@withContext Result.failure(
-                        IOException("Malformed WS telemetry (${data.split("\n").size} lines)")
-                    )
-                return@withContext Result.success(telemetry)
+                parseWebSocketTelemetryOrNull(wsResult.getOrThrow())?.let { telemetry ->
+                    return@withContext Result.success(telemetry)
+                }
             }
         }
 
-        // Fallback to HTTP protected_page.php if WebSocket query fails
+        // Fallback to HTTP protected_page.php if WebSocket query fails or returns invalid telemetry
         fetchTelemetryHttp()
     }
 
@@ -351,10 +348,18 @@ class ElectrosWebScraper(
         executeAction("start")
     }
 
-    suspend fun stopCharge(): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun stopCharge(
+        verifyWithTelemetry: Boolean = true,
+        useHttpFallbackOnly: Boolean = false
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         val serial = currentSerial()
-        if (serial.isNotBlank()) {
-            val wsResult = sendAndVerify("site $serial\nstop") { !it.isChargingActive }
+        if (!useHttpFallbackOnly && serial.isNotBlank()) {
+            val wsCmd = "site $serial\nstop"
+            val wsResult = if (verifyWithTelemetry) {
+                sendAndVerify(wsCmd) { !it.isChargingActive }
+            } else {
+                sendCommandWebSocket(wsCmd)
+            }
             if (wsResult.isSuccess) return@withContext wsResult
         }
         executeAction("stop")

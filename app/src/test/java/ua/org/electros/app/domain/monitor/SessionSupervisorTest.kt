@@ -1,13 +1,17 @@
 package ua.org.electros.app.domain.monitor
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Test
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.data.local.entity.SliceEndReason
 import ua.org.electros.app.data.model.TelemetryData
+import ua.org.electros.app.domain.accumulator.EnergyAccumulator
 import ua.org.electros.app.domain.balancing.VoltageLoadBalancer
 
 class SessionSupervisorTest {
@@ -147,6 +151,129 @@ class SessionSupervisorTest {
         assertThat(finalOutcome.events.any { it is SupervisorEvent.ShowDurationTargetReached }).isTrue()
     }
 
+    @Test
+    fun connectionLossDuringCharging_opensContinuationSliceAndComputesExactTotalDelivered() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s6", targetKwh = 10.0),
+            slices = mutableListOf(slice("s6", startKwh = 100.0)),
+            stopTargetResult = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 5_000L }
+        supervisor.onSessionStarted("s6", targetKwh = 10.0, targetDurationMinutes = 0)
+
+        // Station charges from 100.0 to 105.0 kWh
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 105.0, voltage = 225))
+        val chargeTick = supervisor.tick()
+        assertThat(chargeTick.status).isEqualTo(SessionStatus.CHARGING)
+
+        // Phone loses Wi-Fi for 3 consecutive failed polls -> triggers outage and closes slice #0 at 5.0 kWh
+        gateway.nextTelemetry = Result.failure(IllegalStateException("Network unavailable"))
+        supervisor.tick()
+        supervisor.tick()
+        val failedTick3 = supervisor.tick()
+        assertThat(failedTick3.status).isEqualTo(SessionStatus.OUTAGE_DETECTED)
+        assertThat(gateway.slices.single().endedAt).isNotNull()
+        assertThat(gateway.slices.single().finalizedKwh).isWithin(0.01).of(5.0)
+
+        // Wi-Fi comes back while station kept charging continuously (now 106.5 kWh)
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 106.5, voltage = 225))
+        val recoverTick = supervisor.tick()
+        assertThat(recoverTick.status).isEqualTo(SessionStatus.CHARGING)
+        val ongoingRecover = recoverTick.events.filterIsInstance<SupervisorEvent.UpdateOngoingNotification>().single()
+        assertThat(ongoingRecover.deliveredKwh).isWithin(0.01).of(6.5)
+
+        // Must NOT trigger 10.0 kWh target early at 109.0 kWh
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 109.0, voltage = 225))
+        val tickAt9 = supervisor.tick()
+        assertThat(tickAt9.status).isEqualTo(SessionStatus.CHARGING)
+
+        // Hits exact 10.0 kWh target at 110.0 kWh and records full 10.0 kWh in history
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 110.0, voltage = 225))
+        val targetTick = supervisor.tick()
+        assertThat(targetTick.status).isEqualTo(SessionStatus.TARGET_REACHED)
+        assertThat(targetTick.shouldStopService).isTrue()
+        val targetEvent = targetTick.events.filterIsInstance<SupervisorEvent.ShowTargetReached>().single()
+        assertThat(targetEvent.deliveredKwh).isWithin(0.01).of(10.0)
+        assertThat(gateway.session.totalKwhDelivered).isWithin(0.01).of(10.0)
+    }
+
+    @Test
+    fun outageDetected_whenStationReturnsOnlineIdle_doesNotDoubleCountFinalizedSlice() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s7", targetKwh = 15.0),
+            slices = mutableListOf(slice("s7", startKwh = 100.0)),
+            autoResume = false
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 5_000L }
+        supervisor.onSessionStarted("s7", targetKwh = 15.0, targetDurationMinutes = 0)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 105.0, voltage = 225))
+        supervisor.tick()
+
+        gateway.nextTelemetry = Result.failure(IllegalStateException("timeout"))
+        supervisor.tick()
+        supervisor.tick()
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.OUTAGE_DETECTED)
+
+        // Station comes back online but stopped (autoResume = false): no open slice exists
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 105.0, voltage = 225))
+        val idleRecover = supervisor.tick()
+        val manualPrompt = idleRecover.events.filterIsInstance<SupervisorEvent.ShowManualResumeAvailable>().single()
+        val ongoing = idleRecover.events.filterIsInstance<SupervisorEvent.UpdateOngoingNotification>().single()
+        assertThat(manualPrompt.deliveredKwh).isWithin(0.01).of(5.0)
+        assertThat(ongoing.deliveredKwh).isWithin(0.01).of(5.0)
+    }
+
+    @Test
+    fun manualStopConcurrentWithAutoResumingTick_serializesOperationsAndEndsCancelled() = runTest {
+        val resumeEntered = CompletableDeferred<Unit>()
+        val allowResumeFinish = CompletableDeferred<Unit>()
+        val gateway = FakeGateway(
+            session = session(id = "s8", targetKwh = 20.0),
+            slices = mutableListOf(slice("s8", startKwh = 50.0)),
+            autoResume = true
+        ).apply {
+            onResumeAfterOutage = {
+                resumeEntered.complete(Unit)
+                allowResumeFinish.await()
+            }
+        }
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s8", targetKwh = 20.0, targetDurationMinutes = 0)
+
+        // Drive state machine through outage stabilization so next tick enters AUTO_RESUMING
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = false, isCharging = false, counterKwh = 52.0, voltage = null))
+        supervisor.tick()
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 52.0, voltage = 220))
+        supervisor.tick()
+        supervisor.tick()
+        assertThat(supervisor.currentStatus()).isEqualTo(SessionStatus.OUTAGE_STABILIZING)
+
+        // Next tick enters tryAutoResume -> suspends inside resumeAfterOutage
+        val tickJob = async { supervisor.tick() }
+        resumeEntered.await()
+
+        // Concurrent manual stop must serialize after the in-flight tick and finish in CANCELLED
+        val stopJob = async { supervisor.handleManualStop() }
+        yield()
+        assertThat(stopJob.isCompleted).isFalse()
+
+        allowResumeFinish.complete(Unit)
+        tickJob.await()
+        val stopOutcome = stopJob.await()
+
+        assertThat(gateway.callLog).containsExactly("resume", "stop").inOrder()
+        assertThat(stopOutcome.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(stopOutcome.shouldStopService).isTrue()
+
+        // Subsequent queued tick must stop immediately without fetching or sending another start
+        gateway.callLog.clear()
+        val postStopTick = supervisor.tick()
+        assertThat(postStopTick.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(postStopTick.shouldStopService).isTrue()
+        assertThat(gateway.callLog).isEmpty()
+    }
+
     private fun session(
         id: String,
         targetKwh: Double = 0.0,
@@ -208,15 +335,49 @@ class SessionSupervisorTest {
         var finalizedStatus: SessionStatus? = null
         var autoResumeCalls = 0
         val outageCounters = mutableListOf<Double>()
+        val callLog = mutableListOf<String>()
+        var onResumeAfterOutage: (suspend () -> Unit)? = null
+
+        private fun finalizeLatestSlice(lastCounter: Double, reason: SliceEndReason) {
+            val idx = slices.indexOfLast { it.endedAt == null }
+            if (idx >= 0) {
+                val cur = slices[idx]
+                val delivered = (lastCounter - cur.stationCounterStartKwh).coerceAtLeast(0.0)
+                slices[idx] = cur.copy(
+                    stationCounterLastKwh = lastCounter,
+                    finalizedKwh = delivered,
+                    endedAt = 900L,
+                    terminationReason = reason
+                )
+            }
+            val sumKwh = slices.sumOf { it.finalizedKwh }
+            session = session.copy(totalKwhDelivered = sumKwh)
+        }
+
+        private fun openSlice(startCounter: Double) {
+            val nextIdx = (slices.maxOfOrNull { it.sliceIndex } ?: -1) + 1
+            slices += ChargeSliceEntity(
+                sessionId = session.id,
+                sliceIndex = nextIdx,
+                stationCounterStartKwh = startCounter,
+                stationCounterLastKwh = startCounter,
+                finalizedKwh = 0.0,
+                startedAt = 1_000L
+            )
+        }
 
         fun restoreChargingState() {
+            val lastCounter = slices.lastOrNull()?.stationCounterLastKwh ?: 0.0
+            if (slices.lastOrNull()?.endedAt != null) {
+                openSlice(lastCounter)
+            }
             session = session.copy(status = SessionStatus.CHARGING)
         }
 
         override suspend fun fetchTelemetry(): Result<TelemetryData> = nextTelemetry
         override suspend fun getSessionById(sessionId: String): ChargeSessionEntity? = session
         override suspend fun getActiveSession(): ChargeSessionEntity? = session
-        override suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> = slices
+        override suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> = slices.toList()
 
         override suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long) {
             session = session.copy(accumulatedChargingMs = accumulatedMs, lastTickAt = lastTickAt)
@@ -224,6 +385,7 @@ class SessionSupervisorTest {
 
         override suspend fun handleOutageDetected(sessionId: String, lastCounter: Double) {
             outageCounters += lastCounter
+            finalizeLatestSlice(lastCounter, SliceEndReason.POWER_OUTAGE)
             session = session.copy(status = SessionStatus.OUTAGE_DETECTED)
         }
 
@@ -231,18 +393,33 @@ class SessionSupervisorTest {
             session = session.copy(status = SessionStatus.OUTAGE_STABILIZING)
         }
 
-        override suspend fun restoreChargingFromExistingSlice(sessionId: String) {
+        override suspend fun restoreChargingFromExistingSlice(sessionId: String, currentCounter: Double) {
+            val latest = slices.lastOrNull()
+            if (latest == null) {
+                openSlice(currentCounter)
+            } else if (latest.endedAt != null) {
+                val rolledBack = EnergyAccumulator.isCounterRegression(currentCounter, latest.stationCounterLastKwh) ||
+                    currentCounter < latest.stationCounterStartKwh
+                openSlice(if (rolledBack) currentCounter else latest.stationCounterLastKwh)
+            }
             session = session.copy(status = SessionStatus.CHARGING)
         }
 
         override suspend fun resumeAfterOutage(sessionId: String, isManual: Boolean): Result<Unit> {
+            onResumeAfterOutage?.invoke()
+            callLog += "resume"
             autoResumeCalls++
+            val anchor = nextTelemetry.getOrNull()?.consumedEnergyKwh
+                ?: slices.lastOrNull()?.stationCounterLastKwh
+                ?: 0.0
+            openSlice(anchor)
             session = session.copy(status = SessionStatus.CHARGING)
             return Result.success(Unit)
         }
 
         override suspend fun markSessionTargetReached(sessionId: String, finalCounter: Double): Boolean {
             return if (stopTargetResult) {
+                finalizeLatestSlice(finalCounter, SliceEndReason.TARGET_REACHED)
                 session = session.copy(status = SessionStatus.TARGET_REACHED, completedAt = 999L)
                 true
             } else {
@@ -252,6 +429,7 @@ class SessionSupervisorTest {
         }
 
         override suspend fun markSessionVehicleStopped(sessionId: String, finalCounter: Double) {
+            finalizeLatestSlice(finalCounter, SliceEndReason.VEHICLE_STOPPED)
             session = session.copy(status = SessionStatus.VEHICLE_STOPPED, completedAt = 999L)
         }
 
@@ -261,12 +439,21 @@ class SessionSupervisorTest {
             sliceReason: SliceEndReason,
             finalStatus: SessionStatus
         ) {
+            finalizeLatestSlice(lastCounter, sliceReason)
             finalizedStatus = finalStatus
             session = session.copy(status = finalStatus, completedAt = 999L)
         }
 
         override suspend fun stopAndConfirm(allowOfflineConfirmation: Boolean): Boolean = true
-        override suspend fun stopActiveSession(sessionId: String): Result<Unit> = Result.success(Unit)
+        override suspend fun stopActiveSession(sessionId: String): Result<Unit> {
+            callLog += "stop"
+            val lastCounter = nextTelemetry.getOrNull()?.consumedEnergyKwh
+                ?: slices.lastOrNull()?.stationCounterLastKwh
+                ?: 0.0
+            finalizeLatestSlice(lastCounter, SliceEndReason.MANUAL_STOP)
+            session = session.copy(status = SessionStatus.CANCELLED, completedAt = 999L)
+            return Result.success(Unit)
+        }
         override suspend fun setAmperage(amperes: Int): Result<Unit> = Result.success(Unit)
         override suspend fun updateSessionAmperage(sessionId: String, amperes: Int) {}
         override suspend fun refreshDeadManTimer(sessionId: String, currentVoltage: Int, currentDeliveredKwh: Double) {}

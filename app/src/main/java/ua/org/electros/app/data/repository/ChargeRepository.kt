@@ -235,6 +235,7 @@ class ChargeRepository(
 
     /**
      * Sends stop command and confirms via fresh telemetry that charging stopped.
+     * Waits and polls telemetry once per attempt here rather than double-verifying inside the scraper.
      */
     suspend fun stopAndConfirm(
         maxAttempts: Int = 3,
@@ -242,8 +243,12 @@ class ChargeRepository(
         confirmDelayMs: Long = 4_000L,
         retryDelayMs: Long = 2_000L
     ): Boolean {
+        var previousWsLeftCharging = false
         repeat(maxAttempts) { attempt ->
-            scraper.stopCharge()
+            scraper.stopCharge(
+                verifyWithTelemetry = false,
+                useHttpFallbackOnly = attempt > 0 && previousWsLeftCharging
+            )
             if (confirmDelayMs > 0L) delay(confirmDelayMs)
             val t = scraper.fetchTelemetry().getOrNull()
             if (t != null) {
@@ -251,6 +256,9 @@ class ChargeRepository(
                 if (!t.isChargingActive && (t.isOnline || allowOfflineConfirmation)) {
                     return true
                 }
+                previousWsLeftCharging = t.isChargingActive
+            } else {
+                previousWsLeftCharging = false
             }
             if (attempt < maxAttempts - 1 && retryDelayMs > 0L) delay(retryDelayMs)
         }
@@ -363,13 +371,10 @@ class ChargeRepository(
         )
     }
 
-    suspend fun restoreChargingFromExistingSlice(sessionId: String) {
-        val session = chargeDao.getSessionById(sessionId) ?: return
-        chargeDao.updateSession(
-            session.copy(
-                status = SessionStatus.CHARGING,
-                lastTickAt = System.currentTimeMillis()
-            )
+    suspend fun restoreChargingFromExistingSlice(sessionId: String, currentCounter: Double) {
+        chargeDao.restoreActiveSliceForCharging(
+            sessionId = sessionId,
+            currentCounterKwh = currentCounter
         )
     }
 

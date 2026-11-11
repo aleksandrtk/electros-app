@@ -1,5 +1,7 @@
 package ua.org.electros.app.domain.monitor
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
@@ -18,7 +20,7 @@ interface SessionMonitorGateway {
     suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long)
     suspend fun handleOutageDetected(sessionId: String, lastCounter: Double)
     suspend fun handleOutageStabilizing(sessionId: String)
-    suspend fun restoreChargingFromExistingSlice(sessionId: String)
+    suspend fun restoreChargingFromExistingSlice(sessionId: String, currentCounter: Double)
     suspend fun resumeAfterOutage(sessionId: String, isManual: Boolean = false): Result<Unit>
     suspend fun markSessionTargetReached(sessionId: String, finalCounter: Double): Boolean
     suspend fun markSessionVehicleStopped(sessionId: String, finalCounter: Double)
@@ -93,6 +95,7 @@ class SessionSupervisor(
     private var hasAlertedManualResume: Boolean = false
     private var pendingStopIsManual: Boolean = false
     private var hasAlertedStopFailed: Boolean = false
+    private val operationMutex = Mutex()
 
     fun onSessionStarted(sessionId: String?, targetKwh: Double, targetDurationMinutes: Int) {
         val isNewSession = sessionId != null && sessionId != activeSessionId
@@ -113,8 +116,8 @@ class SessionSupervisor(
         }
     }
 
-    suspend fun hydrateFromDatabase() {
-        val id = activeSessionId ?: return
+    suspend fun hydrateFromDatabase() = operationMutex.withLock {
+        val id = activeSessionId ?: return@withLock
         gateway.getSessionById(id)?.let { dbSession ->
             activeTargetKwh = dbSession.targetKwh
             activeTargetDurationMinutes = dbSession.targetDurationMinutes
@@ -126,16 +129,19 @@ class SessionSupervisor(
 
     fun currentStatus(): SessionStatus = stateMachine.getState()
 
-    suspend fun tick(): TickOutcome {
+    suspend fun tick(): TickOutcome = operationMutex.withLock {
         val events = mutableListOf<SupervisorEvent>()
+        if (stateMachine.getState().isTerminal) {
+            return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+        }
+        val sessionId = activeSessionId
+            ?: return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = false)
         val result = gateway.fetchTelemetry()
 
-        val sessionId = activeSessionId
-            ?: return TickOutcome(stateMachine.getState(), events, shouldStopService = false)
         val dbSession = gateway.getSessionById(sessionId)
         if (dbSession == null || dbSession.status.isTerminal) {
             stateMachine.transition(StateEvent.CancelRequested)
-            return TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+            return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
         }
 
         if (dbSession.status == SessionStatus.STOP_PENDING && stateMachine.getState() != SessionStatus.STOP_PENDING) {
@@ -154,7 +160,7 @@ class SessionSupervisor(
         }
 
         val postStatus = stateMachine.getState()
-        return TickOutcome(
+        TickOutcome(
             status = postStatus,
             events = events,
             shouldStopService = stopRequested || postStatus.isTerminal
@@ -170,14 +176,38 @@ class SessionSupervisor(
         consecutiveFailureTicks = 0
         hasAlertedConnectionLost = false
         lastKnownAmperes = data.selectedCurrentAmperes
-        val slices = gateway.getSlicesForSession(sessionId)
-        val sliceStart = slices.lastOrNull()?.stationCounterStartKwh ?: data.consumedEnergyKwh
+        var slices = gateway.getSlicesForSession(sessionId)
+        var activeSlice = slices.lastOrNull { it.endedAt == null }
 
         if (EnergyAccumulator.isCounterRegression(data.consumedEnergyKwh, lastSampledCounterKwh)) {
-            handleCounterRegression(sessionId, dbSession, slices, sliceStart, events)
+            handleCounterRegression(
+                sessionId = sessionId,
+                dbSession = dbSession,
+                slices = slices,
+                activeSliceStart = activeSlice?.stationCounterStartKwh ?: lastSampledCounterKwh,
+                events = events
+            )
+            slices = gateway.getSlicesForSession(sessionId)
+            activeSlice = slices.lastOrNull { it.endedAt == null }
         }
         lastSampledCounterKwh = data.consumedEnergyKwh
 
+        if (data.isOnline &&
+            data.isChargingActive &&
+            (stateMachine.getState() == SessionStatus.OUTAGE_DETECTED ||
+                stateMachine.getState() == SessionStatus.OUTAGE_STABILIZING ||
+                stateMachine.getState() == SessionStatus.AUTO_RESUMING)
+        ) {
+            stateMachine.transition(StateEvent.ResumeCommandSent)
+            hasAlertedManualResume = false
+            events += SupervisorEvent.CancelManualResumeAlert
+            gateway.restoreChargingFromExistingSlice(sessionId, data.consumedEnergyKwh)
+            slices = gateway.getSlicesForSession(sessionId)
+            activeSlice = slices.lastOrNull { it.endedAt == null }
+        }
+
+        // Only open slices contribute active counter delta; closed slices are already in finalizedSlices.
+        val sliceStart = activeSlice?.stationCounterStartKwh ?: data.consumedEnergyKwh
         val totalDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
             finalizedSlices = slices.filter { it.endedAt != null },
             activeSliceStartKwh = sliceStart,
@@ -197,16 +227,6 @@ class SessionSupervisor(
                 events += SupervisorEvent.ShowOutageAlert(totalDelivered, gateway.isAutoResumeEnabled())
             }
         } else {
-            if (data.isChargingActive && (stateMachine.getState() == SessionStatus.OUTAGE_DETECTED ||
-                    stateMachine.getState() == SessionStatus.OUTAGE_STABILIZING ||
-                    stateMachine.getState() == SessionStatus.AUTO_RESUMING)
-            ) {
-                stateMachine.transition(StateEvent.ResumeCommandSent)
-                hasAlertedManualResume = false
-                events += SupervisorEvent.CancelManualResumeAlert
-                gateway.restoreChargingFromExistingSlice(sessionId)
-            }
-
             when (stateMachine.getState()) {
                 SessionStatus.OUTAGE_DETECTED -> handleOutageDetectedOnline(sessionId, dbSession, data, totalDelivered, events)
                 SessionStatus.OUTAGE_STABILIZING -> handleOutageStabilizingOnline(sessionId, dbSession, data, totalDelivered, events)
@@ -243,7 +263,7 @@ class SessionSupervisor(
         sessionId: String,
         dbSession: ChargeSessionEntity,
         slices: List<ChargeSliceEntity>,
-        sliceStart: Double,
+        activeSliceStart: Double,
         events: MutableList<SupervisorEvent>
     ) {
         lastActiveChargingSampleAt = 0L
@@ -251,7 +271,7 @@ class SessionSupervisor(
         gateway.handleOutageDetected(sessionId, lastSampledCounterKwh)
         val outageDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
             finalizedSlices = slices.filter { it.endedAt != null },
-            activeSliceStartKwh = sliceStart,
+            activeSliceStartKwh = activeSliceStart,
             currentStationCounterKwh = lastSampledCounterKwh
         )
         if (gateway.isAutoResumeEnabled()) {
@@ -341,6 +361,9 @@ class SessionSupervisor(
         dbSession: ChargeSessionEntity,
         events: MutableList<SupervisorEvent>
     ) {
+        if (stateMachine.getState().isTerminal || gateway.getSessionById(sessionId)?.status?.isTerminal == true) {
+            return
+        }
         val resumeRes = gateway.resumeAfterOutage(sessionId)
         if (resumeRes.isSuccess) {
             stateMachine.transition(StateEvent.ResumeCommandSent)
@@ -537,13 +560,21 @@ class SessionSupervisor(
         }
     }
 
-    suspend fun handleManualStop(): TickOutcome {
+    suspend fun handleManualStop(): TickOutcome = operationMutex.withLock {
         val events = mutableListOf<SupervisorEvent>()
+        if (stateMachine.getState().isTerminal) {
+            return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+        }
         val id = activeSessionId
-            ?: return TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+            ?: return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+        if (gateway.getSessionById(id)?.status?.isTerminal == true) {
+            stateMachine.transition(StateEvent.CancelRequested)
+            return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+        }
 
         val res = gateway.stopActiveSession(id)
-        return if (res.isSuccess) {
+        if (res.isSuccess) {
+            pendingStopIsManual = false
             stateMachine.transition(StateEvent.CancelRequested)
             TickOutcome(stateMachine.getState(), events, shouldStopService = true)
         } else {
@@ -557,15 +588,28 @@ class SessionSupervisor(
         }
     }
 
-    suspend fun handleManualResume(): Pair<List<SupervisorEvent>, Boolean> {
+    suspend fun handleManualResume(): Pair<List<SupervisorEvent>, Boolean> = operationMutex.withLock {
         val events = mutableListOf<SupervisorEvent>()
+        if (stateMachine.getState().isTerminal) {
+            return@withLock events to false
+        }
         val id = activeSessionId ?: gateway.getActiveSession()?.id
-            ?: return events to false
+            ?: return@withLock events to false
 
         activeSessionId = id
         val dbSession = gateway.getSessionById(id)
+        if (dbSession?.status?.isTerminal == true) {
+            stateMachine.transition(StateEvent.CancelRequested)
+            return@withLock events to false
+        }
+        if (stateMachine.getState() == SessionStatus.CHARGING || dbSession?.status == SessionStatus.CHARGING) {
+            hasAlertedManualResume = false
+            events += SupervisorEvent.CancelManualResumeAlert
+            return@withLock events to true
+        }
+
         val res = gateway.resumeAfterOutage(id, isManual = true)
-        return if (res.isSuccess) {
+        if (res.isSuccess) {
             stateMachine.transition(StateEvent.ResumeCommandSent)
             lastActiveChargingSampleAt = 0L
             hasAlertedManualResume = false

@@ -202,7 +202,7 @@ class ElectrosWebScraperAuthTest {
     }
 
     @Test
-    fun `fetchTelemetry returns failure on truncated WS telemetry instead of fabricated voltage`() = runBlocking {
+    fun `fetchTelemetry falls back to HTTP when WS telemetry is truncated`() = runBlocking {
         val httpCalled = AtomicInteger(0)
         val client = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->
@@ -211,39 +211,63 @@ class ElectrosWebScraperAuthTest {
             })
             .build()
 
-        val factory = WebSocket.Factory { request, listener ->
-            lateinit var ws: WebSocket
-            ws = object : WebSocket {
-                override fun request(): Request = request
-                override fun queueSize(): Long = 0L
-                override fun send(text: String): Boolean {
-                    Thread { listener.onMessage(ws, "8800Lt\n1\n2") }.start()
-                    return true
-                }
-                override fun send(bytes: okio.ByteString): Boolean = false
-                override fun close(code: Int, reason: String?): Boolean = true
-                override fun cancel() {}
-            }
-            val wsResp = Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(101)
-                .message("Switching Protocols")
-                .build()
-            Thread { listener.onOpen(ws, wsResp) }.start()
-            ws
-        }
+        val scraper = ElectrosWebScraper(
+            client = client,
+            wsFactory = truncatedWsFactory("8800Lt\n1\n2"),
+            serialProvider = { "12345" }
+        )
+
+        val result = scraper.fetchTelemetry()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, httpCalled.get())
+        assertEquals(225, result.getOrThrow().voltageCurrent)
+        assertEquals("Підключено. Немає заряду", result.getOrThrow().statusText)
+    }
+
+    @Test
+    fun `fetchTelemetry returns failure when WS telemetry is truncated and HTTP also fails`() = runBlocking {
+        val httpCalled = AtomicInteger(0)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                httpCalled.incrementAndGet()
+                trackedResponse(chain.request(), 500, "Internal Error", AtomicInteger(), AtomicInteger())
+            })
+            .build()
 
         val scraper = ElectrosWebScraper(
             client = client,
-            wsFactory = factory,
+            wsFactory = truncatedWsFactory("8800Lt\n1\n2"),
             serialProvider = { "12345" }
         )
 
         val result = scraper.fetchTelemetry()
 
         assertTrue(result.isFailure)
-        assertEquals(0, httpCalled.get())
+        assertEquals(1, httpCalled.get())
+    }
+
+    private fun truncatedWsFactory(payload: String): WebSocket.Factory = WebSocket.Factory { request, listener ->
+        lateinit var ws: WebSocket
+        ws = object : WebSocket {
+            override fun request(): Request = request
+            override fun queueSize(): Long = 0L
+            override fun send(text: String): Boolean {
+                Thread { listener.onMessage(ws, payload) }.start()
+                return true
+            }
+            override fun send(bytes: okio.ByteString): Boolean = false
+            override fun close(code: Int, reason: String?): Boolean = true
+            override fun cancel() {}
+        }
+        val wsResp = Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(101)
+            .message("Switching Protocols")
+            .build()
+        Thread { listener.onOpen(ws, wsResp) }.start()
+        ws
     }
 
     @Test
