@@ -7,21 +7,11 @@ import androidx.security.crypto.MasterKey
 
 class AuthPreferences(context: Context) {
 
-    private val prefs: SharedPreferences = try {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        EncryptedSharedPreferences.create(
-            context,
-            "auth_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    } catch (e: Exception) {
-        context.getSharedPreferences("auth_prefs_fallback", Context.MODE_PRIVATE)
-    }
+    private val prefs: SharedPreferences = EncryptedPrefsFactory.create(
+        context = context,
+        fileName = "auth_prefs",
+        legacyPlaintextNames = listOf("auth_prefs_fallback")
+    )
 
     var deviceSerial: String
         get() = prefs.getString("KEY_DEVICE_SERIAL", "").orEmpty()

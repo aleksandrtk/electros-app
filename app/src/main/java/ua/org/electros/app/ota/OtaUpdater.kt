@@ -2,6 +2,7 @@ package ua.org.electros.app.ota
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -16,6 +17,7 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.Locale
 
 object OtaUpdater {
     private const val TAG = "OtaUpdater"
@@ -42,6 +44,22 @@ object OtaUpdater {
         val expectedSha256: String? = null,
         val expectedSizeBytes: Long = 0L
     )
+
+    internal data class ReleaseFlags(val isDraft: Boolean, val isPrerelease: Boolean)
+
+    internal fun selectFirstStableReleaseIndex(releases: List<ReleaseFlags>): Int? =
+        releases.indexOfFirst { !it.isDraft && !it.isPrerelease }.takeIf { it >= 0 }
+
+    internal fun doCertificatesMatch(
+        expectedPackage: String,
+        archivePackage: String?,
+        installedDigests: List<String>,
+        archiveDigests: List<String>
+    ): Boolean {
+        if (archivePackage != expectedPackage) return false
+        if (installedDigests.isEmpty() || archiveDigests.isEmpty()) return false
+        return installedDigests == archiveDigests
+    }
 
     /** Parses GitHub asset digest format ("sha256:abcdef...") into bare hex, or null. */
     fun parseDigest(digest: String?): String? {
@@ -70,9 +88,53 @@ object OtaUpdater {
                     md.update(buffer, 0, read)
                 }
             }
-            md.digest().joinToString("") { "%02x".format(it) }
+            md.digest().toHexString()
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).toHexString()
+
+    private fun ByteArray.toHexString(): String =
+        joinToString("") { "%02x".format(Locale.US, it) }
+
+    internal fun hasMatchingSigningCertificate(context: Context, apkFile: File): Boolean {
+        val pm = context.packageManager
+        val installedDigests: List<String>
+        val archivePackageName: String?
+        val archiveDigests: List<String>
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                @Suppress("DEPRECATION")
+                val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                @Suppress("DEPRECATION")
+                val archive = pm.getPackageArchiveInfo(apkFile.path, PackageManager.GET_SIGNING_CERTIFICATES)
+                archivePackageName = archive?.packageName
+                installedDigests = installed.signingInfo?.apkContentsSigners.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
+                archiveDigests = archive?.signingInfo?.apkContentsSigners.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
+            } else {
+                @Suppress("DEPRECATION")
+                val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                val archive = pm.getPackageArchiveInfo(apkFile.path, PackageManager.GET_SIGNATURES)
+                archivePackageName = archive?.packageName
+                @Suppress("DEPRECATION")
+                installedDigests = installed.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
+                @Suppress("DEPRECATION")
+                archiveDigests = archive?.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
+            }
+            doCertificatesMatch(
+                expectedPackage = context.packageName,
+                archivePackage = archivePackageName,
+                installedDigests = installedDigests,
+                archiveDigests = archiveDigests
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to verify APK signing certificate: ${e.message}")
+            false
         }
     }
 
@@ -131,7 +193,17 @@ object OtaUpdater {
             if (releaseJson == null) {
                 val releasesListJson = fetchJsonArray(fallbackAllReleasesUrl)
                 if (releasesListJson != null && releasesListJson.length() > 0) {
-                    releaseJson = releasesListJson.getJSONObject(0)
+                    val flags = (0 until releasesListJson.length()).map { i ->
+                        val item = releasesListJson.getJSONObject(i)
+                        ReleaseFlags(
+                            isDraft = item.optBoolean("draft", false),
+                            isPrerelease = item.optBoolean("prerelease", false)
+                        )
+                    }
+                    val stableIndex = selectFirstStableReleaseIndex(flags)
+                    if (stableIndex != null) {
+                        releaseJson = releasesListJson.getJSONObject(stableIndex)
+                    }
                 }
             }
 
@@ -189,19 +261,26 @@ object OtaUpdater {
         )
     }
 
-    private fun fetchJson(urlString: String): JSONObject? {
+    private fun fetchJson(urlString: String): JSONObject? =
+        fetchText(urlString)?.let { JSONObject(it) }
+
+    private fun fetchJsonArray(urlString: String): JSONArray? =
+        fetchText(urlString)?.let { JSONArray(it) }
+
+    private fun fetchText(urlString: String): String? {
+        var connection: HttpURLConnection? = null
         return try {
             val url = URL(urlString)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
-            connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-            connection.setRequestProperty("User-Agent", "Electros-App")
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 8000
+                setRequestProperty("Accept", "application/vnd.github.v3+json")
+                setRequestProperty("User-Agent", "Electros-App")
+            }
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val jsonString = connection.inputStream.bufferedReader().use { it.readText() }
-                JSONObject(jsonString)
+                connection.inputStream.bufferedReader().use { it.readText() }
             } else {
                 Log.w(TAG, "HTTP GET $urlString failed with code: ${connection.responseCode}")
                 null
@@ -209,27 +288,8 @@ object OtaUpdater {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch JSON from $urlString: ${e.message}")
             null
-        }
-    }
-
-    private fun fetchJsonArray(urlString: String): JSONArray? {
-        return try {
-            val url = URL(urlString)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
-            connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-            connection.setRequestProperty("User-Agent", "Electros-App")
-
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val jsonString = connection.inputStream.bufferedReader().use { it.readText() }
-                JSONArray(jsonString)
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            null
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -253,78 +313,90 @@ object OtaUpdater {
 
         try {
             for (redirectCount in 0 until maxRedirects) {
-                val url = URL(currentUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
-                connection.setRequestProperty("User-Agent", "Electros-App")
-                connection.instanceFollowRedirects = false
-
-                val responseCode = connection.responseCode
-                if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-                    responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-                    responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
-                    responseCode == 307 || responseCode == 308) {
-                    val location = connection.getHeaderField("Location")
-                    if (location.isNullOrEmpty()) break
-                    if (!isValidDownloadUrl(location)) {
-                        Log.e(TAG, "Blocked redirect to untrusted host: $location")
-                        break
+                var connection: HttpURLConnection? = null
+                try {
+                    val url = URL(currentUrl)
+                    connection = (url.openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 15000
+                        readTimeout = 15000
+                        setRequestProperty("User-Agent", "Electros-App")
+                        instanceFollowRedirects = false
                     }
-                    currentUrl = location
-                    continue
-                }
 
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    val fileLength = connection.contentLengthLong
-                    val cacheFile = File(context.cacheDir, "electros_update.apk")
-                    if (cacheFile.exists()) cacheFile.delete()
+                    val responseCode = connection.responseCode
+                    if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+                        responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
+                        responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
+                        responseCode == 307 || responseCode == 308) {
+                        val location = connection.getHeaderField("Location")
+                        if (location.isNullOrEmpty()) break
+                        if (!isValidDownloadUrl(location)) {
+                            Log.e(TAG, "Blocked redirect to untrusted host: $location")
+                            break
+                        }
+                        currentUrl = location
+                        continue
+                    }
 
-                    connection.inputStream.use { input ->
-                        FileOutputStream(cacheFile).use { output ->
-                            val buffer = ByteArray(8192)
-                            var bytesRead: Int
-                            var totalBytesCopied = 0L
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+                        val fileLength = connection.contentLengthLong
+                        val cacheFile = File(context.cacheDir, "electros_update.apk")
+                        if (cacheFile.exists()) cacheFile.delete()
 
-                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                totalBytesCopied += bytesRead
-                                if (fileLength > 0L) {
-                                    onProgress(totalBytesCopied.toFloat() / fileLength.toFloat())
+                        connection.inputStream.use { input ->
+                            FileOutputStream(cacheFile).use { output ->
+                                val buffer = ByteArray(8192)
+                                var bytesRead: Int
+                                var totalBytesCopied = 0L
+
+                                while (input.read(buffer).also { bytesRead = it } != -1) {
+                                    output.write(buffer, 0, bytesRead)
+                                    totalBytesCopied += bytesRead
+                                    if (fileLength > 0L) {
+                                        onProgress(totalBytesCopied.toFloat() / fileLength.toFloat())
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    val actualLength = if (cacheFile.exists()) cacheFile.length() else 0L
-                    if (actualLength <= 0L) {
-                        Log.e(TAG, "Downloaded APK is empty")
-                        break
-                    }
+                        val actualLength = if (cacheFile.exists()) cacheFile.length() else 0L
+                        if (actualLength <= 0L) {
+                            Log.e(TAG, "Downloaded APK is empty")
+                            break
+                        }
 
-                    val expectedLen = if (expectedSizeBytes > 0L) expectedSizeBytes else fileLength
-                    if (expectedLen > 0L && actualLength != expectedLen) {
-                        Log.e(TAG, "APK size mismatch: expected $expectedLen bytes, got $actualLength. Aborting.")
-                        cacheFile.delete()
-                        break
-                    }
-
-                    if (expectedSha256 != null) {
-                        val actualSha256 = computeSha256(cacheFile)
-                        if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                            Log.e(TAG, "APK SHA-256 mismatch: expected $expectedSha256, got $actualSha256. Aborting.")
+                        val expectedLen = if (expectedSizeBytes > 0L) expectedSizeBytes else fileLength
+                        if (expectedLen > 0L && actualLength != expectedLen) {
+                            Log.e(TAG, "APK size mismatch: expected $expectedLen bytes, got $actualLength. Aborting.")
                             cacheFile.delete()
                             break
                         }
-                        Log.i(TAG, "APK SHA-256 verified OK (${actualSha256.take(12)}...)")
-                    }
 
-                    Log.i(TAG, "APK update downloaded successfully: $actualLength bytes")
-                    return@withContext cacheFile
-                } else {
-                    Log.e(TAG, "Download failed with HTTP status: $responseCode")
+                        if (expectedSha256 != null) {
+                            val actualSha256 = computeSha256(cacheFile)
+                            if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                                Log.e(TAG, "APK SHA-256 mismatch: expected $expectedSha256, got $actualSha256. Aborting.")
+                                cacheFile.delete()
+                                break
+                            }
+                            Log.i(TAG, "APK SHA-256 verified OK (${actualSha256.take(12)}...)")
+                        }
+
+                        if (!hasMatchingSigningCertificate(context, cacheFile)) {
+                            Log.e(TAG, "APK signing certificate does not match installed app. Aborting.")
+                            cacheFile.delete()
+                            break
+                        }
+
+                        Log.i(TAG, "APK update downloaded successfully: $actualLength bytes")
+                        return@withContext cacheFile
+                    } else {
+                        Log.e(TAG, "Download failed with HTTP status: $responseCode")
+                    }
+                    break
+                } finally {
+                    connection?.disconnect()
                 }
-                break
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exception downloading APK: ${e.message}", e)
@@ -339,6 +411,11 @@ object OtaUpdater {
     fun installApk(context: Context, apkFile: File) {
         if (!apkFile.exists() || apkFile.length() == 0L) {
             Log.e(TAG, "Cannot install update. APK file does not exist or is empty.")
+            return
+        }
+        if (!hasMatchingSigningCertificate(context, apkFile)) {
+            Log.e(TAG, "Refusing to install APK with unverified or mismatched signing certificate.")
+            apkFile.delete()
             return
         }
 

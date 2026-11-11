@@ -18,6 +18,7 @@ class NotificationHelper(private val context: Context) {
         const val NOTIFICATION_ID_STATUS = 1001
         const val NOTIFICATION_ID_ALERT = 1002
         const val NOTIFICATION_ID_RESUME_ALERT = 1007
+        const val NOTIFICATION_ID_FGS_BLOCKED = 1008
 
         const val ACTION_STOP_CHARGE = "ua.org.electros.app.ACTION_STOP_CHARGE"
         const val ACTION_RESUME_CHARGE = "ua.org.electros.app.ACTION_RESUME_CHARGE"
@@ -248,16 +249,20 @@ class NotificationHelper(private val context: Context) {
         notificationManager.notify(NOTIFICATION_ID_ALERT + 3, builder.build())
     }
 
-    fun showStopFailedAlert() {
+    private fun createOpenAppPendingIntent(requestCode: Int): PendingIntent {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(
+        return PendingIntent.getActivity(
             context,
-            4,
+            requestCode,
             openAppIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+    }
+
+    fun showStopFailedAlert() {
+        val pendingIntent = createOpenAppPendingIntent(4)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚠️ Не вдалося зупинити станцію")
@@ -268,6 +273,20 @@ class NotificationHelper(private val context: Context) {
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 4, builder.build())
+    }
+
+    fun showMonitorRestartRequiredAlert() {
+        val pendingIntent = createOpenAppPendingIntent(5)
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("Потрібен ручний запуск моніторингу")
+            .setContentText("Відкрийте застосунок, щоб продовжити моніторинг")
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_FGS_BLOCKED, builder.build())
     }
 }
 

@@ -6,9 +6,15 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 
+import ua.org.electros.app.data.local.EncryptedPrefsFactory
+
 class CookieStorage(context: Context) : CookieJar {
 
-    private val prefs: SharedPreferences = context.getSharedPreferences("electros_cookies", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = EncryptedPrefsFactory.create(
+        context = context,
+        fileName = "electros_cookies_encrypted",
+        legacyPlaintextNames = listOf("electros_cookies")
+    )
     private val memoryCookies = mutableMapOf<String, Cookie>()
 
     init {

@@ -14,7 +14,7 @@ import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 @Database(
     entities = [ChargeSessionEntity::class, ChargeSliceEntity::class],
     version = 2,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -40,7 +40,6 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "electros_charge.db"
                 ).addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }
             }

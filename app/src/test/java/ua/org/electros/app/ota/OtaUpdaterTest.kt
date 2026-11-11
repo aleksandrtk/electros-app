@@ -48,5 +48,61 @@ class OtaUpdaterTest {
         assertThat(OtaUpdater.isValidDownloadUrl("https://malicious.com/app.apk")).isFalse()
         assertThat(OtaUpdater.isValidDownloadUrl("invalid-url")).isFalse()
     }
+
+    @Test
+    fun selectFirstStableReleaseIndex_skipsDraftsAndPrereleases() {
+        val list = listOf(
+            OtaUpdater.ReleaseFlags(isDraft = true, isPrerelease = false),
+            OtaUpdater.ReleaseFlags(isDraft = false, isPrerelease = true),
+            OtaUpdater.ReleaseFlags(isDraft = false, isPrerelease = false),
+            OtaUpdater.ReleaseFlags(isDraft = false, isPrerelease = false)
+        )
+        assertThat(OtaUpdater.selectFirstStableReleaseIndex(list)).isEqualTo(2)
+
+        val onlyPre = listOf(
+            OtaUpdater.ReleaseFlags(isDraft = true, isPrerelease = false),
+            OtaUpdater.ReleaseFlags(isDraft = false, isPrerelease = true)
+        )
+        assertThat(OtaUpdater.selectFirstStableReleaseIndex(onlyPre)).isNull()
+    }
+
+    @Test
+    fun doCertificatesMatch_verifiesPackageAndDigests() {
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.electros.app",
+                installedDigests = listOf("abc"),
+                archiveDigests = listOf("abc")
+            )
+        ).isTrue()
+
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.other.app",
+                installedDigests = listOf("abc"),
+                archiveDigests = listOf("abc")
+            )
+        ).isFalse()
+
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.electros.app",
+                installedDigests = listOf("abc"),
+                archiveDigests = listOf("def")
+            )
+        ).isFalse()
+
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.electros.app",
+                installedDigests = emptyList(),
+                archiveDigests = emptyList()
+            )
+        ).isFalse()
+    }
 }
 

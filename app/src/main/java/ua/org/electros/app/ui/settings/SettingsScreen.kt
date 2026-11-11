@@ -16,9 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +44,7 @@ fun SettingsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var serialInput by remember(state.deviceSerial) { mutableStateOf(state.deviceSerial) }
     var passwordInput by remember { mutableStateOf("") }
+    var isSerialVisible by remember { mutableStateOf(false) }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var savedSuccess by remember { mutableStateOf(false) }
 
@@ -94,6 +98,16 @@ fun SettingsScreen(
                     },
                     label = { Text("Номер пристрою (наприклад, a1234)") },
                     singleLine = true,
+                    visualTransformation = if (isSerialVisible) VisualTransformation.None else SerialMaskVisualTransformation,
+                    trailingIcon = {
+                        TextButton(onClick = { isSerialVisible = !isSerialVisible }) {
+                            Text(
+                                text = if (isSerialVisible) "Приховати" else "Показати",
+                                color = TextSecondaryDark,
+                                fontSize = 12.sp
+                            )
+                        }
+                    },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimaryDark,
                         unfocusedTextColor = TextPrimaryDark,
@@ -251,5 +265,22 @@ private fun SettingRow(label: String, value: String) {
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium, color = TextSecondaryDark)
         Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TextPrimaryDark)
+    }
+}
+
+private object SerialMaskVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text
+        val visiblePrefix = when {
+            raw.length <= 2 -> 0
+            raw.length <= 5 -> 2
+            else -> 4
+        }
+        val masked = buildString(raw.length) {
+            for (i in raw.indices) {
+                append(if (i < visiblePrefix) raw[i] else '•')
+            }
+        }
+        return TransformedText(AnnotatedString(masked), OffsetMapping.Identity)
     }
 }
