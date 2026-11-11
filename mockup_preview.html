@@ -363,21 +363,42 @@
     }
 
     /* Variation 4.1 3D Dial & Timer Upgrades */
+    .rotary-panel-v41 {
+      padding: 10px 10px 8px 10px;
+    }
+    .rotary-header-v41 {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .rotary-kw-badge {
+      background: #0D0F14;
+      border: 1px solid #262B36;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 900;
+      color: #FF9900;
+      font-family: 'JetBrains Mono', monospace;
+    }
     .rotary-stage-v41 {
       position: relative;
       width: 234px;
-      height: 204px;
+      height: 184px;
       display: flex;
       justify-content: center;
       align-items: center;
       margin: 0 auto;
     }
-    .rotary-stage-v41 .g-6a  { left: 31px;  top: 133px; }
-    .rotary-stage-v41 .g-8a  { left: 42px;  top: 49px;  }
+    .rotary-stage-v41 .g-6a  { left: 30px;  top: 135px; }
+    .rotary-stage-v41 .g-8a  { left: 41px;  top: 50px;  }
     .rotary-stage-v41 .g-10a { left: 117px; top: 10px;  }
-    .rotary-stage-v41 .g-12a { left: 192px; top: 49px;  }
-    .rotary-stage-v41 .g-16a { left: 203px; top: 133px; }
+    .rotary-stage-v41 .g-12a { left: 193px; top: 50px;  }
+    .rotary-stage-v41 .g-16a { left: 204px; top: 135px; }
     .rotary-collar-v41 {
+      margin-top: 22px;
       width: 148px;
       height: 148px;
       border-radius: 50%;
@@ -569,8 +590,11 @@
           </div>
 
           <!-- Central 3D Rotary Current Knob Panel -->
-          <div class="tactile-face rotary-panel">
-            <div class="rotary-panel-label">SELECTABLE CHARGE CURRENT</div>
+          <div class="tactile-face rotary-panel rotary-panel-v41">
+            <div class="rotary-header-v41">
+              <div class="rotary-panel-label" style="margin-bottom:0;">CHARGE CURRENT</div>
+              <div class="rotary-kw-badge" id="kw-cap-1">2.18 kW</div>
+            </div>
             <div class="rotary-stage-v41" id="stage-1">
               <span class="knob-grad-val g-6a" id="g1-6" onclick="setKnob1(6)">6A</span>
               <span class="knob-grad-val g-8a" id="g1-8" onclick="setKnob1(8)">8A</span>
@@ -586,7 +610,6 @@
                 <div class="knob-core-v41" id="knob-val-1">10A</div>
               </div>
             </div>
-            <div class="rotary-caption" id="kw-cap-1">OUTPUT: 2.18 kW ACTIVE</div>
           </div>
 
           <!-- DLB Auto-Derate Status -->
@@ -800,8 +823,8 @@
       document.getElementById('knob-1').style.transform = `rotate(${ang}deg)`;
       const valEl = document.getElementById('knob-val-1');
       valEl.innerText = `${v}A`;
-      const kw = ((218.4 * v) / 1000).toFixed(2);
-      document.getElementById('kw-cap-1').innerText = `OUTPUT: ${kw} kW ACTIVE`;
+      const kw = ((218 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-1').innerText = `${kw} kW`;
       ampValues.forEach(val => {
         const el = document.getElementById(`g1-${val}`);
         if (el) el.classList.toggle('active-target', val === v);

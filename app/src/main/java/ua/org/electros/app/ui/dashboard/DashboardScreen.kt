@@ -67,8 +67,8 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .background(StudioChassisDark)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val telemetry = state.telemetry
 
@@ -204,7 +204,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Text(
                 text = "LINE VOLTAGE (RMS)",
@@ -216,7 +216,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Cathode Nixie Display Window
             Box(
@@ -225,7 +225,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
                     .clip(RoundedCornerShape(8.dp))
                     .background(StudioScreenDark)
                     .border(2.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -234,7 +234,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
                 ) {
                     Text(
                         text = if (isOnline) "$voltage" else "---",
-                        fontSize = 32.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
                         color = AmberNixie,
@@ -278,6 +278,8 @@ private fun StudioClassicRotaryKnobCard(
         label = "knobRotation"
     )
 
+    val stageCenterOffsetY = 11.dp
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
@@ -287,29 +289,51 @@ private fun StudioClassicRotaryKnobCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "SELECTABLE CHARGE CURRENT",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 0.6.sp
-                ),
-                color = TextSecondaryDark,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "CHARGE CURRENT",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.6.sp
+                    ),
+                    color = TextSecondaryDark,
+                    fontWeight = FontWeight.Bold
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(StudioScreenDark)
+                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "%.2f kW".format(powerKw),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        color = AmberNixie
+                    )
+                }
+            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
-            // Stage with generous width (234dp) so outer labels sit clear of the 136dp 3D dial
+            // Compact vertical stage tailored to the -110..+110 arc while keeping the 136dp 3D dial full-sized
             Box(
                 modifier = Modifier
-                    .size(234.dp)
+                    .width(236.dp)
+                    .height(184.dp)
                     .pointerInput(stops) {
                         detectDragGestures { change, _ ->
                             change.consume()
-                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val center = Offset(size.width / 2f, size.height / 2f + stageCenterOffsetY.toPx())
                             val pos = change.position
                             val dx = pos.x - center.x
                             val dy = pos.y - center.y
@@ -349,11 +373,15 @@ private fun StudioClassicRotaryKnobCard(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Graduation Numbers: 6A, 8A, 10A, 12A, 16A (kept cleanly outside the 136dp 3D dial)
-                stops.forEachIndexed { idx, stop ->
-                    val a = angleForIndex(idx)
-                    val rad = Math.toRadians(a.toDouble())
-                    val labelRadius = 92.dp
+                Box(
+                    modifier = Modifier.offset(y = stageCenterOffsetY),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Graduation Numbers: 6A, 8A, 10A, 12A, 16A (kept cleanly outside the 136dp 3D dial)
+                    stops.forEachIndexed { idx, stop ->
+                        val a = angleForIndex(idx)
+                        val rad = Math.toRadians(a.toDouble())
+                        val labelRadius = 93.dp
                     val offsetX = (labelRadius.value * sin(rad)).dp
                     val offsetY = (-labelRadius.value * cos(rad)).dp
                     val isCurrent = idx == currentIndex
@@ -601,19 +629,8 @@ private fun StudioClassicRotaryKnobCard(
                         }
                     }
                 }
+                }
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Sub-caption: OUTPUT: 2.18 kW ACTIVE
-            Text(
-                text = "OUTPUT: %.2f kW ACTIVE".format(powerKw),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                color = AmberNixie,
-                letterSpacing = 1.sp
-            )
         }
     }
 }
@@ -630,7 +647,7 @@ private fun StudioClassicDlbCard(
     isCharging: Boolean
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
         border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(StudioPanelBorder, StudioPanelBorder))),
         modifier = Modifier.fillMaxWidth()
@@ -638,7 +655,7 @@ private fun StudioClassicDlbCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -754,7 +771,7 @@ private fun StudioClassicTimerCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded.value = !expanded.value }
-                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -944,7 +961,7 @@ private fun StudioClassicScheduleCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded.value = !expanded.value }
-                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1281,14 +1298,14 @@ private fun OutageBanner(
 @Composable
 private fun OfflineWarningCard() {
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
         border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(IndustrialRed, IndustrialRed))),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = "🔌", fontSize = 20.sp)
