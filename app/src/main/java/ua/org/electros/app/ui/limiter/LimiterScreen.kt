@@ -323,32 +323,57 @@ fun LimiterScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 if (state.isScheduleEnabled) {
+                    val endpoints = listOf(
+                        Triple("ЧАС ПОЧАТКУ", state.startTime) { delta: Int ->
+                            val nextStart = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(state.startTime, delta)
+                            viewModel.setScheduleTimes(nextStart, state.stopTime)
+                        },
+                        Triple("ЧАС ЗАВЕРШЕННЯ", state.stopTime) { delta: Int ->
+                            val nextStop = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(state.stopTime, delta)
+                            viewModel.setScheduleTimes(state.startTime, nextStop)
+                        }
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceContainerHighDark)
-                                .padding(14.dp)
-                        ) {
-                            Text(text = "ЧАС ПОЧАТКУ", style = MaterialTheme.typography.labelSmall, color = TextSecondaryDark)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(text = state.startTime, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceContainerHighDark)
-                                .padding(14.dp)
-                        ) {
-                            Text(text = "ЧАС ЗАВЕРШЕННЯ", style = MaterialTheme.typography.labelSmall, color = TextSecondaryDark)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(text = state.stopTime, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                        endpoints.forEach { (label, valueText, onStep) ->
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(SurfaceContainerHighDark)
+                                    .padding(14.dp)
+                            ) {
+                                Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextSecondaryDark)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "−",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SecondaryCyan,
+                                        modifier = Modifier
+                                            .clickable { onStep(-1) }
+                                            .padding(horizontal = 6.dp)
+                                    )
+                                    Text(text = valueText, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                                    Text(
+                                        text = "+",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SecondaryCyan,
+                                        modifier = Modifier
+                                            .clickable { onStep(+1) }
+                                            .padding(horizontal = 6.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 

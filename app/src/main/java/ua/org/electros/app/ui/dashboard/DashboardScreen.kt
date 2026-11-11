@@ -75,8 +75,7 @@ fun DashboardScreen(
             // 1. Clean Connection Status Plate
             StudioTopHeader(
                 isOnline = telemetry?.isOnline ?: false,
-                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "В МЕРЕЖІ" else "OFFLINE",
-                voltage = telemetry?.voltageCurrent ?: 220
+                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "В МЕРЕЖІ" else "OFFLINE"
             )
 
             // Error message banner if any
@@ -132,15 +131,22 @@ fun DashboardScreen(
                 hasActiveSession = state.activeSession != null,
                 isChargingActive = telemetry?.isChargingActive ?: false,
                 isOutageActive = state.isOutageActive,
-                isScheduleEnabled = state.isScheduleEnabled,
-                scheduleStartTime = state.scheduleStartTime,
-                scheduleStopTime = state.scheduleStopTime,
                 onSelectDuration = { enabled, hours ->
                     viewModel.setDurationTimer(context, enabled, hours)
                 }
             )
 
-            // 6. Heavy Switch Action Button
+            // 6. Daily Schedule Timer Indicator Card (e.g. 02:00–16:00)
+            StudioClassicScheduleCard(
+                isScheduleEnabled = state.isScheduleEnabled,
+                scheduleStartTime = state.scheduleStartTime,
+                scheduleStopTime = state.scheduleStopTime,
+                onUpdateSchedule = { enabled, start, stop ->
+                    viewModel.setScheduleTimer(enabled, start, stop)
+                }
+            )
+
+            // 7. Heavy Switch Action Button
             StudioClassicActionButton(
                 isCharging = telemetry?.isChargingActive ?: false,
                 isBusy = state.isStartingOrStopping,
@@ -154,12 +160,12 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun StudioTopHeader(isOnline: Boolean, statusText: String, voltage: Int) {
+private fun StudioTopHeader(isOnline: Boolean, statusText: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
@@ -179,23 +185,6 @@ private fun StudioTopHeader(isOnline: Boolean, statusText: String, voltage: Int)
                     fontWeight = FontWeight.Bold
                 ),
                 color = TextSecondaryDark
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(StudioScreenDark)
-                .border(1.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(
-                text = if (isOnline && voltage > 0) "$voltage VAC" else if (isOnline) "LINE OK" else "0 VAC",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = if (isOnline) AmberNixie else IndustrialRed
             )
         }
     }
@@ -244,7 +233,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
-                        text = if (isOnline) "$voltage.4" else "---.-",
+                        text = if (isOnline) "$voltage" else "---",
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
@@ -704,9 +693,6 @@ private fun StudioClassicTimerCard(
     hasActiveSession: Boolean,
     isChargingActive: Boolean,
     isOutageActive: Boolean,
-    isScheduleEnabled: Boolean,
-    scheduleStartTime: String,
-    scheduleStopTime: String,
     onSelectDuration: (Boolean, Int) -> Unit
 ) {
     val view = LocalView.current
@@ -736,7 +722,7 @@ private fun StudioClassicTimerCard(
     val elapsedMs = (accumulatedChargingMs + liveDeltaMs).coerceAtLeast(0L)
     val remainingMs = (targetMs - elapsedMs).coerceAtLeast(0L)
     val isCountingDown = activeTargetDurationMinutes > 0
-    val isTimerOn = isDurationTimerEnabled || isCountingDown || isScheduleEnabled
+    val isTimerOn = isDurationTimerEnabled || isCountingDown
 
     val statusText = when {
         isCountingDown && (isOutageActive || (hasActiveSession && !isChargingActive)) ->
@@ -745,8 +731,6 @@ private fun StudioClassicTimerCard(
             "ON • ${formatCountdownHms(remainingMs)}"
         isDurationTimerEnabled ->
             "ON • ${targetDurationHours}H"
-        isScheduleEnabled ->
-            "ON • $scheduleStartTime–$scheduleStopTime"
         else ->
             "OFF"
     }
@@ -754,7 +738,7 @@ private fun StudioClassicTimerCard(
     val statusColor = when {
         isCountingDown && (isOutageActive || (hasActiveSession && !isChargingActive)) -> StudioAmberWarn
         isCountingDown -> AmberNixie
-        isDurationTimerEnabled || isScheduleEnabled -> StudioGreen
+        isDurationTimerEnabled -> StudioGreen
         else -> TextTertiaryDark
     }
 
@@ -928,6 +912,223 @@ private fun formatCountdownHms(ms: Long): String {
     val minutes = (totalSeconds % 3600L) / 60L
     val seconds = totalSeconds % 60L
     return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
+
+@Composable
+private fun StudioClassicScheduleCard(
+    isScheduleEnabled: Boolean,
+    scheduleStartTime: String,
+    scheduleStopTime: String,
+    onUpdateSchedule: (Boolean, String, String) -> Unit
+) {
+    val view = LocalView.current
+    val expanded = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val draftStart = androidx.compose.runtime.remember(scheduleStartTime) {
+        androidx.compose.runtime.mutableStateOf(scheduleStartTime)
+    }
+    val draftStop = androidx.compose.runtime.remember(scheduleStopTime) {
+        androidx.compose.runtime.mutableStateOf(scheduleStopTime)
+    }
+
+    val statusText = if (isScheduleEnabled) "ON • $scheduleStartTime–$scheduleStopTime" else "OFF"
+    val statusColor = if (isScheduleEnabled) StudioGreen else TextTertiaryDark
+    val borderColor = if (isScheduleEnabled) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
+        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded.value = !expanded.value }
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Text(
+                        text = "SCHEDULE TIMER",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 0.6.sp
+                        ),
+                        color = TextSecondaryDark,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (expanded.value) "▴" else "▾",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextTertiaryDark
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(StudioScreenDark)
+                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Black,
+                        color = statusColor
+                    )
+                }
+            }
+
+            if (expanded.value) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "DAILY WINDOW",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = TextTertiaryDark
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (!isScheduleEnabled) Color(0xFF2B181A) else StudioScreenDark)
+                            .border(
+                                width = 1.dp,
+                                color = if (!isScheduleEnabled) IndustrialRedBorder else StudioScreenBorder,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                onUpdateSchedule(!isScheduleEnabled, draftStart.value, draftStop.value)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isScheduleEnabled) "TURN OFF" else "TURN ON",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isScheduleEnabled) Color(0xFFFF8A80) else StudioGreen
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        Triple("FROM", draftStart.value) { delta: Int ->
+                            draftStart.value = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(draftStart.value, delta)
+                        },
+                        Triple("TO", draftStop.value) { delta: Int ->
+                            draftStop.value = ua.org.electros.app.data.local.AuthPreferences.shiftScheduleHour(draftStop.value, delta)
+                        }
+                    ).forEach { (label, valueText, onStep) ->
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(StudioScreenDark)
+                                .border(1.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "−",
+                                fontSize = 16.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black,
+                                color = TextSecondaryDark,
+                                modifier = Modifier
+                                    .clickable {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        onStep(-1)
+                                    }
+                                    .padding(horizontal = 4.dp)
+                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = label,
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = TextTertiaryDark
+                                )
+                                Text(
+                                    text = valueText,
+                                    fontSize = 13.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black,
+                                    color = AmberNixie
+                                )
+                            }
+                            Text(
+                                text = "+",
+                                fontSize = 16.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black,
+                                color = TextSecondaryDark,
+                                modifier = Modifier
+                                    .clickable {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        onStep(+1)
+                                    }
+                                    .padding(horizontal = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF15281F))
+                        .border(1.dp, StudioGreen.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .clickable {
+                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                            onUpdateSchedule(true, draftStart.value, draftStop.value)
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "SET SCHEDULE • ${draftStart.value}–${draftStop.value}",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Black,
+                        color = StudioGreen
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -109,4 +109,12 @@ class AuthPreferences(context: Context) {
             .remove("KEY_INTERNET_PASSWORD")
             .apply()
     }
+
+    companion object {
+        fun shiftScheduleHour(hhmm: String, delta: Int): String {
+            val currentHour = hhmm.substringBefore(":").toIntOrNull()?.coerceIn(0, 23) ?: 0
+            val nextHour = (currentHour + delta + 24) % 24
+            return "%02d:00".format(nextHour)
+        }
+    }
 }

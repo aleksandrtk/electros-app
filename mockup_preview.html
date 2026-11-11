@@ -557,13 +557,13 @@
       </div>
       <div class="phone-chassis">
         <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
-        <div class="status-bar"><span>14:00</span><span>ONLINE • 218V</span></div>
+        <div class="status-bar"><span>14:00</span><span>ONLINE</span></div>
         <div class="studio-viewport">
           <!-- RMS Line Voltage Panel -->
           <div class="tactile-face">
             <div style="font-size:10px; font-weight:800; color:#8E95A5; letter-spacing:0.06em; margin-bottom:6px;">LINE VOLTAGE (RMS)</div>
             <div class="nixie-display">
-              <span id="nix-v-1">218.4</span>
+              <span id="nix-v-1">218</span>
               <span class="nixie-unit">VOLTS AC</span>
             </div>
           </div>
@@ -609,6 +609,16 @@
             </div>
             <div id="timer-drawer-1" style="display:none;">
               <div class="timer-grid-v41" id="timer-grid-1"></div>
+            </div>
+          </div>
+
+          <!-- Daily Schedule Status Indicator -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill" onclick="toggleSchedule1()" style="cursor: pointer;" title="Click to toggle schedule indicator">
+              <span class="dlb-lbl">SCHEDULE TIMER</span>
+              <span class="dlb-val" id="sched-status-1">
+                <span class="lamp"></span> ON • 02:00–16:00
+              </span>
             </div>
           </div>
 
@@ -944,6 +954,19 @@
         el.style.color = '#10B981';
       } else {
         el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> DISABLED';
+        el.style.color = '#8E95A5';
+      }
+    }
+
+    let sched1Enabled = true;
+    function toggleSchedule1() {
+      sched1Enabled = !sched1Enabled;
+      const el = document.getElementById('sched-status-1');
+      if (sched1Enabled) {
+        el.innerHTML = '<span class="lamp"></span> ON • 02:00–16:00';
+        el.style.color = '#10B981';
+      } else {
+        el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> OFF';
         el.style.color = '#8E95A5';
       }
     }

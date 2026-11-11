@@ -243,6 +243,21 @@ class DashboardViewModel(
         }
     }
 
+    fun setScheduleTimer(enabled: Boolean, startTime: String, stopTime: String) {
+        authPreferences.isScheduleEnabled = enabled
+        authPreferences.scheduleStartTime = startTime
+        authPreferences.scheduleStopTime = stopTime
+        _prefsTrigger.value += 1
+
+        viewModelScope.launch {
+            if (enabled) {
+                repository.setScheduleTimer(startTime, stopTime)
+            } else {
+                repository.setScheduleTimer("00:00", "00:00")
+            }
+        }
+    }
+
     fun onStartClicked(context: Context) {
         val telemetry = uiState.value.telemetry
         if (telemetry != null && !telemetry.isOnline) {
