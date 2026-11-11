@@ -1,9 +1,13 @@
 package ua.org.electros.app.data.network
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -28,7 +32,11 @@ class ElectrosWebScraper(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .followRedirects(true)
-        .build()
+        .build(),
+    private val wsFactory: WebSocket.Factory = client,
+    private val wsAckWaitMs: Long = 1_000L,
+    private val verifyDelayMs: Long = 3_000L,
+    private val serialProvider: () -> String = { authPreferences?.deviceSerial.orEmpty() }
 ) {
 
     private val baseUrl = "https://electros.org.ua"
@@ -36,8 +44,10 @@ class ElectrosWebScraper(
     private var lastCsrfToken: String? = null
     private var consecutiveAuthFailures = 0
 
+    private fun currentSerial(): String = serialProvider().trim()
+
     suspend fun fetchTelemetry(): Result<TelemetryData> = withContext(Dispatchers.IO) {
-        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        val serial = currentSerial()
         if (serial.isNotBlank()) {
             val wsResult = queryWebSocket("site $serial")
             if (wsResult.isSuccess) {
@@ -89,7 +99,7 @@ class ElectrosWebScraper(
                         }
                     }
 
-                    ws = client.newWebSocket(wsRequest, listener)
+                    ws = wsFactory.newWebSocket(wsRequest, listener)
                     continuation.invokeOnCancellation {
                         ws.cancel()
                     }
@@ -101,41 +111,93 @@ class ElectrosWebScraper(
     }
 
     private suspend fun sendCommandWebSocket(command: String): Result<Unit> = withContext(Dispatchers.IO) {
+        var ws: WebSocket? = null
+        var cancelled = false
         try {
             withTimeout(5000L) {
-                suspendCancellableCoroutine { continuation ->
-                    val wsRequest = Request.Builder()
-                        .url(wsUrl)
-                        .header("Sec-WebSocket-Protocol", "example-protocol")
-                        .header("Origin", baseUrl)
-                        .build()
+                val openSendResult = CompletableDeferred<Result<Unit>>()
+                val replyResult = CompletableDeferred<Result<Unit>>()
+                val wsRequest = Request.Builder()
+                    .url(wsUrl)
+                    .header("Sec-WebSocket-Protocol", "example-protocol")
+                    .header("Origin", baseUrl)
+                    .build()
 
-                    var ws: WebSocket? = null
-                    val listener = object : WebSocketListener() {
-                        override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
-                            val sent = webSocket.send(command)
-                            webSocket.close(1000, "Command sent")
-                            if (continuation.isActive) {
-                                if (sent) continuation.resume(Result.success(Unit))
-                                else continuation.resume(Result.failure(IOException("Failed to send WS frame")))
-                            }
-                        }
-
-                        override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
-                            if (continuation.isActive) {
-                                continuation.resume(Result.failure(t))
-                            }
+                val listener = object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                        if (webSocket.send(command)) {
+                            openSendResult.complete(Result.success(Unit))
+                        } else {
+                            val err = Result.failure<Unit>(IOException("Failed to send WS frame"))
+                            openSendResult.complete(err)
+                            replyResult.complete(err)
                         }
                     }
 
-                    ws = client.newWebSocket(wsRequest, listener)
-                    continuation.invokeOnCancellation {
-                        ws.cancel()
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        replyResult.complete(Result.success(Unit))
+                    }
+
+                    override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                        if (!openSendResult.isCompleted) {
+                            val err = Result.failure<Unit>(IOException("WebSocket closing before send ($code): $reason"))
+                            openSendResult.complete(err)
+                            replyResult.complete(err)
+                        } else {
+                            replyResult.complete(Result.success(Unit))
+                        }
+                    }
+
+                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                        if (!openSendResult.isCompleted) {
+                            val err = Result.failure<Unit>(IOException("WebSocket closed before send ($code): $reason"))
+                            openSendResult.complete(err)
+                            replyResult.complete(err)
+                        } else {
+                            replyResult.complete(Result.success(Unit))
+                        }
+                    }
+
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
+                        val err = Result.failure<Unit>(t)
+                        openSendResult.complete(err)
+                        replyResult.complete(err)
                     }
                 }
+
+                ws = wsFactory.newWebSocket(wsRequest, listener)
+                val openStatus = openSendResult.await()
+                if (openStatus.isFailure) return@withTimeout openStatus
+
+                if (wsAckWaitMs > 0L) {
+                    val reply = withTimeoutOrNull(wsAckWaitMs) { replyResult.await() }
+                    if (reply?.isFailure == true) return@withTimeout reply
+                }
+                Result.success(Unit)
             }
+        } catch (e: CancellationException) {
+            cancelled = true
+            ws?.cancel()
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            if (!cancelled) ws?.close(1000, "Done")
+        }
+    }
+
+    private suspend fun sendAndVerify(
+        command: String,
+        verify: (TelemetryData) -> Boolean
+    ): Result<Unit> {
+        val sendResult = sendCommandWebSocket(command)
+        if (sendResult.isFailure) return sendResult
+        if (verifyDelayMs > 0L) delay(verifyDelayMs)
+        val telemetry = fetchTelemetry().getOrNull()
+        return if (telemetry != null && verify(telemetry)) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IOException("Station did not confirm command"))
         }
     }
 
@@ -221,29 +283,29 @@ class ElectrosWebScraper(
     }
 
     suspend fun startCharge(amperes: Int = 16): Result<Unit> = withContext(Dispatchers.IO) {
-        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        val serial = currentSerial()
         if (serial.isNotBlank()) {
             val idx = amperageToIndex(amperes)
-            val wsResult = sendCommandWebSocket("site $serial\nstart\n$idx\n0\n")
+            val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") { it.isChargingActive }
             if (wsResult.isSuccess) return@withContext wsResult
         }
         executeAction("start")
     }
 
     suspend fun stopCharge(): Result<Unit> = withContext(Dispatchers.IO) {
-        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        val serial = currentSerial()
         if (serial.isNotBlank()) {
-            val wsResult = sendCommandWebSocket("site $serial\nstop")
+            val wsResult = sendAndVerify("site $serial\nstop") { !it.isChargingActive }
             if (wsResult.isSuccess) return@withContext wsResult
         }
         executeAction("stop")
     }
 
     suspend fun setAmperage(amperes: Int): Result<Unit> = withContext(Dispatchers.IO) {
-        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        val serial = currentSerial()
         if (serial.isNotBlank()) {
             val idx = amperageToIndex(amperes)
-            val wsResult = sendCommandWebSocket("site $serial\nstart\n$idx\n0\n")
+            val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") { it.selectedCurrentAmperes == amperes }
             if (wsResult.isSuccess) return@withContext wsResult
         }
 
@@ -272,7 +334,7 @@ class ElectrosWebScraper(
     }
 
     suspend fun setTimer(startTime: String, stopTime: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        val serial = currentSerial()
         if (serial.isNotBlank()) {
             val nowFormatted = SimpleDateFormat("dd.MM.yyyy'T'HH:mm:ss", Locale.getDefault()).format(Date())
             val wsCmd = "site $serial\ndatetime\n$nowFormatted\n$startTime\n$stopTime\n"
@@ -301,7 +363,7 @@ class ElectrosWebScraper(
     }
 
     suspend fun resetKwh(): Result<Unit> = withContext(Dispatchers.IO) {
-        val serial = authPreferences?.deviceSerial.orEmpty().trim()
+        val serial = currentSerial()
         if (serial.isNotBlank()) {
             sendCommandWebSocket("site $serial\nresetkwt")
         } else {
