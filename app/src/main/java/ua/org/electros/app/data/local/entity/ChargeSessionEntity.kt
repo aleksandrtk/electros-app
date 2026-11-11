@@ -12,7 +12,10 @@ enum class SessionStatus {
     STOP_PENDING,
     TARGET_REACHED,
     VEHICLE_STOPPED,
-    CANCELLED
+    CANCELLED;
+
+    val isTerminal: Boolean
+        get() = this == TARGET_REACHED || this == VEHICLE_STOPPED || this == CANCELLED
 }
 
 @Entity(tableName = "charge_sessions")

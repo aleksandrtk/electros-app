@@ -163,11 +163,7 @@ class ChargeMonitorService : Service() {
             while (isActive) {
                 acquireSessionWakeLock()
 
-                val preStatus = stateMachine.getState()
-                if (preStatus == SessionStatus.TARGET_REACHED ||
-                    preStatus == SessionStatus.CANCELLED ||
-                    preStatus == SessionStatus.VEHICLE_STOPPED
-                ) {
+                if (stateMachine.getState().isTerminal) {
                     stopSelf()
                     break
                 }
@@ -175,10 +171,7 @@ class ChargeMonitorService : Service() {
                 pollTelemetryAndEvaluateState()
 
                 val postStatus = stateMachine.getState()
-                if (postStatus == SessionStatus.TARGET_REACHED ||
-                    postStatus == SessionStatus.CANCELLED ||
-                    postStatus == SessionStatus.VEHICLE_STOPPED
-                ) {
+                if (postStatus.isTerminal) {
                     stopSelf()
                     break
                 }
@@ -197,12 +190,7 @@ class ChargeMonitorService : Service() {
 
         val sessionId = activeSessionId ?: return
         val dbSession = repository.getSessionById(sessionId)
-        if (dbSession == null || dbSession.status in listOf(
-                SessionStatus.TARGET_REACHED,
-                SessionStatus.CANCELLED,
-                SessionStatus.VEHICLE_STOPPED
-            )
-        ) {
+        if (dbSession == null || dbSession.status.isTerminal) {
             stateMachine.transition(StateEvent.CancelRequested)
             return
         }
@@ -287,9 +275,12 @@ class ChargeMonitorService : Service() {
                                 notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
                             }
                         } else {
-                            val nextState = stateMachine.transition(StateEvent.GridRestored(data.voltageCurrent))
-                            if (nextState == SessionStatus.OUTAGE_STABILIZING) {
-                                repository.handleOutageStabilizing(sessionId)
+                            val voltage = data.voltageCurrent
+                            if (voltage != null) {
+                                val nextState = stateMachine.transition(StateEvent.GridRestored(voltage))
+                                if (nextState == SessionStatus.OUTAGE_STABILIZING) {
+                                    repository.handleOutageStabilizing(sessionId)
+                                }
                             }
                         }
                     }
@@ -301,21 +292,24 @@ class ChargeMonitorService : Service() {
                                 hasAlertedManualResume = true
                                 notificationHelper.showManualResumeAvailableAlert(dbSession.amperageSetting, totalDelivered)
                             }
-                        } else if (data.voltageCurrent in 180..250) {
-                            val nextState = stateMachine.transition(StateEvent.VoltageStable)
-                            if (nextState == SessionStatus.AUTO_RESUMING) {
-                                val resumeRes = repository.resumeAfterOutage(sessionId)
-                                if (resumeRes.isSuccess) {
-                                    stateMachine.transition(StateEvent.ResumeCommandSent)
-                                    lastActiveChargingSampleAt = 0L
-                                    hasAlertedManualResume = false
-                                    notificationHelper.cancelManualResumeAlert()
-                                    notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
-                                }
-                            }
                         } else {
-                            stateMachine.transition(StateEvent.VoltageUnstable)
-                            repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
+                            val voltage = data.voltageCurrent
+                            if (voltage != null && voltage in 180..250) {
+                                val nextState = stateMachine.transition(StateEvent.VoltageStable)
+                                if (nextState == SessionStatus.AUTO_RESUMING) {
+                                    val resumeRes = repository.resumeAfterOutage(sessionId)
+                                    if (resumeRes.isSuccess) {
+                                        stateMachine.transition(StateEvent.ResumeCommandSent)
+                                        lastActiveChargingSampleAt = 0L
+                                        hasAlertedManualResume = false
+                                        notificationHelper.cancelManualResumeAlert()
+                                        notificationHelper.showOutageResumedAlert(dbSession.amperageSetting)
+                                    }
+                                }
+                            } else if (voltage != null) {
+                                stateMachine.transition(StateEvent.VoltageUnstable)
+                                repository.handleOutageDetected(sessionId, data.consumedEnergyKwh)
+                            }
                         }
                     }
                     SessionStatus.AUTO_RESUMING -> {
@@ -400,12 +394,14 @@ class ChargeMonitorService : Service() {
                         }
 
                         // 4. Dynamic Load Balancing (DLB) by Grid Voltage
+                        val currentVoltage = data.voltageCurrent
                         if (stateMachine.getState() == SessionStatus.CHARGING &&
                             voltageLoadBalancer.isEnabled &&
-                            data.isChargingActive
+                            data.isChargingActive &&
+                            currentVoltage != null
                         ) {
                             val recommendedA = voltageLoadBalancer.evaluate(
-                                currentVoltage = data.voltageCurrent,
+                                currentVoltage = currentVoltage,
                                 currentAmperage = data.selectedCurrentAmperes
                             )
                             if (recommendedA != null && recommendedA != data.selectedCurrentAmperes) {
@@ -414,8 +410,8 @@ class ChargeMonitorService : Service() {
                                 if (updateRes.isSuccess) {
                                     lastKnownAmperes = recommendedA
                                     repository.updateSessionAmperage(sessionId, recommendedA)
-                                    repository.refreshDeadManTimer(sessionId, data.voltageCurrent, totalDelivered)
-                                    notificationHelper.showBalancingAlert(prevA, recommendedA, data.voltageCurrent)
+                                    repository.refreshDeadManTimer(sessionId, currentVoltage, totalDelivered)
+                                    notificationHelper.showBalancingAlert(prevA, recommendedA, currentVoltage)
                                 }
                             }
                         }

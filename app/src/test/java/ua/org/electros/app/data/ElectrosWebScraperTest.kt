@@ -227,4 +227,60 @@ class ElectrosWebScraperTest {
         assertThat(telemetry.powerKw).isEqualTo(3.7)
         assertThat(telemetry.consumedEnergyKwh).isEqualTo(2.2)
     }
+
+    @Test
+    fun parseWebSocketTelemetryOrNull_whenTruncatedPacket_returnsNull() {
+        val truncated = listOf("8800Lt", "id@", "ElectroS", "id", "electros.org.ua", "8000", "0", "16", "2").joinToString("\n")
+        val scraper = ElectrosWebScraper()
+        assertThat(scraper.parseWebSocketTelemetryOrNull(truncated)).isNull()
+    }
+
+    @Test
+    fun parseWebSocketTelemetry_whenMissingVoltageAndNeutral_returnsNullInsteadOfFabricatedDefaults() {
+        val packetWithEmptyVoltages = listOf(
+            "8800Lt", "0669330593@", "ElectroS", "0669330593", "electros.org.ua", "8000", "0",
+            "16", // 7
+            "1", // 8 online idle
+            "0", // 9 current
+            "", // 10 missing grid voltage
+            "1500000", // 11 energy
+            "0", // 12 power
+            "" // 13 missing neutral voltage
+        ).joinToString("\n")
+
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseWebSocketTelemetryOrNull(packetWithEmptyVoltages)
+
+        assertThat(telemetry).isNotNull()
+        assertThat(telemetry!!.voltageCurrent).isNull()
+        assertThat(telemetry.neutralCurrent).isNull()
+    }
+
+    @Test
+    fun parseTelemetryDocument_whenNeutralTableMissing_returnsNullNeutralAndParsesCommaDecimals() {
+        val commaHtml = """
+            <!DOCTYPE html><html><body>
+            <div>Стан: <span>Заряджання</span></div>
+            <table><caption>Напруга мережі, В:</caption>
+            <tr><th>Min</th><th>Середня</th><th>Поточна</th><th>Max</th></tr>
+            <tr><td>212</td><td>220</td><td>225</td><td>228</td></tr></table>
+            <div>Струм, виміряний: 15,8 A</div>
+            <table>
+            <tr><td>Спожита енергія</td><td><span>12,5 кВт*год</span></td></tr>
+            <tr><td>Потужність</td><td><span>3,68 кВт</span></td></tr>
+            </table></body></html>
+        """.trimIndent()
+
+        val scraper = ElectrosWebScraper()
+        val telemetry = scraper.parseTelemetryDocument(Jsoup.parse(commaHtml))
+
+        assertThat(telemetry.voltageCurrent).isEqualTo(225)
+        assertThat(telemetry.neutralMin).isNull()
+        assertThat(telemetry.neutralAvg).isNull()
+        assertThat(telemetry.neutralCurrent).isNull()
+        assertThat(telemetry.neutralMax).isNull()
+        assertThat(telemetry.measuredCurrentAmperes).isWithin(0.001).of(15.8)
+        assertThat(telemetry.consumedEnergyKwh).isWithin(0.001).of(12.5)
+        assertThat(telemetry.powerKw).isWithin(0.001).of(3.68)
+    }
 }

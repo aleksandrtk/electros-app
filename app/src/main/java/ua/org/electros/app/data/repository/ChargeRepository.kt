@@ -56,6 +56,7 @@ class ChargeRepository(
 
     fun logout() {
         authPreferences?.clearCredentials()
+        scraper.resetAuthBackoff()
         _telemetryState.value = null
     }
 
@@ -166,7 +167,7 @@ class ChargeRepository(
                 return Result.failure(IOException("No telemetry to anchor slice"))
             }
             chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh)
-            armDeadManTimer(session, anchorTelemetry.voltageCurrent, 0.0)
+            armDeadManTimer(session, anchorTelemetry.voltageCurrent ?: 230, 0.0)
             return Result.success(sessionId)
         } else {
             chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED))
@@ -196,7 +197,7 @@ class ChargeRepository(
         )
         chargeDao.insertSession(session)
         chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh, now)
-        armDeadManTimer(session, anchorTelemetry.voltageCurrent, 0.0)
+        armDeadManTimer(session, anchorTelemetry.voltageCurrent ?: 230, 0.0)
         return Result.success(sessionId)
     }
 
@@ -397,7 +398,7 @@ class ChargeRepository(
                 lastTickAt = 0L
             )
             chargeDao.updateSession(resumed)
-            armDeadManTimer(resumed, anchorTelemetry.voltageCurrent, sumDelivered)
+            armDeadManTimer(resumed, anchorTelemetry.voltageCurrent ?: 230, sumDelivered)
             return Result.success(Unit)
         }
         return startResult

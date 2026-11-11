@@ -108,7 +108,7 @@ fun DashboardScreen(
 
             // 2. Pure RMS Line Voltage Nixie Panel (Variation 4.1 Classic)
             StudioClassicNixieCard(
-                voltage = telemetry?.voltageCurrent ?: 0,
+                voltage = telemetry?.voltageCurrent,
                 isOnline = telemetry?.isOnline ?: false
             )
 
@@ -123,7 +123,7 @@ fun DashboardScreen(
             StudioClassicDlbCard(
                 isDlbEnabled = state.isVoltageBalancingEnabled,
                 lowThreshold = state.voltageLowThreshold,
-                voltage = telemetry?.voltageCurrent ?: 0,
+                voltage = telemetry?.voltageCurrent,
                 isOnline = telemetry?.isOnline ?: false,
                 isCharging = telemetry?.isChargingActive ?: false
             )
@@ -201,7 +201,7 @@ private fun StudioTopHeader(isOnline: Boolean, statusText: String) {
  * Variation 4.1 Classic: Pure RMS Line Voltage Panel with Nixie Display
  */
 @Composable
-private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
+private fun StudioClassicNixieCard(voltage: Int?, isOnline: Boolean) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
@@ -240,7 +240,7 @@ private fun StudioClassicNixieCard(voltage: Int, isOnline: Boolean) {
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
-                        text = if (isOnline) "$voltage" else "---",
+                        text = if (isOnline && voltage != null) "$voltage" else "---",
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
@@ -729,7 +729,7 @@ private fun StudioClassicRotaryKnobCard(
 private fun StudioClassicDlbCard(
     isDlbEnabled: Boolean,
     lowThreshold: Int,
-    voltage: Int,
+    voltage: Int?,
     isOnline: Boolean,
     isCharging: Boolean
 ) {
@@ -761,7 +761,7 @@ private fun StudioClassicDlbCard(
             ) {
                 val (statusText, statusColor) = when {
                     !isDlbEnabled -> Pair("DISABLED", TextTertiaryDark)
-                    !isOnline || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
+                    !isOnline || voltage == null || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
                     voltage < lowThreshold -> Pair("STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
                     else -> Pair("ENGAGED (>${lowThreshold}V)", StudioGreen)
                 }
