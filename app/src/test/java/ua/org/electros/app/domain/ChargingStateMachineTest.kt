@@ -77,5 +77,29 @@ class ChargingStateMachineTest {
         fsm.transition(StateEvent.ResumeCommandSent)
         assertThat(fsm.getState()).isEqualTo(SessionStatus.CHARGING)
     }
+
+    @Test
+    fun stateMachine_stopPendingTransitionsToTerminalOnlyWhenConfirmed() {
+        val fsm = ChargingStateMachine(SessionStatus.CHARGING)
+
+        fsm.transition(StateEvent.StopPending)
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.STOP_PENDING)
+
+        // Confirmed target stop moves STOP_PENDING -> TARGET_REACHED
+        fsm.transition(StateEvent.TargetQuotaReached)
+        assertThat(fsm.getState()).isEqualTo(SessionStatus.TARGET_REACHED)
+
+        // Manual cancel while stop pending moves STOP_PENDING -> CANCELLED
+        val manualFsm = ChargingStateMachine(SessionStatus.CHARGING)
+        manualFsm.transition(StateEvent.StopPending)
+        assertThat(manualFsm.getState()).isEqualTo(SessionStatus.STOP_PENDING)
+        manualFsm.transition(StateEvent.CancelRequested)
+        assertThat(manualFsm.getState()).isEqualTo(SessionStatus.CANCELLED)
+
+        // Stop pending from outage stays STOP_PENDING
+        val outageFsm = ChargingStateMachine(SessionStatus.OUTAGE_DETECTED)
+        outageFsm.transition(StateEvent.StopPending)
+        assertThat(outageFsm.getState()).isEqualTo(SessionStatus.STOP_PENDING)
+    }
 }
 

@@ -14,12 +14,13 @@ import ua.org.electros.app.data.local.entity.SliceEndReason
 import ua.org.electros.app.data.model.TelemetryData
 import ua.org.electros.app.data.network.ElectrosWebScraper
 import ua.org.electros.app.domain.accumulator.EnergyAccumulator
+import java.io.IOException
 import java.util.UUID
 
 class ChargeRepository(
     private val scraper: ElectrosWebScraper,
     private val chargeDao: ChargeDao,
-    private val authPreferences: AuthPreferences
+    private val authPreferences: AuthPreferences? = null
 ) {
 
     private val _telemetryState = MutableStateFlow<TelemetryData?>(null)
@@ -36,15 +37,15 @@ class ChargeRepository(
     suspend fun login(serial: String, password: String): Result<Unit> {
         val result = scraper.login(serial, password)
         if (result.isSuccess) {
-            authPreferences.deviceSerial = serial
-            authPreferences.internetPassword = password
+            authPreferences?.deviceSerial = serial
+            authPreferences?.internetPassword = password
             fetchLatestTelemetry()
         }
         return result
     }
 
     fun logout() {
-        authPreferences.clearCredentials()
+        authPreferences?.clearCredentials()
         _telemetryState.value = null
     }
 
@@ -62,10 +63,10 @@ class ChargeRepository(
             _telemetryState.value = data
             if (!isMonitorServiceRunning && (!data.isOnline || !data.isChargingActive)) {
                 val active = chargeDao.getActiveSession()
-                if (active != null) {
+                if (active != null && active.status != SessionStatus.STOP_PENDING) {
                     val isManagedOutageSession = active.targetDurationMinutes > 0 ||
                         active.targetKwh > 0.0 ||
-                        authPreferences.autoResumeAfterOutage
+                        (authPreferences?.autoResumeAfterOutage == true)
                     val ageHours = (System.currentTimeMillis() - active.startedAt) / 3_600_000L
                     if (!isManagedOutageSession || (active.totalKwhDelivered == 0.0 && active.accumulatedChargingMs == 0L && ageHours >= 24L)) {
                         chargeDao.cancelAllActiveSessions()
@@ -156,18 +157,81 @@ class ChargeRepository(
         chargeDao.updateSessionAmperage(sessionId, amperes)
     }
 
-    suspend fun stopActiveSession(sessionId: String): Result<Unit> {
-        val stopResult = scraper.stopCharge()
-        val telemetry = _telemetryState.value
-        val lastCounter = telemetry?.consumedEnergyKwh ?: 0.0
+    /**
+     * Sends stop command and confirms via fresh telemetry that charging stopped.
+     */
+    suspend fun stopAndConfirm(
+        maxAttempts: Int = 3,
+        allowOfflineConfirmation: Boolean = false,
+        confirmDelayMs: Long = 4_000L,
+        retryDelayMs: Long = 2_000L
+    ): Boolean {
+        repeat(maxAttempts) { attempt ->
+            scraper.stopCharge()
+            if (confirmDelayMs > 0L) delay(confirmDelayMs)
+            val t = scraper.fetchTelemetry().getOrNull()
+            if (t != null) {
+                _telemetryState.value = t
+                if (!t.isChargingActive && (t.isOnline || allowOfflineConfirmation)) {
+                    return true
+                }
+            }
+            if (attempt < maxAttempts - 1 && retryDelayMs > 0L) delay(retryDelayMs)
+        }
+        return false
+    }
 
+    suspend fun finalizeSessionStopped(
+        sessionId: String,
+        lastCounter: Double,
+        sliceReason: SliceEndReason,
+        finalStatus: SessionStatus
+    ) {
         chargeDao.finalizeActiveSliceAndCommit(
             sessionId = sessionId,
             lastSampledKwh = lastCounter,
-            reason = SliceEndReason.MANUAL_STOP
+            reason = sliceReason
         )
-        chargeDao.cancelAllActiveSessions()
-        return stopResult
+        chargeDao.updateSessionStatus(
+            sessionId = sessionId,
+            status = finalStatus,
+            completedAt = System.currentTimeMillis(),
+            lastTickAt = 0L
+        )
+    }
+
+    suspend fun stopActiveSession(
+        sessionId: String,
+        confirmDelayMs: Long = 4_000L,
+        retryDelayMs: Long = 2_000L
+    ): Result<Unit> {
+        val session = chargeDao.getSessionById(sessionId)
+        val confirmed = stopAndConfirm(
+            allowOfflineConfirmation = true,
+            confirmDelayMs = confirmDelayMs,
+            retryDelayMs = retryDelayMs
+        )
+        if (!confirmed) {
+            if (session != null) {
+                chargeDao.updateSessionStatus(
+                    sessionId = sessionId,
+                    status = SessionStatus.STOP_PENDING,
+                    completedAt = null,
+                    lastTickAt = 0L
+                )
+            }
+            return Result.failure(IOException("Не вдалося зупинити станцію"))
+        }
+        if (session != null) {
+            val lastCounter = _telemetryState.value?.consumedEnergyKwh ?: 0.0
+            finalizeSessionStopped(
+                sessionId = sessionId,
+                lastCounter = lastCounter,
+                sliceReason = SliceEndReason.MANUAL_STOP,
+                finalStatus = SessionStatus.CANCELLED
+            )
+        }
+        return Result.success(Unit)
     }
 
     suspend fun cancelStaleSessionsIfOffline() {
@@ -175,10 +239,11 @@ class ChargeRepository(
         if (telemetry != null && !telemetry.isOnline) {
             val active = chargeDao.getActiveSession()
             if (active != null &&
+                active.status != SessionStatus.STOP_PENDING &&
                 active.totalKwhDelivered == 0.0 &&
                 active.targetDurationMinutes == 0 &&
                 active.targetKwh == 0.0 &&
-                !authPreferences.autoResumeAfterOutage
+                authPreferences?.autoResumeAfterOutage != true
             ) {
                 chargeDao.cancelAllActiveSessions()
             }
@@ -267,25 +332,34 @@ class ChargeRepository(
         return startResult
     }
 
-    suspend fun markSessionTargetReached(sessionId: String, lastCounter: Double) {
-        for (attempt in 1..3) {
-            val stopRes = scraper.stopCharge()
-            if (stopRes.isSuccess) break
-            if (attempt < 3) delay(2000L)
-        }
-        chargeDao.finalizeActiveSliceAndCommit(
-            sessionId = sessionId,
-            lastSampledKwh = lastCounter,
-            reason = SliceEndReason.TARGET_REACHED
+    suspend fun markSessionTargetReached(
+        sessionId: String,
+        lastCounter: Double,
+        confirmDelayMs: Long = 4_000L,
+        retryDelayMs: Long = 2_000L
+    ): Boolean {
+        val stopped = stopAndConfirm(
+            allowOfflineConfirmation = false,
+            confirmDelayMs = confirmDelayMs,
+            retryDelayMs = retryDelayMs
         )
-        val session = chargeDao.getSessionById(sessionId) ?: return
-        chargeDao.updateSession(
-            session.copy(
-                status = SessionStatus.TARGET_REACHED,
-                completedAt = System.currentTimeMillis(),
+        if (!stopped) {
+            chargeDao.updateSessionStatus(
+                sessionId = sessionId,
+                status = SessionStatus.STOP_PENDING,
+                completedAt = null,
                 lastTickAt = 0L
             )
+            return false
+        }
+        val finalCounter = _telemetryState.value?.consumedEnergyKwh?.takeIf { it >= lastCounter } ?: lastCounter
+        finalizeSessionStopped(
+            sessionId = sessionId,
+            lastCounter = finalCounter,
+            sliceReason = SliceEndReason.TARGET_REACHED,
+            finalStatus = SessionStatus.TARGET_REACHED
         )
+        return true
     }
 
     suspend fun markSessionVehicleStopped(sessionId: String, lastCounter: Double) {

@@ -208,5 +208,27 @@ class NotificationHelper(private val context: Context) {
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 3, builder.build())
     }
+
+    fun showStopFailedAlert() {
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            4,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setContentTitle("⚠️ Не вдалося зупинити станцію")
+            .setContentText("Команда зупинки не підтвердилась. Продовжуємо повторні спроби зупинити зарядку.")
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        notificationManager.notify(NOTIFICATION_ID_ALERT + 4, builder.build())
+    }
 }
 

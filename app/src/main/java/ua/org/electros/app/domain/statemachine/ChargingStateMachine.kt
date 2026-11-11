@@ -9,6 +9,7 @@ sealed class StateEvent {
     object VoltageStable : StateEvent()
     object VoltageUnstable : StateEvent()
     object ResumeCommandSent : StateEvent()
+    object StopPending : StateEvent()
     object TargetQuotaReached : StateEvent()
     object VehicleStoppedCharging : StateEvent()
     object CancelRequested : StateEvent()
@@ -34,6 +35,7 @@ class ChargingStateMachine(
                     stableVoltageTicksCount = 0
                     SessionStatus.OUTAGE_DETECTED
                 }
+                is StateEvent.StopPending -> SessionStatus.STOP_PENDING
                 is StateEvent.TargetQuotaReached -> SessionStatus.TARGET_REACHED
                 is StateEvent.VehicleStoppedCharging -> SessionStatus.VEHICLE_STOPPED
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
@@ -53,6 +55,7 @@ class ChargingStateMachine(
                     stableVoltageTicksCount = 0
                     SessionStatus.CHARGING
                 }
+                is StateEvent.StopPending -> SessionStatus.STOP_PENDING
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
             }
@@ -78,6 +81,7 @@ class ChargingStateMachine(
                     stableVoltageTicksCount = 0
                     SessionStatus.CHARGING
                 }
+                is StateEvent.StopPending -> SessionStatus.STOP_PENDING
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
             }
@@ -88,6 +92,14 @@ class ChargingStateMachine(
                     stableVoltageTicksCount = 0
                     SessionStatus.OUTAGE_DETECTED
                 }
+                is StateEvent.StopPending -> SessionStatus.STOP_PENDING
+                is StateEvent.CancelRequested -> SessionStatus.CANCELLED
+                else -> currentStatus
+            }
+
+            SessionStatus.STOP_PENDING -> when (event) {
+                is StateEvent.TargetQuotaReached -> SessionStatus.TARGET_REACHED
+                is StateEvent.VehicleStoppedCharging -> SessionStatus.VEHICLE_STOPPED
                 is StateEvent.CancelRequested -> SessionStatus.CANCELLED
                 else -> currentStatus
             }

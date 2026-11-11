@@ -24,14 +24,22 @@ interface ChargeDao {
     @Query("SELECT * FROM charge_sessions WHERE id = :sessionId LIMIT 1")
     suspend fun getSessionById(sessionId: String): ChargeSessionEntity?
 
-    @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING') ORDER BY startedAt DESC LIMIT 1")
+    @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING') ORDER BY startedAt DESC LIMIT 1")
     suspend fun getActiveSession(): ChargeSessionEntity?
 
-    @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING') ORDER BY startedAt DESC LIMIT 1")
+    @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING') ORDER BY startedAt DESC LIMIT 1")
     fun observeActiveSession(): Flow<ChargeSessionEntity?>
 
-    @Query("UPDATE charge_sessions SET status = 'CANCELLED', completedAt = :currentTime WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING')")
+    @Query("UPDATE charge_sessions SET status = 'CANCELLED', completedAt = :currentTime WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING')")
     suspend fun cancelAllActiveSessions(currentTime: Long = System.currentTimeMillis())
+
+    @Query("UPDATE charge_sessions SET status = :status, completedAt = :completedAt, lastTickAt = :lastTickAt WHERE id = :sessionId")
+    suspend fun updateSessionStatus(
+        sessionId: String,
+        status: SessionStatus,
+        completedAt: Long? = null,
+        lastTickAt: Long = 0L
+    )
 
     @Query("UPDATE charge_sessions SET accumulatedChargingMs = :accumulatedMs, lastTickAt = :lastTickAt WHERE id = :sessionId")
     suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long)

@@ -56,7 +56,7 @@ fun DashboardScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    LaunchedEffect(state.activeSession?.id) {
+    LaunchedEffect(state.activeSession?.id, state.activeSession?.status) {
         if (state.activeSession != null) {
             viewModel.ensureMonitorServiceRunning(context)
         }
@@ -83,9 +83,11 @@ fun DashboardScreen(
                 statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "В МЕРЕЖІ" else "OFFLINE"
             )
 
-            // Error message banner if any
+            // Error or pending-stop warning banner
             if (!state.errorMessage.isNullOrBlank()) {
                 ErrorMessageCard(message = state.errorMessage ?: "")
+            } else if (state.isStopPending) {
+                ErrorMessageCard(message = "Не вдалося підтвердити зупинку станції — продовжуємо спроби зупинити зарядку.")
             }
 
             // Outage / Offline Warning
@@ -153,7 +155,7 @@ fun DashboardScreen(
 
             // 7. Heavy Switch Action Button
             StudioClassicActionButton(
-                isCharging = telemetry?.isChargingActive ?: false,
+                isCharging = (telemetry?.isChargingActive ?: false) || state.isStopPending,
                 isBusy = state.isStartingOrStopping,
                 isDurationTimerEnabled = state.isDurationTimerEnabled,
                 targetDurationHours = state.targetDurationHours,

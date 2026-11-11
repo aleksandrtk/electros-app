@@ -27,6 +27,7 @@ data class DashboardUiState(
     val targetQuotaKwh: Double = 0.0,
     val totalDeliveredKwh: Double = 0.0,
     val isOutageActive: Boolean = false,
+    val isStopPending: Boolean = false,
     val isStartingOrStopping: Boolean = false,
     val isRefreshing: Boolean = false,
     val isVoltageBalancingEnabled: Boolean = true,
@@ -91,9 +92,11 @@ class DashboardViewModel(
             SessionStatus.OUTAGE_STABILIZING,
             SessionStatus.AUTO_RESUMING
         )
+        val isStopPendingSession = activeSession?.status == SessionStatus.STOP_PENDING
 
         val effectiveSession = if (activeSession != null &&
             !isTrackedOutage &&
+            !isStopPendingSession &&
             (!isOnline || !isCharging) &&
             activeSession.totalKwhDelivered == 0.0 &&
             activeSession.accumulatedChargingMs == 0L
@@ -108,7 +111,9 @@ class DashboardViewModel(
         val accumulatedMs = effectiveSession?.accumulatedChargingMs ?: 0L
         val lastTick = effectiveSession?.lastTickAt ?: 0L
 
+        val isStopPending = effectiveSession?.status == SessionStatus.STOP_PENDING
         val isOutage = effectiveSession != null &&
+                !isStopPending &&
                 (effectiveSession.totalKwhDelivered > 0.0 ||
                     effectiveSession.accumulatedChargingMs > 0L ||
                     effectiveSession.targetDurationMinutes > 0 ||
@@ -125,6 +130,7 @@ class DashboardViewModel(
             targetQuotaKwh = quota,
             totalDeliveredKwh = delivered,
             isOutageActive = isOutage,
+            isStopPending = isStopPending,
             isStartingOrStopping = busy,
             isRefreshing = refreshing,
             isVoltageBalancingEnabled = isDlbEnabled,
@@ -288,10 +294,13 @@ class DashboardViewModel(
             _isBusy.value = true
             _errorMessage.value = null
             val session = uiState.value.activeSession
-            if (session != null) {
+            val res = if (session != null) {
                 repository.stopActiveSession(session.id)
             } else {
                 repository.stopActiveSession("manual_immediate")
+            }
+            res.onFailure { err ->
+                _errorMessage.value = err.message ?: "Не вдалося зупинити станцію"
             }
             repository.fetchLatestTelemetry(isMonitorServiceRunning = ChargeMonitorService.isRunning)
             _isBusy.value = false
