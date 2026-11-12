@@ -368,6 +368,12 @@ class ChargeRepositoryStopTest {
             publish()
         }
 
+        override suspend fun updateTargetKwh(sessionId: String, targetKwh: Double) {
+            val cur = sessions[sessionId] ?: return
+            sessions[sessionId] = cur.copy(targetKwh = targetKwh)
+            publish()
+        }
+
         override suspend fun updateSessionAmperage(sessionId: String, amperes: Int) {
             val cur = sessions[sessionId] ?: return
             sessions[sessionId] = cur.copy(amperageSetting = amperes)
@@ -389,6 +395,9 @@ class ChargeRepositoryStopTest {
 
         override suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> =
             slices.filter { it.sessionId == sessionId }.sortedBy { it.sliceIndex }
+
+        override fun observeSlicesForSession(sessionId: String): Flow<List<ChargeSliceEntity>> =
+            sessionsFlow.map { slices.filter { it.sessionId == sessionId }.sortedBy { it.sliceIndex } }
 
         override suspend fun getLatestSliceForSession(sessionId: String): ChargeSliceEntity? =
             slices.filter { it.sessionId == sessionId }.maxByOrNull { it.sliceIndex }

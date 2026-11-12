@@ -92,14 +92,36 @@ class LimiterViewModel(
 
     fun toggleKwhLimit(enabled: Boolean) {
         settingsStore.setKwhLimitEnabled(enabled)
+        viewModelScope.launch {
+            val quota = settingsStore.awaitSettings().targetKwhLimit
+            repository.getActiveSession()?.let { active ->
+                repository.updateTargetKwh(active.id, if (enabled) quota else 0.0)
+            }
+        }
     }
 
     fun updateTargetKwh(delta: Double) {
         settingsStore.adjustTargetKwhLimit(delta)
+        viewModelScope.launch {
+            val settings = settingsStore.awaitSettings()
+            if (settings.isKwhLimitEnabled) {
+                repository.getActiveSession()?.let { active ->
+                    repository.updateTargetKwh(active.id, settings.targetKwhLimit)
+                }
+            }
+        }
     }
 
     fun setTargetKwh(quota: Double) {
-        settingsStore.setTargetKwhLimit(quota)
+        val clamped = quota.coerceIn(1.0, 100.0)
+        settingsStore.setTargetKwhLimit(clamped)
+        viewModelScope.launch {
+            if (settingsStore.awaitSettings().isKwhLimitEnabled) {
+                repository.getActiveSession()?.let { active ->
+                    repository.updateTargetKwh(active.id, clamped)
+                }
+            }
+        }
     }
 
     fun toggleSchedule(enabled: Boolean) {

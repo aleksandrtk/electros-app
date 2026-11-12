@@ -3,21 +3,27 @@ package ua.org.electros.app.ui.dashboard
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import ua.org.electros.app.data.local.AppSettings
 import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
+import ua.org.electros.app.data.local.entity.ChargeSliceEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.data.model.TelemetryData
 import ua.org.electros.app.data.repository.ChargeRepository
+import ua.org.electros.app.domain.accumulator.EnergyAccumulator
 import ua.org.electros.app.service.ChargeMonitorService
 
 data class DashboardUiState(
@@ -25,7 +31,8 @@ data class DashboardUiState(
     val activeSession: ChargeSessionEntity? = null,
     val selectedAmperes: Int = 16,
     val isKwhLimitEnabled: Boolean = false,
-    val targetQuotaKwh: Double = 0.0,
+    val targetQuotaKwh: Double = 15.0,
+    val activeTargetKwh: Double = 0.0,
     val totalDeliveredKwh: Double = 0.0,
     val isOutageActive: Boolean = false,
     val isStopPending: Boolean = false,
@@ -65,16 +72,26 @@ class DashboardViewModel(
         Triple(busy, refreshing, err)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val activeSessionFlow = repository.observeActiveSession()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val activeSlicesFlow = activeSessionFlow.flatMapLatest { session ->
+        if (session != null) repository.observeSlicesForSession(session.id) else flowOf(emptyList())
+    }
+
     val uiState: StateFlow<DashboardUiState> = combine(
         repository.telemetryState,
-        repository.observeActiveSession(),
+        activeSessionFlow,
+        activeSlicesFlow,
         settingsStore.settingsFlow,
         _operationState
-    ) { telemetry, activeSession, settings, opState ->
+    ) { telemetry, activeSession, slices, settings, opState ->
         val (busy, refreshing, error) = opState
         buildUiState(
             telemetry = telemetry,
             activeSession = activeSession,
+            slices = slices,
             settings = settings,
             busy = busy,
             refreshing = refreshing,
@@ -86,6 +103,7 @@ class DashboardViewModel(
         initialValue = buildUiState(
             telemetry = null,
             activeSession = null,
+            slices = emptyList(),
             settings = settingsStore.currentSettings(),
             busy = false,
             refreshing = false,
@@ -96,13 +114,14 @@ class DashboardViewModel(
     private fun buildUiState(
         telemetry: TelemetryData?,
         activeSession: ChargeSessionEntity?,
+        slices: List<ChargeSliceEntity>,
         settings: AppSettings,
         busy: Boolean,
         refreshing: Boolean,
         error: String?
     ): DashboardUiState {
         val isLimitEnabled = settings.isKwhLimitEnabled
-        val quota = if (isLimitEnabled) settings.targetKwhLimit else 0.0
+        val configuredQuota = settings.targetKwhLimit
         val isDlbEnabled = settings.isVoltageBalancingEnabled
         val dlbThreshold = settings.voltageLowThreshold
         val dlbMaxAmperage = settings.voltageMaxAmperage
@@ -146,7 +165,32 @@ class DashboardViewModel(
             activeSession
         }
 
-        val delivered = effectiveSession?.totalKwhDelivered ?: 0.0
+        val delivered = if (effectiveSession == null) {
+            0.0
+        } else if (slices.isEmpty()) {
+            effectiveSession.totalKwhDelivered
+        } else {
+            val finalizedSlices = slices.filter { it.endedAt != null }
+            val openSlice = slices.lastOrNull { it.endedAt == null }
+            val sliceStart = openSlice?.stationCounterStartKwh ?: 0.0
+            val counterForCalc = when {
+                openSlice == null -> 0.0
+                telemetry != null && telemetry.isOnline &&
+                    !EnergyAccumulator.isCounterRegression(telemetry.consumedEnergyKwh, openSlice.stationCounterStartKwh) ->
+                    telemetry.consumedEnergyKwh
+                else -> maxOf(openSlice.stationCounterStartKwh, openSlice.stationCounterLastKwh)
+            }
+            maxOf(
+                effectiveSession.totalKwhDelivered,
+                EnergyAccumulator.calculateTotalDeliveredKwh(
+                    finalizedSlices = finalizedSlices,
+                    activeSliceStartKwh = sliceStart,
+                    currentStationCounterKwh = counterForCalc
+                )
+            )
+        }
+        val activeTargetQuota = effectiveSession?.targetKwh
+            ?: if (isLimitEnabled) configuredQuota else 0.0
         val activeTargetMin = effectiveSession?.targetDurationMinutes ?: if (isTimerEnabled) durationHours * 60 else 0
         val accumulatedMs = effectiveSession?.accumulatedChargingMs ?: 0L
         val lastTick = effectiveSession?.lastTickAt ?: 0L
@@ -165,7 +209,8 @@ class DashboardViewModel(
             activeSession = effectiveSession,
             selectedAmperes = settings.preferredAmperage,
             isKwhLimitEnabled = isLimitEnabled,
-            targetQuotaKwh = quota,
+            targetQuotaKwh = configuredQuota,
+            activeTargetKwh = activeTargetQuota,
             totalDeliveredKwh = delivered,
             isOutageActive = isOutage,
             isStopPending = isStopPending,
@@ -215,6 +260,10 @@ class DashboardViewModel(
         }
     }
 
+    fun toggleVoltageBalancing(enabled: Boolean) {
+        settingsStore.setVoltageBalancingEnabled(enabled)
+    }
+
     fun onAmperageSelected(amperes: Int) {
         settingsStore.setPreferredAmperage(amperes)
         val currentState = uiState.value
@@ -223,15 +272,43 @@ class DashboardViewModel(
             if (active != null) {
                 repository.updateSessionAmperage(active.id, amperes)
             }
-            // WS setAmperage sends a "start" frame on Electros firmware, so only push it while charging.
+            // WS setAmperage sends a "start" frame on Electros firmware, so verify live charging before pushing it.
             if (currentState.telemetry?.isChargingActive == true) {
-                repository.setAmperage(amperes)
-                repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
+                val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning()).getOrNull()
+                if (fresh?.isChargingActive == true) {
+                    repository.setAmperage(amperes)
+                    repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
+                }
             }
         }
     }
 
-    fun setDurationTimer(context: Context, enabled: Boolean, hours: Int) {
+    fun setKwhLimit(context: Context? = null, enabled: Boolean, quotaKwh: Double) {
+        val clampedQuota = quotaKwh.roundToInt().toDouble().coerceIn(1.0, 100.0)
+        settingsStore.setKwhLimit(enabled, clampedQuota)
+
+        val currentState = uiState.value
+        val existingSession = currentState.activeSession
+        val appliedQuota = if (enabled) clampedQuota else 0.0
+
+        viewModelScope.launch {
+            if (existingSession != null) {
+                repository.updateTargetKwh(existingSession.id, appliedQuota)
+                if (context != null && !isMonitorServiceRunning()) {
+                    ChargeMonitorService.start(
+                        context,
+                        existingSession.id,
+                        appliedQuota,
+                        existingSession.targetDurationMinutes
+                    )
+                }
+            } else if (enabled && currentState.telemetry?.isChargingActive == true) {
+                attachOngoingSessionIfStillCharging(context)
+            }
+        }
+    }
+
+    fun setDurationTimer(context: Context? = null, enabled: Boolean, hours: Int) {
         val clampedHours = hours.coerceIn(1, 12)
         settingsStore.setDurationTimer(enabled, clampedHours)
 
@@ -242,7 +319,7 @@ class DashboardViewModel(
         viewModelScope.launch {
             if (existingSession != null) {
                 repository.updateTargetDurationMinutes(existingSession.id, durationMinutes)
-                if (!isMonitorServiceRunning()) {
+                if (context != null && !isMonitorServiceRunning()) {
                     ChargeMonitorService.start(
                         context,
                         existingSession.id,
@@ -251,13 +328,22 @@ class DashboardViewModel(
                     )
                 }
             } else if (enabled && currentState.telemetry?.isChargingActive == true) {
-                val settings = settingsStore.awaitSettings()
-                val quota = if (settings.isKwhLimitEnabled) settings.targetKwhLimit else 0.0
-                val amps = settings.preferredAmperage
-                val attachRes = repository.attachSessionToOngoingCharge(quota, amps, durationMinutes)
-                attachRes.onSuccess { sessionId ->
-                    ChargeMonitorService.start(context, sessionId, quota, durationMinutes)
-                }
+                attachOngoingSessionIfStillCharging(context)
+            }
+        }
+    }
+
+    private suspend fun attachOngoingSessionIfStillCharging(context: Context?) {
+        val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning()).getOrNull()
+        if (fresh?.isChargingActive != true) return
+        val settings = settingsStore.awaitSettings()
+        val quota = if (settings.isKwhLimitEnabled) settings.targetKwhLimit else 0.0
+        val durationMin = if (settings.isDurationTimerEnabled) settings.targetDurationHours * 60 else 0
+        val amps = settings.preferredAmperage
+        val attachRes = repository.attachSessionToOngoingCharge(quota, amps, durationMin)
+        attachRes.onSuccess { sessionId ->
+            if (context != null) {
+                ChargeMonitorService.start(context, sessionId, quota, durationMin)
             }
         }
     }

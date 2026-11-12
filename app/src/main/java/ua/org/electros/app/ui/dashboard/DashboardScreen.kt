@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -86,11 +87,22 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val telemetry = state.telemetry
+            val isChargingOrSessionActive = (telemetry?.isChargingActive == true) || state.activeSession != null
 
-            // 1. Clean Connection Status Plate
+            // 1. Clean Connection Status Plate + Compact Mode Pill (zero extra vertical space)
             StudioTopHeader(
                 isOnline = telemetry?.isOnline ?: false,
-                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "В МЕРЕЖІ" else "OFFLINE"
+                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "В МЕРЕЖІ" else "OFFLINE",
+                isChargingOrSessionActive = isChargingOrSessionActive && !state.isOutageActive,
+                isChargingActive = telemetry?.isChargingActive == true,
+                activeTargetKwh = state.activeTargetKwh,
+                activeTargetDurationMinutes = state.activeTargetDurationMinutes,
+                accumulatedChargingMs = state.accumulatedChargingMs,
+                lastTickAt = state.lastTickAt,
+                isScheduleEnabled = state.isScheduleEnabled,
+                scheduleStartTime = state.scheduleStartTime,
+                scheduleStopTime = state.scheduleStopTime,
+                selectedAmperes = state.selectedAmperes
             )
 
             // Error or pending-stop warning banner
@@ -108,8 +120,8 @@ fun DashboardScreen(
                 } else null
                 OutageBanner(
                     deliveredKwh = state.totalDeliveredKwh,
-                    targetKwh = state.targetQuotaKwh,
-                    isLimitEnabled = state.isKwhLimitEnabled,
+                    targetKwh = state.activeTargetKwh,
+                    isLimitEnabled = state.activeTargetKwh > 0.0,
                     isAutoResumeEnabled = state.isAutoResumeEnabled,
                     isStationOnline = telemetry?.isOnline == true,
                     isBusy = state.isStartingOrStopping,
@@ -120,10 +132,13 @@ fun DashboardScreen(
                 OfflineWarningCard()
             }
 
-            // 2. Pure RMS Line Voltage Nixie Panel (Variation 4.1 Classic)
+            // 2. Pure RMS Line Voltage Nixie Panel + Session Charged Energy
             StudioClassicNixieCard(
                 voltage = telemetry?.voltageCurrent,
-                isOnline = telemetry?.isOnline ?: false
+                isOnline = telemetry?.isOnline ?: false,
+                isSessionActive = isChargingOrSessionActive,
+                deliveredKwh = state.totalDeliveredKwh,
+                activeTargetKwh = state.activeTargetKwh
             )
 
             // 3. Central 3D Rotary Potentiometer (Variation 4.1 Classic)
@@ -133,18 +148,32 @@ fun DashboardScreen(
                 onAmperageSelected = { viewModel.onAmperageSelected(it) }
             )
 
-            // 4. DLB Auto-Derate Status Indicator Card
+            // 4. DLB Auto-Derate Interactive Card
             StudioClassicDlbCard(
                 isDlbEnabled = state.isVoltageBalancingEnabled,
                 lowThreshold = state.voltageLowThreshold,
                 voltage = telemetry?.voltageCurrent,
                 isOnline = telemetry?.isOnline ?: false,
-                isCharging = telemetry?.isChargingActive ?: false,
                 selectedAmperes = state.selectedAmperes,
-                voltageMaxAmperage = state.voltageMaxAmperage
+                voltageMaxAmperage = state.voltageMaxAmperage,
+                onToggleDlb = {
+                    viewModel.toggleVoltageBalancing(!state.isVoltageBalancingEnabled)
+                }
             )
 
-            // 5. Charge Timer Status & Duration Picker Card (1-12H with Outage Continuation)
+            // 5. Energy Quota Limit Card (1-100 kWh auto-stop; configures without auto-starting)
+            StudioClassicKwhLimitCard(
+                isKwhLimitEnabled = state.isKwhLimitEnabled,
+                targetQuotaKwh = state.targetQuotaKwh,
+                activeTargetKwh = state.activeTargetKwh,
+                totalDeliveredKwh = state.totalDeliveredKwh,
+                hasActiveSession = state.activeSession != null,
+                onSelectKwhLimit = { enabled, quotaKwh ->
+                    viewModel.setKwhLimit(context, enabled, quotaKwh)
+                }
+            )
+
+            // 6. Charge Timer Status & Duration Picker Card (1-12H with Outage Continuation)
             StudioClassicTimerCard(
                 isDurationTimerEnabled = state.isDurationTimerEnabled,
                 targetDurationHours = state.targetDurationHours,
@@ -159,7 +188,7 @@ fun DashboardScreen(
                 }
             )
 
-            // 6. Daily Schedule Timer Indicator Card (e.g. 02:00–16:00)
+            // 7. Daily Schedule Timer Indicator Card (e.g. 02:00–16:00)
             StudioClassicScheduleCard(
                 isScheduleEnabled = state.isScheduleEnabled,
                 scheduleStartTime = state.scheduleStartTime,
@@ -169,10 +198,12 @@ fun DashboardScreen(
                 }
             )
 
-            // 7. Heavy Switch Action Button
+            // 8. Heavy Switch Action Button
             StudioClassicActionButton(
                 isCharging = (telemetry?.isChargingActive ?: false) || state.isStopPending,
                 isBusy = state.isStartingOrStopping,
+                isKwhLimitEnabled = state.isKwhLimitEnabled,
+                targetQuotaKwh = state.targetQuotaKwh,
                 isDurationTimerEnabled = state.isDurationTimerEnabled,
                 targetDurationHours = state.targetDurationHours,
                 onStart = { viewModel.onStartClicked(context) },
@@ -183,15 +214,62 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun StudioTopHeader(isOnline: Boolean, statusText: String) {
+private fun StudioTopHeader(
+    isOnline: Boolean,
+    statusText: String,
+    isChargingOrSessionActive: Boolean,
+    isChargingActive: Boolean,
+    activeTargetKwh: Double,
+    activeTargetDurationMinutes: Int,
+    accumulatedChargingMs: Long,
+    lastTickAt: Long,
+    isScheduleEnabled: Boolean,
+    scheduleStartTime: String,
+    scheduleStopTime: String,
+    selectedAmperes: Int
+) {
+    val nowMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(isChargingActive, activeTargetDurationMinutes, lastTickAt, accumulatedChargingMs) {
+        nowMs.longValue = System.currentTimeMillis()
+        while (isChargingActive && activeTargetDurationMinutes > 0 && lastTickAt > 0L) {
+            delay(1000L)
+            nowMs.longValue = System.currentTimeMillis()
+        }
+    }
+
+    val liveDeltaMs = if (isChargingActive && activeTargetDurationMinutes > 0 && lastTickAt > 0L) {
+        (nowMs.longValue - lastTickAt).coerceAtLeast(0L)
+    } else {
+        0L
+    }
+    val targetMs = activeTargetDurationMinutes * 60_000L
+    val elapsedMs = (accumulatedChargingMs + liveDeltaMs).coerceAtLeast(0L)
+    val remainingMs = (targetMs - elapsedMs).coerceAtLeast(0L)
+
+    val hasKwhTarget = activeTargetKwh > 0.0
+    val hasTimerTarget = activeTargetDurationMinutes > 0
+    val (modeLabel, modeAccent) = when {
+        hasKwhTarget && hasTimerTarget ->
+            "${selectedAmperes}A · КВОТА + ${formatCountdownHms(remainingMs)}" to StudioGreen
+        hasKwhTarget ->
+            "${selectedAmperes}A · КВОТА" to StudioGreen
+        hasTimerTarget ->
+            "${selectedAmperes}A · ${formatCountdownHms(remainingMs)}" to AmberNixie
+        isScheduleEnabled ->
+            "${selectedAmperes}A · $scheduleStartTime–$scheduleStopTime" to SecondaryCyan
+        else ->
+            "${selectedAmperes}A · БЕЗ ЛІМІТУ" to AmberNixie
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.Start,
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
+            modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -207,17 +285,58 @@ private fun StudioTopHeader(isOnline: Boolean, statusText: String) {
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
                 ),
-                color = TextSecondaryDark
+                color = TextSecondaryDark,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+        }
+
+        if (isChargingOrSessionActive) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(StudioScreenDark)
+                    .border(1.dp, modeAccent.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = modeLabel,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = modeAccent,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
 
 /**
- * Variation 4.1 Classic: Pure RMS Line Voltage Panel with Nixie Display
+ * Variation 4.1 Classic: Pure RMS Line Voltage Panel with inline Session Energy Nixie Display
  */
 @Composable
-private fun StudioClassicNixieCard(voltage: Int?, isOnline: Boolean) {
+private fun StudioClassicNixieCard(
+    voltage: Int?,
+    isOnline: Boolean,
+    isSessionActive: Boolean,
+    deliveredKwh: Double,
+    activeTargetKwh: Double
+) {
+    val hasKwhTarget = activeTargetKwh > 0.0
+    val progress = if (hasKwhTarget) {
+        (deliveredKwh / activeTargetKwh).toFloat().coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val pct = if (hasKwhTarget) {
+        ((deliveredKwh / activeTargetKwh) * 100.0).toInt().coerceIn(0, 100)
+    } else {
+        0
+    }
+    val remainingKwh = (activeTargetKwh - deliveredKwh).coerceAtLeast(0.0)
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
@@ -229,47 +348,166 @@ private fun StudioClassicNixieCard(voltage: Int?, isOnline: Boolean) {
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            Text(
-                text = "LINE VOLTAGE (RMS)",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 0.6.sp
-                ),
-                color = TextSecondaryDark,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "LINE VOLTAGE (RMS)",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.6.sp
+                    ),
+                    color = TextSecondaryDark,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isSessionActive) {
+                    Text(
+                        text = if (isOnline) "ЗА СЕСІЮ" else "НАКОПИЧЕНО",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 0.6.sp
+                        ),
+                        color = TextSecondaryDark,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             // Cathode Nixie Display Window
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(StudioScreenDark)
                     .border(2.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = if (isSessionActive) Alignment.CenterVertically else Alignment.Bottom
                 ) {
-                    Text(
-                        text = if (isOnline && voltage != null) "$voltage" else "---",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
-                        color = AmberNixie,
-                        letterSpacing = 2.sp
-                    )
-                    Text(
-                        text = "VOLTS",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AmberNixie
-                    )
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(
+                            text = if (isOnline && voltage != null) "$voltage" else "---",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
+                            letterSpacing = 2.sp
+                        )
+                        if (isSessionActive) {
+                            Text(
+                                text = "V",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                    }
+
+                    if (!isSessionActive) {
+                        Text(
+                            text = "VOLTS",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = AmberNixie
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(28.dp)
+                                .background(StudioScreenBorder)
+                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (hasKwhTarget) {
+                                Row(
+                                    verticalAlignment = Alignment.Bottom,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "%.2f".format(Locale.US, deliveredKwh),
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = StudioGreen
+                                    )
+                                    Text(
+                                        text = "/ %.0f".format(Locale.US, activeTargetKwh),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = TextSecondaryDark,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                    Text(
+                                        text = "кВт⋅год",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = StudioGreen,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Лишилось %.2f · %d%%".format(Locale.US, remainingKwh, pct),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = TextSecondaryDark
+                                )
+                            } else {
+                                Row(
+                                    verticalAlignment = Alignment.Bottom,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "+%.2f".format(Locale.US, deliveredKwh),
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = AmberNixie
+                                    )
+                                    Text(
+                                        text = "кВт⋅год",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = AmberNixie,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isSessionActive && hasKwhTarget) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(0xFF161A22))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress)
+                                .height(4.dp)
+                                .background(StudioGreen)
+                        )
+                    }
                 }
             }
         }
@@ -739,7 +977,7 @@ private fun StudioClassicRotaryKnobCard(
 }
 
 /**
- * Variation 4.1 Classic: DLB Auto-Derate Status Card
+ * Variation 4.1 Classic: Interactive DLB Auto-Derate Card
  */
 @Composable
 private fun StudioClassicDlbCard(
@@ -747,19 +985,32 @@ private fun StudioClassicDlbCard(
     lowThreshold: Int,
     voltage: Int?,
     isOnline: Boolean,
-    isCharging: Boolean,
     selectedAmperes: Int,
-    voltageMaxAmperage: Int
+    voltageMaxAmperage: Int,
+    onToggleDlb: () -> Unit
 ) {
+    val view = LocalView.current
+    val (statusText, statusColor) = when {
+        !isDlbEnabled -> Pair("OFF", TextTertiaryDark)
+        !isOnline || voltage == null || voltage <= 0 -> Pair("ON • STANDBY", TextSecondaryDark)
+        voltage < lowThreshold -> Pair("ON • STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
+        else -> Pair("ON • ENGAGED (>${lowThreshold}V)", StudioGreen)
+    }
+    val borderColor = if (isDlbEnabled) statusColor.copy(alpha = 0.45f) else StudioPanelBorder
+
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(StudioPanelBorder, StudioPanelBorder))),
+        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable {
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    onToggleDlb()
+                }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -768,48 +1019,326 @@ private fun StudioClassicDlbCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "DLB AUTO-DERATE",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = TextSecondaryDark,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Text(
+                        text = "AUTO-CURRENT",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 0.6.sp
+                        ),
+                        color = TextSecondaryDark,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val (statusText, statusColor) = when {
-                        !isDlbEnabled -> Pair("DISABLED", TextTertiaryDark)
-                        !isOnline || voltage == null || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
-                        voltage < lowThreshold -> Pair("STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
-                        else -> Pair("ENGAGED (>${lowThreshold}V)", StudioGreen)
-                    }
-
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(statusColor)
-                    )
-                    Text(
-                        text = statusText,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = statusColor
-                    )
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(StudioScreenDark)
+                            .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = statusText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = statusColor
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isDlbEnabled) Color(0xFF15281F) else StudioScreenDark)
+                            .border(
+                                width = 1.dp,
+                                color = if (isDlbEnabled) StudioGreen.copy(alpha = 0.6f) else StudioScreenBorder,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = if (isDlbEnabled) "ВИМК" else "УВІМК",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isDlbEnabled) StudioGreen else AmberNixie
+                        )
+                    }
                 }
             }
 
             if (isDlbEnabled && selectedAmperes > voltageMaxAmperage) {
                 Text(
-                    text = "Максимум відновлення DLB: ${voltageMaxAmperage} А (обрано ${selectedAmperes} А)",
+                    text = "Максимум автоструму: ${voltageMaxAmperage} А (обрано ${selectedAmperes} А)",
                     style = MaterialTheme.typography.labelSmall,
                     color = StudioAmberWarn
                 )
+            } else {
+                Text(
+                    text = if (isDlbEnabled) {
+                        "Натисніть, щоб вимкнути • Автозниження <${lowThreshold}В, розгін до ${voltageMaxAmperage}А"
+                    } else {
+                        "Натисніть, щоб увімкнути захист від просадки напруги"
+                    },
+                    fontSize = 10.sp,
+                    color = TextTertiaryDark
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioClassicKwhLimitCard(
+    isKwhLimitEnabled: Boolean,
+    targetQuotaKwh: Double,
+    activeTargetKwh: Double,
+    totalDeliveredKwh: Double,
+    hasActiveSession: Boolean,
+    onSelectKwhLimit: (Boolean, Double) -> Unit
+) {
+    val view = LocalView.current
+    val expanded = remember { mutableStateOf(false) }
+    val hasActiveQuota = hasActiveSession && activeTargetKwh > 0.0
+    val isLimitOn = isKwhLimitEnabled || hasActiveQuota
+
+    val statusText = when {
+        hasActiveQuota -> "%.1f / %.0f кВт⋅год".format(totalDeliveredKwh, activeTargetKwh)
+        isKwhLimitEnabled -> "ON • ${targetQuotaKwh.toInt()} кВт⋅год"
+        else -> "OFF"
+    }
+    val statusColor = when {
+        hasActiveQuota -> StudioGreen
+        isKwhLimitEnabled -> StudioGreen
+        else -> TextTertiaryDark
+    }
+    val borderColor = if (isLimitOn) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
+        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded.value = !expanded.value }
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Text(
+                        text = "ENERGY LIMIT (KWH)",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 0.6.sp
+                        ),
+                        color = TextSecondaryDark,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (expanded.value) "▴" else "▾",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextTertiaryDark
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(StudioScreenDark)
+                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Black,
+                        color = statusColor
+                    )
+                }
+            }
+
+            if (hasActiveQuota) {
+                Spacer(modifier = Modifier.height(8.dp))
+                val progress = (totalDeliveredKwh / activeTargetKwh).toFloat().coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(StudioScreenDark)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .height(3.dp)
+                            .background(StudioGreen)
+                    )
+                }
+            }
+
+            if (expanded.value) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "AUTO-STOP QUOTA (БЕЗ АВТОСТАРТУ)",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = TextTertiaryDark
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (!isKwhLimitEnabled) Color(0xFF2B181A) else StudioScreenDark)
+                            .border(
+                                width = 1.dp,
+                                color = if (!isKwhLimitEnabled) IndustrialRedBorder else StudioScreenBorder,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                onSelectKwhLimit(false, targetQuotaKwh)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "OFF",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (!isKwhLimitEnabled) Color(0xFFFF8A80) else TextSecondaryDark
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Fine stepper row (-5, -1, current kWh, +1, +5)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(StudioScreenDark)
+                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf(-5, -1).forEach { delta ->
+                        Text(
+                            text = "$delta",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Black,
+                            color = TextSecondaryDark,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    val next = (targetQuotaKwh + delta).coerceIn(1.0, 100.0)
+                                    onSelectKwhLimit(true, next)
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Text(
+                        text = "${targetQuotaKwh.toInt()} кВт⋅год",
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Black,
+                        color = if (isKwhLimitEnabled) StudioGreen else TextPrimaryDark
+                    )
+                    listOf(+1, +5).forEach { delta ->
+                        Text(
+                            text = "+$delta",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Black,
+                            color = StudioGreen,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    val next = (targetQuotaKwh + delta).coerceIn(1.0, 100.0)
+                                    onSelectKwhLimit(true, next)
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Quick preset pills
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(10, 16, 20, 30, 40, 50).forEach { kwh ->
+                        val isSelected = isKwhLimitEnabled && targetQuotaKwh.toInt() == kwh
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Color(0xFF15281F) else StudioScreenDark)
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) StudioGreen else StudioScreenBorder,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    onSelectKwhLimit(true, kwh.toDouble())
+                                }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$kwh",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                color = if (isSelected) StudioGreen else TextSecondaryDark
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -1270,6 +1799,8 @@ private fun StudioClassicScheduleCard(
 private fun StudioClassicActionButton(
     isCharging: Boolean,
     isBusy: Boolean,
+    isKwhLimitEnabled: Boolean,
+    targetQuotaKwh: Double,
     isDurationTimerEnabled: Boolean,
     targetDurationHours: Int,
     onStart: () -> Unit,
@@ -1324,6 +1855,10 @@ private fun StudioClassicActionButton(
             Text(
                 text = when {
                     isBusy -> "ЗАПУСК..."
+                    isKwhLimitEnabled && isDurationTimerEnabled ->
+                        "START CHARGE (${targetQuotaKwh.toInt()} кВт⋅год • ${targetDurationHours}H)"
+                    isKwhLimitEnabled ->
+                        "START CHARGE (${targetQuotaKwh.toInt()} кВт⋅год)"
                     isDurationTimerEnabled -> "START CHARGE (${targetDurationHours}H)"
                     else -> "START CHARGE"
                 },

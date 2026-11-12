@@ -388,6 +388,45 @@ class ChargeRepositoryLifecycleTest {
         assertThat(wsCommands.any { it.contains("\nstart\n") }).isFalse()
     }
 
+    @Test
+    fun updateTargetKwh_updatesSessionAndSyncsDeadManTimerWithoutSendingStart() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s1",
+                targetKwh = 0.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L,
+                totalKwhDelivered = 2.0
+            )
+        )
+        val wsCommands = CopyOnWriteArrayList<String>()
+        val scraper = buildScraper(wsCommands) {
+            wsPayload(statusCode = 2, selectedA = 16, energyKwh = 12.0, voltageV = 230)
+        }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            scheduleConfigProvider = { Triple(true, "23:00", "07:00") },
+            localTimeProvider = { LocalTime.of(12, 0) },
+            clockMs = { 5_000L }
+        )
+
+        repo.updateTargetKwh("s1", 16.0)
+        assertThat(dao.getSessionById("s1")?.targetKwh).isWithin(0.001).of(16.0)
+        val timerCommandsAfterArm = wsCommands.filter { it.contains("\ndatetime\n") }
+        assertThat(timerCommandsAfterArm).hasSize(1)
+        assertThat(wsCommands.any { it.contains("\nstart\n") }).isFalse()
+
+        repo.updateTargetKwh("s1", 0.0)
+        assertThat(dao.getSessionById("s1")?.targetKwh).isWithin(0.001).of(0.0)
+        val timerCommandsAfterClear = wsCommands.filter { it.contains("\ndatetime\n") }
+        assertThat(timerCommandsAfterClear).hasSize(2)
+        assertThat(timerCommandsAfterClear.last()).endsWith("\n23:00\n07:00\n")
+        assertThat(wsCommands.any { it.contains("\nstart\n") }).isFalse()
+    }
+
     private class FakeChargeDao : ChargeDao {
         private val sessions = linkedMapOf<String, ChargeSessionEntity>()
         private val slices = mutableListOf<ChargeSliceEntity>()
@@ -455,6 +494,12 @@ class ChargeRepositoryLifecycleTest {
             publish()
         }
 
+        override suspend fun updateTargetKwh(sessionId: String, targetKwh: Double) {
+            val cur = sessions[sessionId] ?: return
+            sessions[sessionId] = cur.copy(targetKwh = targetKwh)
+            publish()
+        }
+
         override suspend fun updateSessionAmperage(sessionId: String, amperes: Int) {
             val cur = sessions[sessionId] ?: return
             sessions[sessionId] = cur.copy(amperageSetting = amperes)
@@ -476,6 +521,9 @@ class ChargeRepositoryLifecycleTest {
 
         override suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> =
             slices.filter { it.sessionId == sessionId }.sortedBy { it.sliceIndex }
+
+        override fun observeSlicesForSession(sessionId: String): Flow<List<ChargeSliceEntity>> =
+            sessionsFlow.map { slices.filter { it.sessionId == sessionId }.sortedBy { it.sliceIndex } }
 
         override suspend fun getLatestSliceForSession(sessionId: String): ChargeSliceEntity? =
             slices.filter { it.sessionId == sessionId }.maxByOrNull { it.sliceIndex }

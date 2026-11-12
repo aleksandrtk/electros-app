@@ -213,6 +213,33 @@ class SettingsStoreTest {
         }
     }
 
+    @Test
+    fun setKwhLimit_persistsEnabledStateAndQuotaTogether() = runBlocking {
+        val file = tempFolder.newFile("kwh_limit.preferences_pb")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val ds = PreferenceDataStoreFactory.create(scope = scope) { file }
+            val store = SettingsStore(ds, scope)
+            store.awaitSettings()
+
+            store.setKwhLimit(enabled = true, quota = 16.0)
+            store.awaitIdle()
+
+            val enabledState = store.awaitSettings()
+            assertThat(enabledState.isKwhLimitEnabled).isTrue()
+            assertThat(enabledState.targetKwhLimit).isWithin(0.001).of(16.0)
+
+            store.setKwhLimit(enabled = false, quota = 24.0)
+            store.awaitIdle()
+
+            val disabledState = store.awaitSettings()
+            assertThat(disabledState.isKwhLimitEnabled).isFalse()
+            assertThat(disabledState.targetKwhLimit).isWithin(0.001).of(24.0)
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
     private class FakeSharedPreferences(
         initial: MutableMap<String, Any?> = mutableMapOf()
     ) : SharedPreferences {

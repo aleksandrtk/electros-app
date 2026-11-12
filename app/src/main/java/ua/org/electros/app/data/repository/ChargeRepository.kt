@@ -51,6 +51,9 @@ class ChargeRepository(
 
     fun observeActiveSession(): Flow<ChargeSessionEntity?> = chargeDao.observeActiveSession()
 
+    fun observeSlicesForSession(sessionId: String): Flow<List<ChargeSliceEntity>> =
+        chargeDao.observeSlicesForSession(sessionId)
+
     fun getAllSessions(): Flow<List<ChargeSessionEntity>> = chargeDao.getAllSessions()
 
     suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> {
@@ -305,6 +308,16 @@ class ChargeRepository(
     suspend fun updateTargetDurationMinutes(sessionId: String, targetDurationMinutes: Int) {
         val previous = chargeDao.getSessionById(sessionId)
         chargeDao.updateTargetDurationMinutes(sessionId, targetDurationMinutes)
+        syncDeadManAfterTargetChange(previous, sessionId)
+    }
+
+    suspend fun updateTargetKwh(sessionId: String, targetKwh: Double) {
+        val previous = chargeDao.getSessionById(sessionId)
+        chargeDao.updateTargetKwh(sessionId, targetKwh)
+        syncDeadManAfterTargetChange(previous, sessionId)
+    }
+
+    private suspend fun syncDeadManAfterTargetChange(previous: ChargeSessionEntity?, sessionId: String) {
         val updated = chargeDao.getSessionById(sessionId) ?: return
         if (updated.targetKwh > 0.0 || updated.targetDurationMinutes > 0) {
             val voltage = _telemetryState.value?.voltageCurrent ?: 230

@@ -172,6 +172,17 @@ class SettingsStore internal constructor(
         )
     }
 
+    fun setKwhLimit(enabled: Boolean, quota: Double) {
+        val clamped = quota.coerceIn(1.0, 100.0)
+        update(
+            optimistic = { it.copy(isKwhLimitEnabled = enabled, targetKwhLimit = clamped) },
+            persist = { prefs ->
+                prefs[KEY_KWH_LIMIT_ENABLED] = enabled
+                prefs[KEY_TARGET_KWH_LIMIT] = clamped
+            }
+        )
+    }
+
     fun setDurationTimerEnabled(enabled: Boolean) {
         update(
             optimistic = { it.copy(isDurationTimerEnabled = enabled) },

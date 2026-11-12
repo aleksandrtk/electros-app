@@ -48,6 +48,9 @@ interface ChargeDao {
     @Query("UPDATE charge_sessions SET targetDurationMinutes = :targetDurationMinutes WHERE id = :sessionId")
     suspend fun updateTargetDurationMinutes(sessionId: String, targetDurationMinutes: Int)
 
+    @Query("UPDATE charge_sessions SET targetKwh = :targetKwh WHERE id = :sessionId")
+    suspend fun updateTargetKwh(sessionId: String, targetKwh: Double)
+
     @Query("UPDATE charge_sessions SET amperageSetting = :amperes WHERE id = :sessionId")
     suspend fun updateSessionAmperage(sessionId: String, amperes: Int)
 
@@ -62,6 +65,9 @@ interface ChargeDao {
 
     @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex ASC")
     suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity>
+
+    @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex ASC")
+    fun observeSlicesForSession(sessionId: String): Flow<List<ChargeSliceEntity>>
 
     @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex DESC LIMIT 1")
     suspend fun getLatestSliceForSession(sessionId: String): ChargeSliceEntity?
