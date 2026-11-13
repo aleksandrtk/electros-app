@@ -271,6 +271,7 @@ class DashboardViewModel(
 
     fun onAmperageSelected(amperes: Int) {
         settingsStore.setPreferredAmperage(amperes)
+        _errorMessage.value = null
         val currentState = uiState.value
         val active = currentState.activeSession
         viewModelScope.launch {
@@ -282,11 +283,18 @@ class DashboardViewModel(
                 val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning()).getOrNull()
                 if (fresh?.isChargingActive == true) {
                     val setRes = repository.setAmperage(amperes)
-                    if (setRes.isSuccess && active != null) {
-                        repository.refreshDeadManTimer(
-                            sessionId = active.id,
-                            voltageVolts = fresh.voltageCurrent ?: 230,
-                            deliveredKwh = currentState.totalDeliveredKwh
+                    if (setRes.isSuccess) {
+                        if (active != null) {
+                            repository.refreshDeadManTimer(
+                                sessionId = active.id,
+                                voltageVolts = fresh.voltageCurrent ?: 230,
+                                deliveredKwh = currentState.totalDeliveredKwh
+                            )
+                        }
+                    } else {
+                        _errorMessage.value = formatDashboardError(
+                            setRes.exceptionOrNull(),
+                            "Failed to update charge current on station"
                         )
                     }
                     repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
@@ -362,12 +370,16 @@ class DashboardViewModel(
 
     fun setScheduleTimer(enabled: Boolean, startTime: String, stopTime: String) {
         settingsStore.setSchedule(enabled, startTime, stopTime)
+        _errorMessage.value = null
 
         viewModelScope.launch {
-            if (enabled) {
+            val res = if (enabled) {
                 repository.setScheduleTimer(startTime, stopTime)
             } else {
                 repository.setScheduleTimer("00:00", "00:00")
+            }
+            res.onFailure { err ->
+                _errorMessage.value = formatDashboardError(err, "Failed to update station schedule timer")
             }
         }
     }
@@ -392,7 +404,7 @@ class DashboardViewModel(
             result.onSuccess { sessionId ->
                 ChargeMonitorService.start(context, sessionId, quota, durationMin)
             }.onFailure { err ->
-                _errorMessage.value = err.message ?: "Failed to start charging"
+                _errorMessage.value = formatDashboardError(err, "Failed to start charging")
             }
             _isBusy.value = false
         }
@@ -412,10 +424,26 @@ class DashboardViewModel(
                 ChargeMonitorService.stop(context)
             }
             res.onFailure { err ->
-                _errorMessage.value = err.message ?: "Failed to stop station"
+                _errorMessage.value = formatDashboardError(err, "Failed to stop station")
             }
             repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             _isBusy.value = false
+        }
+    }
+
+    private fun formatDashboardError(err: Throwable?, fallback: String): String {
+        val raw = err?.message?.trim().orEmpty()
+        return when {
+            raw.isEmpty() -> fallback
+            raw.contains("OFFLINE", ignoreCase = true) || raw.contains("вимкнена", ignoreCase = true) ->
+                "Station is offline. Connect 220V grid power to start charging."
+            raw.contains("Авто не підключено", ignoreCase = true) ->
+                "Vehicle is not plugged into the station."
+            raw.contains("Не вдалося зупинити", ignoreCase = true) ->
+                "Failed to confirm station stop — retrying in background."
+            raw.contains("Невірний номер", ignoreCase = true) ->
+                "Invalid station serial or password."
+            else -> raw
         }
     }
 

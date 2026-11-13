@@ -262,7 +262,7 @@ fun LimiterScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = "${h}ч",
+                                                text = "${h}г",
                                                 fontSize = 13.sp,
                                                 fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
                                                 color = if (isSelected) AmberNixie else TextSecondaryDark
@@ -404,8 +404,18 @@ fun LimiterScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                if (!state.scheduleError.isNullOrBlank()) {
+                    Text(
+                        text = state.scheduleError.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ErrorRed
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 Button(
                     onClick = { viewModel.applyScheduleToStation() },
+                    enabled = !state.isApplyingSchedule,
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryContainerDark, contentColor = OnSecondaryContainerDark),
                     modifier = Modifier
@@ -413,7 +423,11 @@ fun LimiterScreen(
                         .height(50.dp)
                 ) {
                     Text(
-                        text = if (state.isScheduleSaved) "✓ Налаштування передано на станцію" else "Задати на станцію",
+                        text = when {
+                            state.isApplyingSchedule -> "Передача на станцію..."
+                            state.isScheduleSaved -> "✓ Налаштування передано на станцію"
+                            else -> "Задати на станцію"
+                        },
                         fontWeight = FontWeight.Bold
                     )
                 }

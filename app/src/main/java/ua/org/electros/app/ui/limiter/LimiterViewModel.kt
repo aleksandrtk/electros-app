@@ -22,6 +22,8 @@ data class LimiterUiState(
     val stopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
     val isScheduleSaved: Boolean = false,
+    val isApplyingSchedule: Boolean = false,
+    val scheduleError: String? = null,
     val isVoltageBalancingEnabled: Boolean = true,
     val voltageLowThreshold: Int = 185,
     val voltageHighThreshold: Int = 205,
@@ -33,20 +35,26 @@ class LimiterViewModel(
     private val settingsStore: SettingsStore
 ) : ViewModel() {
 
-    private val _isScheduleSaved = MutableStateFlow(false)
+    private data class ScheduleStatus(
+        val saved: Boolean = false,
+        val applying: Boolean = false,
+        val error: String? = null
+    )
+
+    private val _scheduleStatus = MutableStateFlow(ScheduleStatus())
 
     val uiState: StateFlow<LimiterUiState> = combine(
         settingsStore.settingsFlow,
-        _isScheduleSaved
-    ) { settings, isScheduleSaved ->
-        toUiState(settings, isScheduleSaved)
+        _scheduleStatus
+    ) { settings, status ->
+        toUiState(settings, status)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = toUiState(settingsStore.currentSettings(), isScheduleSaved = false)
+        initialValue = toUiState(settingsStore.currentSettings(), ScheduleStatus())
     )
 
-    private fun toUiState(settings: AppSettings, isScheduleSaved: Boolean): LimiterUiState {
+    private fun toUiState(settings: AppSettings, status: ScheduleStatus): LimiterUiState {
         val (low, high) = normalizeThresholds(
             settings.voltageLowThreshold,
             settings.voltageHighThreshold
@@ -60,7 +68,9 @@ class LimiterViewModel(
             startTime = settings.scheduleStartTime,
             stopTime = settings.scheduleStopTime,
             isAutoResumeEnabled = settings.autoResumeAfterOutage,
-            isScheduleSaved = isScheduleSaved,
+            isScheduleSaved = status.saved,
+            isApplyingSchedule = status.applying,
+            scheduleError = status.error,
             isVoltageBalancingEnabled = settings.isVoltageBalancingEnabled,
             voltageLowThreshold = low,
             voltageHighThreshold = high,
@@ -125,11 +135,12 @@ class LimiterViewModel(
     }
 
     fun toggleSchedule(enabled: Boolean) {
+        _scheduleStatus.value = ScheduleStatus()
         settingsStore.setScheduleEnabled(enabled)
     }
 
     fun setScheduleTimes(start: String, stop: String) {
-        _isScheduleSaved.value = false
+        _scheduleStatus.value = ScheduleStatus()
         settingsStore.setScheduleTimes(start, stop)
     }
 
@@ -138,14 +149,25 @@ class LimiterViewModel(
     }
 
     fun applyScheduleToStation() {
+        if (_scheduleStatus.value.applying) return
         viewModelScope.launch {
+            _scheduleStatus.value = ScheduleStatus(saved = false, applying = true, error = null)
             val settings = settingsStore.awaitSettings()
-            if (settings.isScheduleEnabled) {
+            val result = if (settings.isScheduleEnabled) {
                 repository.setScheduleTimer(settings.scheduleStartTime, settings.scheduleStopTime)
             } else {
                 repository.setScheduleTimer("00:00", "00:00")
             }
-            _isScheduleSaved.value = true
+            _scheduleStatus.value = result.fold(
+                onSuccess = { ScheduleStatus(saved = true, applying = false, error = null) },
+                onFailure = { err ->
+                    ScheduleStatus(
+                        saved = false,
+                        applying = false,
+                        error = err.message ?: "Не вдалося передати налаштування на станцію"
+                    )
+                }
+            )
         }
     }
 
