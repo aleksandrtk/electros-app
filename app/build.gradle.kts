@@ -13,8 +13,8 @@ android {
         applicationId = "ua.org.electros.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 271
-        versionName = "2.7.1"
+        versionCode = 272
+        versionName = "2.7.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
