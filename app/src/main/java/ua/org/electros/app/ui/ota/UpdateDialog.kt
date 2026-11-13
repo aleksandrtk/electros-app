@@ -17,6 +17,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import ua.org.electros.app.BuildConfig
 import ua.org.electros.app.ota.OtaViewModel
 import ua.org.electros.app.ui.theme.*
@@ -25,11 +28,23 @@ import java.util.Locale
 @Composable
 fun UpdateDialog(viewModel: OtaViewModel) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val isChecking by viewModel.isCheckingUpdate.collectAsState()
     val updateInfo by viewModel.updateInfo.collectAsState()
     val isDownloading by viewModel.isDownloadingUpdate.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val updateError by viewModel.updateError.collectAsState()
+    val awaitingPermission by viewModel.awaitingInstallPermission.collectAsState()
+
+    DisposableEffect(lifecycleOwner, awaitingPermission) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && awaitingPermission) {
+                viewModel.resumePendingInstallIfPermitted(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     AlertDialog(
         onDismissRequest = {
@@ -202,6 +217,8 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Завантаження...", fontWeight = FontWeight.Bold)
+                    } else if (awaitingPermission) {
+                        Text("Встановити завантажений APK", fontWeight = FontWeight.Bold)
                     } else if (updateInfo?.downloadUrl != null) {
                         Text("Завантажити та встановити", fontWeight = FontWeight.Bold)
                     } else {

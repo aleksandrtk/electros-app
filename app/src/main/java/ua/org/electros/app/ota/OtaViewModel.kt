@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import ua.org.electros.app.BuildConfig
+import java.io.File
 
 class OtaViewModel : ViewModel() {
     private val tag = "OtaViewModel"
@@ -33,7 +34,14 @@ class OtaViewModel : ViewModel() {
     private val _updateError = MutableStateFlow<String?>(null)
     val updateError: StateFlow<String?> = _updateError.asStateFlow()
 
+    private val _awaitingInstallPermission = MutableStateFlow(false)
+    val awaitingInstallPermission: StateFlow<Boolean> = _awaitingInstallPermission.asStateFlow()
+
+    private var pendingVerifiedApk: File? = null
+    private var pendingApkTag: String? = null
+
     fun checkForUpdates(currentVersion: String = BuildConfig.VERSION_NAME, manual: Boolean = true) {
+        if (_isCheckingUpdate.value || _isDownloadingUpdate.value) return
         viewModelScope.launch {
             _isCheckingUpdate.value = true
             _updateError.value = null
@@ -56,14 +64,23 @@ class OtaViewModel : ViewModel() {
     }
 
     fun startDownloadAndInstall(context: Context) {
+        if (_isDownloadingUpdate.value) return
+        val appContext = context.applicationContext
         val info = _updateInfo.value ?: return
+
+        val readyApk = pendingVerifiedApk
+        if (readyApk != null && readyApk.exists() && pendingApkTag == info.rawTagName) {
+            handleInstallOutcome(OtaUpdater.installApk(appContext, readyApk))
+            return
+        }
+
         val downloadUrl = info.downloadUrl
         if (downloadUrl.isNullOrEmpty()) {
             if (!info.releaseHtmlUrl.isNullOrEmpty()) {
                 val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(info.releaseHtmlUrl)).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-                context.startActivity(browserIntent)
+                appContext.startActivity(browserIntent)
             }
             return
         }
@@ -72,9 +89,10 @@ class OtaViewModel : ViewModel() {
             _isDownloadingUpdate.value = true
             _downloadProgress.value = 0.0f
             _updateError.value = null
+            _awaitingInstallPermission.value = false
 
             val downloadedFile = OtaUpdater.downloadApk(
-                context = context,
+                context = appContext,
                 downloadUrl = downloadUrl,
                 onProgress = { progress ->
                     _downloadProgress.value = progress
@@ -86,15 +104,46 @@ class OtaViewModel : ViewModel() {
             _isDownloadingUpdate.value = false
 
             if (downloadedFile != null && downloadedFile.exists()) {
-                OtaUpdater.installApk(context, downloadedFile)
-                _showUpdateDialog.value = false
+                pendingVerifiedApk = downloadedFile
+                pendingApkTag = info.rawTagName
+                handleInstallOutcome(OtaUpdater.installApk(appContext, downloadedFile))
             } else {
                 _updateError.value = "Не вдалося завантажити оновлення або перевірити цілісність файлу"
             }
         }
     }
 
+    fun resumePendingInstallIfPermitted(context: Context) {
+        if (!_awaitingInstallPermission.value) return
+        val appContext = context.applicationContext
+        if (!appContext.packageManager.canRequestPackageInstalls()) return
+        val apk = pendingVerifiedApk ?: return
+        if (!apk.exists()) {
+            _awaitingInstallPermission.value = false
+            return
+        }
+        handleInstallOutcome(OtaUpdater.installApk(appContext, apk))
+    }
+
+    private fun handleInstallOutcome(outcome: OtaUpdater.InstallOutcome) {
+        when (outcome) {
+            OtaUpdater.InstallOutcome.LAUNCHED_INSTALLER -> {
+                _awaitingInstallPermission.value = false
+                _showUpdateDialog.value = false
+            }
+            OtaUpdater.InstallOutcome.NEEDS_UNKNOWN_SOURCES_PERMISSION -> {
+                _awaitingInstallPermission.value = true
+                _showUpdateDialog.value = true
+            }
+            OtaUpdater.InstallOutcome.FAILED -> {
+                _awaitingInstallPermission.value = false
+                _updateError.value = "Не вдалося запустити встановлення оновлення"
+            }
+        }
+    }
+
     fun dismissUpdateDialog() {
+        _awaitingInstallPermission.value = false
         _showUpdateDialog.value = false
     }
 }

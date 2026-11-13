@@ -10,14 +10,18 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 object OtaUpdater {
     private const val TAG = "OtaUpdater"
@@ -32,6 +36,25 @@ object OtaUpdater {
         "raw.githubusercontent.com",
         "codeload.github.com"
     )
+
+    private val apiClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
+
+    private val downloadClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
+    enum class InstallOutcome {
+        LAUNCHED_INSTALLER,
+        NEEDS_UNKNOWN_SOURCES_PERMISSION,
+        FAILED
+    }
 
     data class UpdateInfo(
         val hasUpdate: Boolean,
@@ -69,13 +92,9 @@ object OtaUpdater {
     }
 
     fun isValidDownloadUrl(urlString: String): Boolean {
-        return try {
-            val url = URL(urlString)
-            url.protocol.equals("https", ignoreCase = true) &&
-                ALLOWED_REDIRECT_HOSTS.any { url.host.equals(it, ignoreCase = true) }
-        } catch (_: Exception) {
-            false
-        }
+        val parsed = urlString.trim().toHttpUrlOrNull() ?: return false
+        return parsed.isHttps &&
+            ALLOWED_REDIRECT_HOSTS.any { parsed.host.equals(it, ignoreCase = true) }
     }
 
     fun computeSha256(file: File): String? {
@@ -268,33 +287,29 @@ object OtaUpdater {
         fetchText(urlString)?.let { JSONArray(it) }
 
     private fun fetchText(urlString: String): String? {
-        var connection: HttpURLConnection? = null
         return try {
-            val url = URL(urlString)
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 8000
-                readTimeout = 8000
-                setRequestProperty("Accept", "application/vnd.github.v3+json")
-                setRequestProperty("User-Agent", "Electros-App")
-            }
+            val request = Request.Builder()
+                .url(urlString)
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("User-Agent", "Electros-App")
+                .build()
 
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                Log.w(TAG, "HTTP GET $urlString failed with code: ${connection.responseCode}")
-                null
+            apiClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    response.body?.string()
+                } else {
+                    Log.w(TAG, "HTTP GET $urlString failed with code: ${response.code}")
+                    null
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch JSON from $urlString: ${e.message}")
             null
-        } finally {
-            connection?.disconnect()
         }
     }
 
     /**
-     * Downloads the APK file following HTTP redirects (e.g. GitHub release CDN redirects).
+     * Downloads the APK file following validated HTTPS redirects (e.g. GitHub release CDN redirects).
      */
     suspend fun downloadApk(
         context: Context,
@@ -308,99 +323,106 @@ object OtaUpdater {
             return@withContext null
         }
 
+        val appContext = context.applicationContext
+        val tempFile = File(appContext.cacheDir, "electros_update.apk.part")
+        val finalFile = File(appContext.cacheDir, "electros_update.apk")
         var currentUrl = downloadUrl
         val maxRedirects = 5
 
         try {
-            for (redirectCount in 0 until maxRedirects) {
-                var connection: HttpURLConnection? = null
-                try {
-                    val url = URL(currentUrl)
-                    connection = (url.openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 15000
-                        readTimeout = 15000
-                        setRequestProperty("User-Agent", "Electros-App")
-                        instanceFollowRedirects = false
-                    }
+            for (redirectCount in 0..maxRedirects) {
+                val request = Request.Builder()
+                    .url(currentUrl)
+                    .header("User-Agent", "Electros-App")
+                    .build()
 
-                    val responseCode = connection.responseCode
-                    if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-                        responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-                        responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
-                        responseCode == 307 || responseCode == 308) {
-                        val location = connection.getHeaderField("Location")
-                        if (location.isNullOrEmpty()) break
-                        if (!isValidDownloadUrl(location)) {
-                            Log.e(TAG, "Blocked redirect to untrusted host: $location")
-                            break
+                val redirectedTo: String? = downloadClient.newCall(request).execute().use { response ->
+                    val code = response.code
+                    if (code in listOf(301, 302, 303, 307, 308)) {
+                        val location = response.header("Location")
+                        val resolved = if (!location.isNullOrBlank()) {
+                            response.request.url.resolve(location)?.toString()
+                        } else null
+                        if (resolved == null || !isValidDownloadUrl(resolved)) {
+                            Log.e(TAG, "Blocked redirect to untrusted or invalid URL: $location")
+                            return@withContext null
                         }
-                        currentUrl = location
-                        continue
+                        return@use resolved
                     }
 
-                    if (responseCode == HttpURLConnection.HTTP_OK) {
-                        val fileLength = connection.contentLengthLong
-                        val cacheFile = File(context.cacheDir, "electros_update.apk")
-                        if (cacheFile.exists()) cacheFile.delete()
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "Download failed with HTTP status: $code")
+                        return@withContext null
+                    }
 
-                        connection.inputStream.use { input ->
-                            FileOutputStream(cacheFile).use { output ->
-                                val buffer = ByteArray(8192)
-                                var bytesRead: Int
-                                var totalBytesCopied = 0L
+                    val body = response.body ?: return@withContext null
+                    val fileLength = body.contentLength()
+                    if (tempFile.exists()) tempFile.delete()
 
-                                while (input.read(buffer).also { bytesRead = it } != -1) {
-                                    output.write(buffer, 0, bytesRead)
-                                    totalBytesCopied += bytesRead
-                                    if (fileLength > 0L) {
-                                        onProgress(totalBytesCopied.toFloat() / fileLength.toFloat())
-                                    }
+                    body.byteStream().use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var totalBytesCopied = 0L
+
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                totalBytesCopied += bytesRead
+                                if (fileLength > 0L) {
+                                    onProgress(totalBytesCopied.toFloat() / fileLength.toFloat())
                                 }
                             }
                         }
-
-                        val actualLength = if (cacheFile.exists()) cacheFile.length() else 0L
-                        if (actualLength <= 0L) {
-                            Log.e(TAG, "Downloaded APK is empty")
-                            break
-                        }
-
-                        val expectedLen = if (expectedSizeBytes > 0L) expectedSizeBytes else fileLength
-                        if (expectedLen > 0L && actualLength != expectedLen) {
-                            Log.e(TAG, "APK size mismatch: expected $expectedLen bytes, got $actualLength. Aborting.")
-                            cacheFile.delete()
-                            break
-                        }
-
-                        if (expectedSha256 != null) {
-                            val actualSha256 = computeSha256(cacheFile)
-                            if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                                Log.e(TAG, "APK SHA-256 mismatch: expected $expectedSha256, got $actualSha256. Aborting.")
-                                cacheFile.delete()
-                                break
-                            }
-                            Log.i(TAG, "APK SHA-256 verified OK (${actualSha256.take(12)}...)")
-                        }
-
-                        if (!hasMatchingSigningCertificate(context, cacheFile)) {
-                            Log.e(TAG, "APK signing certificate does not match installed app. Aborting.")
-                            cacheFile.delete()
-                            break
-                        }
-
-                        Log.i(TAG, "APK update downloaded successfully: $actualLength bytes")
-                        return@withContext cacheFile
-                    } else {
-                        Log.e(TAG, "Download failed with HTTP status: $responseCode")
                     }
+
+                    val actualLength = if (tempFile.exists()) tempFile.length() else 0L
+                    if (actualLength <= 0L) {
+                        Log.e(TAG, "Downloaded APK is empty")
+                        tempFile.delete()
+                        return@withContext null
+                    }
+
+                    val expectedLen = if (expectedSizeBytes > 0L) expectedSizeBytes else fileLength
+                    if (expectedLen > 0L && actualLength != expectedLen) {
+                        Log.e(TAG, "APK size mismatch: expected $expectedLen bytes, got $actualLength. Aborting.")
+                        tempFile.delete()
+                        return@withContext null
+                    }
+
+                    if (expectedSha256 != null) {
+                        val actualSha256 = computeSha256(tempFile)
+                        if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                            Log.e(TAG, "APK SHA-256 mismatch: expected $expectedSha256, got $actualSha256. Aborting.")
+                            tempFile.delete()
+                            return@withContext null
+                        }
+                    } else {
+                        Log.w(TAG, "Release asset has no SHA-256 digest; relying on signing certificate verification")
+                    }
+
+                    if (!hasMatchingSigningCertificate(appContext, tempFile)) {
+                        Log.e(TAG, "APK signing certificate does not match installed app. Aborting.")
+                        tempFile.delete()
+                        return@withContext null
+                    }
+
+                    Files.move(
+                        tempFile.toPath(),
+                        finalFile.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                    return@withContext finalFile
+                }
+
+                if (redirectedTo != null) {
+                    currentUrl = redirectedTo
+                } else {
                     break
-                } finally {
-                    connection?.disconnect()
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exception downloading APK: ${e.message}", e)
-            try { File(context.cacheDir, "electros_update.apk").delete() } catch (_: Exception) {}
+            runCatching { tempFile.delete() }
         }
         return@withContext null
     }
@@ -408,36 +430,38 @@ object OtaUpdater {
     /**
      * Checks install permission and launches system package installer.
      */
-    fun installApk(context: Context, apkFile: File) {
+    fun installApk(context: Context, apkFile: File): InstallOutcome {
+        val appContext = context.applicationContext
         if (!apkFile.exists() || apkFile.length() == 0L) {
             Log.e(TAG, "Cannot install update. APK file does not exist or is empty.")
-            return
+            return InstallOutcome.FAILED
         }
-        if (!hasMatchingSigningCertificate(context, apkFile)) {
+        if (!hasMatchingSigningCertificate(appContext, apkFile)) {
             Log.e(TAG, "Refusing to install APK with unverified or mismatched signing certificate.")
             apkFile.delete()
-            return
+            return InstallOutcome.FAILED
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!context.packageManager.canRequestPackageInstalls()) {
-                try {
+            if (!appContext.packageManager.canRequestPackageInstalls()) {
+                return try {
                     val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
+                        data = Uri.parse("package:${appContext.packageName}")
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
-                    context.startActivity(settingsIntent)
-                    return
+                    appContext.startActivity(settingsIntent)
+                    InstallOutcome.NEEDS_UNKNOWN_SOURCES_PERMISSION
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to launch unknown sources settings: ${e.message}")
+                    InstallOutcome.FAILED
                 }
             }
         }
 
         val apkUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
+                appContext,
+                "${appContext.packageName}.fileprovider",
                 apkFile
             )
         } else {
@@ -449,11 +473,13 @@ object OtaUpdater {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
 
-        try {
-            context.startActivity(intent)
+        return try {
+            appContext.startActivity(intent)
             Log.i(TAG, "Package Installer launched for $apkUri")
+            InstallOutcome.LAUNCHED_INSTALLER
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer: ${e.message}", e)
+            InstallOutcome.FAILED
         }
     }
 }
