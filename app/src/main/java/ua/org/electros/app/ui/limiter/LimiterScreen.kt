@@ -508,10 +508,10 @@ fun LimiterScreen(
                                 )
                             }
                             Slider(
-                                value = state.voltageLowThreshold.toFloat().coerceIn(170f, 195f),
+                                value = state.voltageLowThreshold.toFloat().coerceIn(160f, 200f),
                                 onValueChange = { viewModel.setVoltageLowThreshold(it.toInt()) },
-                                valueRange = 170f..195f,
-                                steps = 24,
+                                valueRange = 160f..200f,
+                                steps = 39,
                                 colors = SliderDefaults.colors(
                                     thumbColor = ErrorRed,
                                     activeTrackColor = ErrorRed,
@@ -540,10 +540,10 @@ fun LimiterScreen(
                                 )
                             }
                             Slider(
-                                value = state.voltageHighThreshold.toFloat().coerceIn(200f, 225f),
+                                value = state.voltageHighThreshold.toFloat().coerceIn(195f, 230f),
                                 onValueChange = { viewModel.setVoltageHighThreshold(it.toInt()) },
-                                valueRange = 200f..225f,
-                                steps = 24,
+                                valueRange = 195f..230f,
+                                steps = 34,
                                 colors = SliderDefaults.colors(
                                     thumbColor = PrimaryNeonGreen,
                                     activeTrackColor = PrimaryNeonGreen,
@@ -577,10 +577,10 @@ fun LimiterScreen(
                                 )
                             }
                             Slider(
-                                value = state.voltageMaxAmperage.toFloat().coerceIn(8f, 16f),
+                                value = state.voltageMaxAmperage.toFloat().coerceIn(6f, 16f),
                                 onValueChange = { viewModel.setVoltageMaxAmperage(it.toInt()) },
-                                valueRange = 8f..16f,
-                                steps = 3,
+                                valueRange = 6f..16f,
+                                steps = 4,
                                 colors = SliderDefaults.colors(
                                     thumbColor = SecondaryCyan,
                                     activeTrackColor = SecondaryCyan,

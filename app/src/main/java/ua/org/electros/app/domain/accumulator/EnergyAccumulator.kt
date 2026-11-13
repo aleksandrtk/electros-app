@@ -51,7 +51,7 @@ object EnergyAccumulator {
         amperes: Int,
         bufferMinutes: Int = 15
     ): Int {
-        val effectiveVoltage = voltageVolts.coerceAtLeast(200)
+        val effectiveVoltage = voltageVolts.coerceAtLeast(170)
         val powerKw = (effectiveVoltage * amperes) / 1000.0
         if (powerKw <= 0.1) return 60 // fallback 1 hour
 

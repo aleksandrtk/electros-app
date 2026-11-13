@@ -98,6 +98,7 @@ class SessionSupervisor(
     private var hasAlertedManualResume: Boolean = false
     private var pendingStopIsManual: Boolean = false
     private var hasAlertedStopFailed: Boolean = false
+    private var lastDeadManRefreshAtMs: Long = 0L
     private val operationMutex = Mutex()
 
     fun onSessionStarted(sessionId: String?, targetKwh: Double, targetDurationMinutes: Int) {
@@ -117,6 +118,7 @@ class SessionSupervisor(
             hasAlertedManualResume = false
             pendingStopIsManual = false
             hasAlertedStopFailed = false
+            lastDeadManRefreshAtMs = 0L
             stateMachine = ChargingStateMachine(SessionStatus.CHARGING)
         }
     }
@@ -534,11 +536,22 @@ class SessionSupervisor(
                 val updateRes = gateway.setAmperage(recommendedA)
                 if (updateRes.isSuccess) {
                     lastKnownAmperes = recommendedA
+                    lastDeadManRefreshAtMs = now
                     gateway.updateSessionAmperage(sessionId, recommendedA)
                     gateway.refreshDeadManTimer(sessionId, currentVoltage, totalDelivered)
                     events += SupervisorEvent.ShowBalancingAlert(prevA, recommendedA, currentVoltage)
                 }
             }
+        }
+
+        val hasTarget = activeTargetKwh > 0.0 || activeTargetDurationMinutes > 0
+        if (stateMachine.getState() == SessionStatus.CHARGING &&
+            data.isChargingActive &&
+            hasTarget &&
+            (lastDeadManRefreshAtMs == 0L || now - lastDeadManRefreshAtMs >= DEAD_MAN_REFRESH_INTERVAL_MS)
+        ) {
+            lastDeadManRefreshAtMs = now
+            gateway.refreshDeadManTimer(sessionId, currentVoltage ?: 230, totalDelivered)
         }
         return false
     }
@@ -749,6 +762,7 @@ class SessionSupervisor(
 
     companion object {
         private const val INACTIVE_ONLINE_STOP_TICKS = 3
+        private const val DEAD_MAN_REFRESH_INTERVAL_MS = 15 * 60_000L
     }
 }
 

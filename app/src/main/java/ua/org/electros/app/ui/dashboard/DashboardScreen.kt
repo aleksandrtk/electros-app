@@ -581,7 +581,9 @@ private fun StudioClassicRotaryKnobCard(
     val stops = listOf(6, 8, 10, 12, 16)
     val view = LocalView.current
 
-    val currentIndex = stops.indexOf(selectedAmperes).takeIf { it >= 0 } ?: 2 // default 10A
+    val currentIndex = stops.indices.minByOrNull { idx ->
+        kotlin.math.abs(stops[idx] - selectedAmperes)
+    } ?: 2
 
     val stopAngles = listOf(-114f, -58f, 0f, 58f, 114f)
     fun angleForIndex(idx: Int) = stopAngles[idx.coerceIn(0, stopAngles.lastIndex)]

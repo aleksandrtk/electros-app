@@ -379,13 +379,16 @@ class ElectrosWebScraper(
     }
 
     suspend fun setAmperage(amperes: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        val targetAmperes = (if (amperes % 2 != 0) amperes - 1 else amperes).coerceIn(6, 32)
         val serial = currentSerial()
         if (serial.isNotBlank()) {
-            val idx = amperageToIndex(amperes)
-            val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") { it.selectedCurrentAmperes == amperes }
+            val idx = amperageToIndex(targetAmperes)
+            val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") {
+                it.selectedCurrentAmperes == targetAmperes
+            }
             if (wsResult.isSuccess) return@withContext wsResult
         }
-        setAmperageHttp(amperes)
+        setAmperageHttp(targetAmperes)
     }
 
     private suspend fun setAmperageHttp(amperes: Int): Result<Unit> = postForm(

@@ -281,7 +281,14 @@ class DashboardViewModel(
             if (currentState.telemetry?.isChargingActive == true) {
                 val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning()).getOrNull()
                 if (fresh?.isChargingActive == true) {
-                    repository.setAmperage(amperes)
+                    val setRes = repository.setAmperage(amperes)
+                    if (setRes.isSuccess && active != null) {
+                        repository.refreshDeadManTimer(
+                            sessionId = active.id,
+                            voltageVolts = fresh.voltageCurrent ?: 230,
+                            deliveredKwh = currentState.totalDeliveredKwh
+                        )
+                    }
                     repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
                 }
             }
