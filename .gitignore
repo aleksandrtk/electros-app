@@ -42,3 +42,5 @@ google-services.json
 
 # Local review notes
 CODE_REVIEW.md
+*.p12
+*.lineage

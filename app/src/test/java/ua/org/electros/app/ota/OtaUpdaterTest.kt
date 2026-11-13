@@ -104,5 +104,43 @@ class OtaUpdaterTest {
             )
         ).isFalse()
     }
-}
 
+    @Test
+    fun doCertificatesMatch_acceptsRotatedKeyWhoseLineageContainsInstalledCert() {
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.electros.app",
+                installedDigests = listOf("debug"),
+                archiveDigests = listOf("release"),
+                archiveHistoryDigests = listOf("debug", "release")
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun doCertificatesMatch_rejectsNewKeyWithoutProofOfRotation() {
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.electros.app",
+                installedDigests = listOf("debug"),
+                archiveDigests = listOf("attacker"),
+                archiveHistoryDigests = listOf("other", "attacker")
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun doCertificatesMatch_rejectsRollbackToOldKeyAfterRotation() {
+        assertThat(
+            OtaUpdater.doCertificatesMatch(
+                expectedPackage = "ua.org.electros.app",
+                archivePackage = "ua.org.electros.app",
+                installedDigests = listOf("release"),
+                archiveDigests = listOf("debug"),
+                archiveHistoryDigests = emptyList()
+            )
+        ).isFalse()
+    }
+}
