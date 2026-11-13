@@ -6,8 +6,8 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -51,7 +51,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import ua.org.electros.app.ui.theme.*
 import java.util.Locale
 import kotlin.math.atan2
@@ -335,26 +337,6 @@ private fun StudioTopHeader(
     }
 }
 
-private fun formatHeaderStatus(statusText: String, isOnline: Boolean): String {
-    val raw = statusText.trim()
-    return when {
-        !isOnline -> "OFFLINE"
-        raw.contains("Чекаю підключення", ignoreCase = true) || raw.contains("Waiting", ignoreCase = true) -> "WAITING FOR VEHICLE"
-        raw.contains("Підключено. Немає заряду", ignoreCase = true) -> "CONNECTED • IDLE"
-        raw.contains("Заряджання", ignoreCase = true) || raw.contains("Заряджається", ignoreCase = true) || raw.contains("Charging", ignoreCase = true) -> "CHARGING"
-        raw.contains("Помилка заряджання", ignoreCase = true) -> "CHARGE ERROR"
-        raw.contains("Заборона заряджання", ignoreCase = true) -> "CHARGING FORBIDDEN"
-        raw.contains("Напруга нижче", ignoreCase = true) -> "LOW VOLTAGE"
-        raw.contains("Помилка зв'язку", ignoreCase = true) -> "COMMUNICATION ERROR"
-        raw.contains("Ток витоку", ignoreCase = true) -> "LEAKAGE DETECTED"
-        raw.contains("перевищив 40", ignoreCase = true) -> "OVERCURRENT > 40A"
-        raw.contains("Станція OFFLINE", ignoreCase = true) || raw.contains("OFFLINE", ignoreCase = true) -> "OFFLINE"
-        raw.contains("В МЕРЕЖІ", ignoreCase = true) || raw.contains("Підключено", ignoreCase = true) || raw.contains("ONLINE", ignoreCase = true) -> "ONLINE"
-        raw.isNotBlank() -> raw.uppercase(Locale.US)
-        else -> "ONLINE"
-    }
-}
-
 /**
  * Variation 4.1 Classic: Pure RMS Line Voltage Panel with inline Session Energy Nixie Display
  */
@@ -572,43 +554,37 @@ private fun StudioClassicRotaryKnobCard(
         kotlin.math.abs(stops[idx] - selectedAmperes)
     } ?: 2
 
-    val stopAngles = listOf(-114f, -58f, 0f, 58f, 114f)
+    val stopAngles = KnobPhysics.STOP_ANGLES
     fun angleForIndex(idx: Int) = stopAngles[idx.coerceIn(0, stopAngles.lastIndex)]
     val targetAngle = angleForIndex(currentIndex)
+    // Read inside the long-lived gesture handler so a value change does not restart a drag in progress.
+    val latestIndex by rememberUpdatedState(currentIndex)
 
-    fun findClosestStopIndex(angle: Float): Int {
-        var best = 0
-        var minDiff = Float.MAX_VALUE
-        stopAngles.forEachIndexed { i, a ->
-            val diff = kotlin.math.abs(angle - a)
-            if (diff < minDiff) {
-                minDiff = diff
-                best = i
-            }
-        }
-        return best
+    // Heavy, critically damped settle: the knob glides into the detent and stops, no overshoot or wobble.
+    val settleSpec = remember {
+        spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 260f)
     }
+    val knobAngle = remember { Animatable(targetAngle) }
+    val knobScope = rememberCoroutineScope()
 
     var isDragging by remember { mutableStateOf(false) }
     var dragAngle by remember { mutableFloatStateOf(targetAngle) }
     var lastHapticIndex by remember { mutableIntStateOf(currentIndex) }
 
-    LaunchedEffect(targetAngle, isDragging) {
-        if (!isDragging) {
-            dragAngle = targetAngle
+    // Follow value changes made elsewhere (label tap, half-tap, station sync), never during a drag.
+    LaunchedEffect(targetAngle) {
+        if (!isDragging) knobAngle.animateTo(targetAngle, settleSpec)
+    }
+
+    /** Hands the knob from the finger back to the animation without a visual jump. */
+    fun settleFrom(fromAngle: Float, toIndex: Int) {
+        knobScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            knobAngle.snapTo(fromAngle)
+            knobAngle.animateTo(angleForIndex(toIndex), settleSpec)
         }
     }
 
-    val animatedAngle by animateFloatAsState(
-        targetValue = targetAngle,
-        animationSpec = spring(
-            dampingRatio = 0.85f,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "knobRotation"
-    )
-
-    val currentAngle = if (isDragging) dragAngle else animatedAngle
+    val currentAngle = if (isDragging) dragAngle else knobAngle.value
 
     val stageCenterOffsetY = 10.dp
     val labelOffsets = listOf(
@@ -712,7 +688,7 @@ private fun StudioClassicRotaryKnobCard(
                     Box(
                         modifier = Modifier
                             .size(140.dp)
-                            .pointerInput(stops, currentIndex) {
+                            .pointerInput(stops) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val cx = size.width / 2f
@@ -727,7 +703,7 @@ private fun StudioClassicRotaryKnobCard(
                                     var totalDragMovement = 0f
                                     val startPos = down.position
                                     var lastTouchAngle = Math.toDegrees(atan2((startPos.x - cx).toDouble(), -(startPos.y - cy).toDouble())).toFloat()
-                                    var currentKnobAngle = targetAngle
+                                    var currentKnobAngle = knobAngle.value
 
                                     while (true) {
                                         val event = awaitPointerEvent()
@@ -737,24 +713,23 @@ private fun StudioClassicRotaryKnobCard(
                                             // Finger released
                                             if (isDragStarted) {
                                                 change.consume()
+                                                val finalIdx = KnobPhysics.nearestStopIndex(dragAngle)
+                                                settleFrom(dragAngle, finalIdx)
                                                 isDragging = false
-                                                val finalIdx = findClosestStopIndex(dragAngle)
-                                                if (finalIdx != currentIndex) {
-                                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                                if (finalIdx != latestIndex) {
+                                                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                                                     onAmperageSelected(stops[finalIdx])
-                                                } else {
-                                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                                 }
                                             } else if (totalDragMovement < 8.dp.toPx()) {
                                                 // Tap on knob: left half decreases, right half increases
                                                 change.consume()
                                                 val isRightSide = startPos.x >= cx
                                                 val newIdx = if (isRightSide) {
-                                                    (currentIndex + 1).coerceAtMost(stops.lastIndex)
+                                                    (latestIndex + 1).coerceAtMost(stops.lastIndex)
                                                 } else {
-                                                    (currentIndex - 1).coerceAtLeast(0)
+                                                    (latestIndex - 1).coerceAtLeast(0)
                                                 }
-                                                if (newIdx != currentIndex) {
+                                                if (newIdx != latestIndex) {
                                                     view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                                                     onAmperageSelected(stops[newIdx])
                                                 }
@@ -770,10 +745,12 @@ private fun StudioClassicRotaryKnobCard(
 
                                         if (!isDragStarted && distFromStart > 6.dp.toPx()) {
                                             isDragStarted = true
+                                            // Pick the knob up exactly where it is, even mid-animation.
+                                            currentKnobAngle = knobAngle.value
+                                            dragAngle = currentKnobAngle
+                                            lastHapticIndex = KnobPhysics.nearestStopIndex(currentKnobAngle)
                                             isDragging = true
-                                            lastHapticIndex = currentIndex
-                                            currentKnobAngle = targetAngle
-                                            dragAngle = targetAngle
+                                            knobScope.launch { knobAngle.stop() }
                                         }
 
                                         if (isDragStarted) {
@@ -784,27 +761,24 @@ private fun StudioClassicRotaryKnobCard(
                                             if (delta < -180f) delta += 360f
                                             lastTouchAngle = currentTouchAngle
 
-                                            // Accumulate angle
-                                            currentKnobAngle += delta
+                                            // Hard mechanical end stops: no rubber-band over-travel to spring back from.
+                                            currentKnobAngle = KnobPhysics.clampToTravel(currentKnobAngle + delta)
 
-                                            // End-stop resistance past -114° and +114°
-                                            val boundedAngle = when {
-                                                currentKnobAngle > 114f -> 114f + ((currentKnobAngle - 114f) * 0.18f).coerceAtMost(14f)
-                                                currentKnobAngle < -114f -> -114f + ((currentKnobAngle - (-114f)) * 0.18f).coerceAtLeast(-14f)
-                                                else -> currentKnobAngle
-                                            }
+                                            // Magnetic detents: parks on each position, then moves on to the next.
+                                            dragAngle = KnobPhysics.detentAngle(currentKnobAngle)
 
-                                            // Apply rotational weight/damping (0.72)
-                                            dragAngle = dragAngle + (boundedAngle - dragAngle) * 0.72f
-
-                                            val closestIdx = findClosestStopIndex(dragAngle)
-                                            if (closestIdx != lastHapticIndex) {
+                                            val closestIdx = KnobPhysics.nearestStopIndex(dragAngle)
+                                            if (closestIdx != lastHapticIndex && KnobPhysics.isSeatedIn(dragAngle, closestIdx)) {
                                                 lastHapticIndex = closestIdx
                                                 view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                             }
                                         }
                                     }
-                                    isDragging = false
+                                    if (isDragging) {
+                                        // Gesture cancelled mid-drag: glide back to the committed position.
+                                        settleFrom(dragAngle, latestIndex)
+                                        isDragging = false
+                                    }
                                 }
                             },
                         contentAlignment = Alignment.Center

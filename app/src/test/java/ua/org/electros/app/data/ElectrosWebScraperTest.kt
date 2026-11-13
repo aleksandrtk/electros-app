@@ -303,4 +303,54 @@ class ElectrosWebScraperTest {
         assertThat(error.isOnline).isTrue()
         assertThat(error.isChargingActive).isFalse()
     }
+
+    private fun wsPacket(statusCode: Int, measuredTenthsA: Int, powerDw: Int): String {
+        val lines = MutableList(22) { "0" }
+        lines[7] = "10"
+        lines[8] = statusCode.toString()
+        lines[9] = measuredTenthsA.toString()
+        lines[10] = "220"
+        lines[11] = "95000"
+        lines[12] = powerDw.toString()
+        return lines.joinToString("\n")
+    }
+
+    @Test
+    fun parseWebSocketTelemetry_whenChargingForbidden_isNotCharging_evenWithResidualCurrent() {
+        val telemetry = ElectrosWebScraper().parseWebSocketTelemetry(
+            wsPacket(statusCode = 4, measuredTenthsA = 12, powerDw = 2_000)
+        )
+
+        assertThat(telemetry.statusText).isEqualTo("Заборона заряджання")
+        assertThat(telemetry.isOnline).isTrue()
+        assertThat(telemetry.isChargingActive).isFalse()
+    }
+
+    @Test
+    fun parseWebSocketTelemetry_whenStatusCharging_isCharging() {
+        val telemetry = ElectrosWebScraper().parseWebSocketTelemetry(
+            wsPacket(statusCode = 2, measuredTenthsA = 100, powerDw = 22_000)
+        )
+
+        assertThat(telemetry.isChargingActive).isTrue()
+    }
+
+    @Test
+    fun parseTelemetryDocument_whenChargingForbidden_isNotCharging_evenWithResidualCurrent() {
+        val html = """
+            <html><body>
+            <div>Стан: <span>Заборона заряджання</span></div>
+            <table><caption>Напруга Мережі, В:</caption>
+              <tr><th>Min</th><th>Середня</th><th>Поточна</th><th>Max</th></tr>
+              <tr><td>210</td><td>215</td><td>220</td><td>225</td></tr></table>
+            <div>Струм, виміряний: 1.2 A</div>
+            <table><tr><td>Потужність</td><td><span>0.3 кВт</span></td></tr></table>
+            </body></html>
+        """.trimIndent()
+
+        val telemetry = ElectrosWebScraper().parseTelemetryDocument(Jsoup.parse(html))
+
+        assertThat(telemetry.isOnline).isTrue()
+        assertThat(telemetry.isChargingActive).isFalse()
+    }
 }

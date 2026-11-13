@@ -536,7 +536,10 @@ class ElectrosWebScraper(
         // Line 12: power in dW (divide by 10,000 to get kW)
         val powerKw = (lines.getOrNull(12)?.trim()?.toDoubleOrNull() ?: 0.0) / 10_000.0
 
-        val isChargingActive = statusCode == 2 || (isOnline && (measuredA > 0.5 || powerKw > 0.1))
+        // Fault/prohibition codes never count as charging even if a residual current is reported.
+        val isFaultStatus = statusCode in WS_FAULT_STATUS_CODES
+        val isChargingActive = !isFaultStatus &&
+            (statusCode == 2 || (isOnline && (measuredA > 0.5 || powerKw > 0.1)))
 
         return TelemetryData(
             statusText = statusText,
@@ -698,7 +701,8 @@ class ElectrosWebScraper(
                 !statusText.contains("Немає заряду", ignoreCase = true) &&
                 !statusText.contains("Помилка", ignoreCase = true) &&
                 !statusText.contains("Заборон", ignoreCase = true)
-        val isChargingActive = isOnline &&
+        val isFaultStatus = HTTP_FAULT_STATUS_MARKERS.any { statusText.contains(it, ignoreCase = true) }
+        val isChargingActive = isOnline && !isFaultStatus &&
                 (measuredA > 0.5 || powerKw > 0.1 || isStatusCharging)
 
         return TelemetryData(
@@ -717,6 +721,11 @@ class ElectrosWebScraper(
 
     companion object {
         private const val MIN_WS_LINES = 14
+        /** 3 charge error, 4 charging forbidden, 5 low voltage, 6 comm error, 16 leakage, 32 overcurrent. */
+        private val WS_FAULT_STATUS_CODES = setOf(3, 4, 5, 6, 16, 32)
+        private val HTTP_FAULT_STATUS_MARKERS = listOf(
+            "Заборон", "Помилка", "Напруга нижче", "витоку", "перевищив"
+        )
         private const val DEFAULT_AUTH_BACKOFF_MS = 15 * 60_000L
         private const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 17) AppleWebKit/537.36"
 
