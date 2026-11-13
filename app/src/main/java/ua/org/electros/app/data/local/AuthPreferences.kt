@@ -205,22 +205,5 @@ class AuthPreferences internal constructor(
                 ).also { sharedDataStore = it }
             }
         }
-
-        internal val LEGACY_SETTINGS_KEYS = listOf(
-            "KEY_KWH_LIMIT_ENABLED",
-            "KEY_TARGET_KWH_LIMIT",
-            "KEY_PREFERRED_AMPERAGE",
-            "KEY_SCHEDULE_ENABLED",
-            "KEY_SCHEDULE_START",
-            "KEY_SCHEDULE_STOP",
-            "KEY_AUTO_RESUME",
-            "KEY_VOLTAGE_BALANCING_ENABLED",
-            "KEY_VOLTAGE_LOW_THRESHOLD",
-            "KEY_VOLTAGE_HIGH_THRESHOLD",
-            "KEY_VOLTAGE_MAX_AMPERAGE",
-            "KEY_VOLTAGE_MIN_AMPERAGE",
-            "KEY_DURATION_TIMER_ENABLED",
-            "KEY_TARGET_DURATION_HOURS"
-        )
     }
 }

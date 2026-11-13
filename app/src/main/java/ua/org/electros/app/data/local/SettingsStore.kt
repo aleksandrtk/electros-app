@@ -1,8 +1,6 @@
 package ua.org.electros.app.data.local
 
 import android.content.Context
-import android.content.SharedPreferences
-import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
@@ -377,7 +375,6 @@ class SettingsStore internal constructor(
     companion object {
         private const val DATASTORE_FILE_NAME = "app_settings"
 
-        internal val KEY_MIGRATED_FROM_AUTH_PREFS = booleanPreferencesKey("migrated_from_auth_prefs")
         internal val KEY_PREFERRED_AMPERAGE = intPreferencesKey("preferred_amperage")
         internal val KEY_KWH_LIMIT_ENABLED = booleanPreferencesKey("kwh_limit_enabled")
         internal val KEY_TARGET_KWH_LIMIT = doublePreferencesKey("target_kwh_limit")
@@ -411,10 +408,6 @@ class SettingsStore internal constructor(
             }
         }
 
-        internal fun legacyAuthPrefsMigration(legacyPrefs: SharedPreferences): DataMigration<Preferences> {
-            return LegacyAuthPrefsMigration(legacyPrefs)
-        }
-
         internal fun decode(prefs: Preferences): AppSettings {
             val (lowThreshold, highThreshold) = AppSettings.normalizeThresholds(
                 rawLow = prefs[KEY_VOLTAGE_LOW_THRESHOLD]
@@ -445,85 +438,4 @@ class SettingsStore internal constructor(
             )
         }
     }
-}
-
-private class LegacyAuthPrefsMigration(
-    private val legacyPrefs: SharedPreferences
-) : DataMigration<Preferences> {
-
-    override suspend fun shouldMigrate(currentData: Preferences): Boolean {
-        if (currentData[SettingsStore.KEY_MIGRATED_FROM_AUTH_PREFS] == true) return false
-        return AuthPreferences.LEGACY_SETTINGS_KEYS.any { legacyPrefs.contains(it) }
-    }
-
-    override suspend fun migrate(currentData: Preferences): Preferences {
-        val mutable = currentData.toMutablePreferences()
-        mutable.putIfAbsent(SettingsStore.KEY_PREFERRED_AMPERAGE, readInt("KEY_PREFERRED_AMPERAGE"))
-        mutable.putIfAbsent(SettingsStore.KEY_KWH_LIMIT_ENABLED, readBoolean("KEY_KWH_LIMIT_ENABLED"))
-        mutable.putIfAbsent(
-            SettingsStore.KEY_TARGET_KWH_LIMIT,
-            readDoubleFromFloat("KEY_TARGET_KWH_LIMIT")?.coerceIn(1.0, 100.0)
-        )
-        mutable.putIfAbsent(
-            SettingsStore.KEY_DURATION_TIMER_ENABLED,
-            readBoolean("KEY_DURATION_TIMER_ENABLED")
-        )
-        mutable.putIfAbsent(
-            SettingsStore.KEY_TARGET_DURATION_HOURS,
-            readInt("KEY_TARGET_DURATION_HOURS")?.coerceIn(1, 12)
-        )
-        mutable.putIfAbsent(SettingsStore.KEY_SCHEDULE_ENABLED, readBoolean("KEY_SCHEDULE_ENABLED"))
-        mutable.putIfAbsent(SettingsStore.KEY_SCHEDULE_START, readString("KEY_SCHEDULE_START"))
-        mutable.putIfAbsent(SettingsStore.KEY_SCHEDULE_STOP, readString("KEY_SCHEDULE_STOP"))
-        mutable.putIfAbsent(SettingsStore.KEY_AUTO_RESUME, readBoolean("KEY_AUTO_RESUME"))
-        mutable.putIfAbsent(
-            SettingsStore.KEY_VOLTAGE_BALANCING_ENABLED,
-            readBoolean("KEY_VOLTAGE_BALANCING_ENABLED")
-        )
-        mutable.putIfAbsent(
-            SettingsStore.KEY_VOLTAGE_LOW_THRESHOLD,
-            readInt("KEY_VOLTAGE_LOW_THRESHOLD")
-        )
-        mutable.putIfAbsent(
-            SettingsStore.KEY_VOLTAGE_HIGH_THRESHOLD,
-            readInt("KEY_VOLTAGE_HIGH_THRESHOLD")
-        )
-        mutable.putIfAbsent(
-            SettingsStore.KEY_VOLTAGE_MAX_AMPERAGE,
-            readInt("KEY_VOLTAGE_MAX_AMPERAGE")?.coerceIn(6, 16)
-        )
-        mutable.putIfAbsent(
-            SettingsStore.KEY_VOLTAGE_MIN_AMPERAGE,
-            readInt("KEY_VOLTAGE_MIN_AMPERAGE")?.coerceIn(6, 16)
-        )
-        mutable[SettingsStore.KEY_MIGRATED_FROM_AUTH_PREFS] = true
-        return mutable.toPreferences()
-    }
-
-    override suspend fun cleanUp() {
-        val editor = legacyPrefs.edit()
-        AuthPreferences.LEGACY_SETTINGS_KEYS.forEach { editor.remove(it) }
-        editor.apply()
-    }
-
-    private fun <T> androidx.datastore.preferences.core.MutablePreferences.putIfAbsent(
-        key: Preferences.Key<T>,
-        value: T?
-    ) {
-        if (value != null && key !in this) {
-            this[key] = value
-        }
-    }
-
-    private fun readBoolean(key: String): Boolean? =
-        if (legacyPrefs.contains(key)) runCatching { legacyPrefs.getBoolean(key, false) }.getOrNull() else null
-
-    private fun readInt(key: String): Int? =
-        if (legacyPrefs.contains(key)) runCatching { legacyPrefs.getInt(key, 0) }.getOrNull() else null
-
-    private fun readDoubleFromFloat(key: String): Double? =
-        if (legacyPrefs.contains(key)) runCatching { legacyPrefs.getFloat(key, 0f).toDouble() }.getOrNull() else null
-
-    private fun readString(key: String): String? =
-        if (legacyPrefs.contains(key)) runCatching { legacyPrefs.getString(key, null) }.getOrNull() else null
 }

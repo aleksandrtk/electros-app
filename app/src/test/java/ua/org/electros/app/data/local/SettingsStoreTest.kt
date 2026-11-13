@@ -1,6 +1,5 @@
 package ua.org.electros.app.data.local
 
-import android.content.SharedPreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
 import com.google.common.truth.Truth.assertThat
@@ -13,7 +12,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.util.concurrent.ConcurrentHashMap
 
 class SettingsStoreTest {
 
@@ -36,67 +34,6 @@ class SettingsStoreTest {
 
         val (low, high) = AppSettings.normalizeThresholds(rawLow = 200, rawHigh = 195)
         assertThat(high - low).isAtLeast(AppSettings.MIN_HYSTERESIS_V)
-    }
-
-    @Test
-    fun migration_copiesNonSecretSettingsAndCleansUpOldKeysWithoutTouchingCredentials() = runBlocking {
-        val legacyPrefs = FakeSharedPreferences(
-            mutableMapOf(
-                "KEY_DEVICE_SERIAL" to "E999888",
-                "KEY_INTERNET_PASSWORD" to "s3cr3t!",
-                "KEY_PREFERRED_AMPERAGE" to 24,
-                "KEY_KWH_LIMIT_ENABLED" to true,
-                "KEY_TARGET_KWH_LIMIT" to 42.5f,
-                "KEY_DURATION_TIMER_ENABLED" to true,
-                "KEY_TARGET_DURATION_HOURS" to 99, // clamped to 12 on migration/decode
-                "KEY_SCHEDULE_ENABLED" to true,
-                "KEY_SCHEDULE_START" to "01:00",
-                "KEY_SCHEDULE_STOP" to "06:00",
-                "KEY_AUTO_RESUME" to false,
-                "KEY_VOLTAGE_BALANCING_ENABLED" to false,
-                "KEY_VOLTAGE_LOW_THRESHOLD" to 175,
-                "KEY_VOLTAGE_HIGH_THRESHOLD" to 210,
-                "KEY_VOLTAGE_MAX_AMPERAGE" to 14,
-                "KEY_VOLTAGE_MIN_AMPERAGE" to 8
-            )
-        )
-
-        val file = tempFolder.newFile("migrated.preferences_pb")
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        try {
-            val dataStore = PreferenceDataStoreFactory.create(
-                migrations = listOf(SettingsStore.legacyAuthPrefsMigration(legacyPrefs)),
-                scope = scope,
-                produceFile = { file }
-            )
-            val store = SettingsStore(dataStore, scope)
-
-            val loaded = store.awaitSettings()
-
-            assertThat(loaded.preferredAmperage).isEqualTo(24)
-            assertThat(loaded.isKwhLimitEnabled).isTrue()
-            assertThat(loaded.targetKwhLimit).isWithin(0.01).of(42.5)
-            assertThat(loaded.isDurationTimerEnabled).isTrue()
-            assertThat(loaded.targetDurationHours).isEqualTo(12)
-            assertThat(loaded.isScheduleEnabled).isTrue()
-            assertThat(loaded.scheduleStartTime).isEqualTo("01:00")
-            assertThat(loaded.scheduleStopTime).isEqualTo("06:00")
-            assertThat(loaded.autoResumeAfterOutage).isFalse()
-            assertThat(loaded.isVoltageBalancingEnabled).isFalse()
-            assertThat(loaded.voltageLowThreshold).isEqualTo(175)
-            assertThat(loaded.voltageHighThreshold).isEqualTo(210)
-            assertThat(loaded.voltageMaxAmperage).isEqualTo(14)
-            assertThat(loaded.voltageMinAmperage).isEqualTo(8)
-
-            // Credentials must remain untouched in AuthPreferences; migrated settings keys removed
-            assertThat(legacyPrefs.getString("KEY_DEVICE_SERIAL", null)).isEqualTo("E999888")
-            assertThat(legacyPrefs.getString("KEY_INTERNET_PASSWORD", null)).isEqualTo("s3cr3t!")
-            AuthPreferences.LEGACY_SETTINGS_KEYS.forEach { key ->
-                assertThat(legacyPrefs.contains(key)).isFalse()
-            }
-        } finally {
-            scope.coroutineContext.job.cancelAndJoin()
-        }
     }
 
     @Test
@@ -184,21 +121,23 @@ class SettingsStoreTest {
     }
 
     @Test
-    fun earlyWriteBeforeInitialLoadCompletes_preservesMigratedFieldsAndNewValue() = runBlocking {
-        val legacyPrefs = FakeSharedPreferences(
-            mutableMapOf(
-                "KEY_TARGET_KWH_LIMIT" to 42.5f,
-                "KEY_AUTO_RESUME" to false
-            )
-        )
+    fun earlyWriteBeforeInitialLoadCompletes_preservesExistingFieldsAndNewValue() = runBlocking {
         val file = tempFolder.newFile("early.preferences_pb")
+        val seedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val seedDs = PreferenceDataStoreFactory.create(scope = seedScope) { file }
+            val seedStore = SettingsStore(seedDs, seedScope)
+            seedStore.awaitSettings()
+            seedStore.setTargetKwhLimit(42.5)
+            seedStore.setAutoResumeAfterOutage(false)
+            seedStore.awaitIdle()
+        } finally {
+            seedScope.coroutineContext.job.cancelAndJoin()
+        }
+
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
-            val ds = PreferenceDataStoreFactory.create(
-                migrations = listOf(SettingsStore.legacyAuthPrefsMigration(legacyPrefs)),
-                scope = scope,
-                produceFile = { file }
-            )
+            val ds = PreferenceDataStoreFactory.create(scope = scope) { file }
             val store = SettingsStore(ds, scope)
 
             store.setPreferredAmperage(26)
@@ -238,69 +177,6 @@ class SettingsStoreTest {
         } finally {
             scope.coroutineContext.job.cancelAndJoin()
         }
-    }
-
-    private class FakeSharedPreferences(
-        initial: MutableMap<String, Any?> = mutableMapOf()
-    ) : SharedPreferences {
-        private val map = ConcurrentHashMap<String, Any?>(initial)
-
-        override fun getAll(): MutableMap<String, *> = HashMap(map)
-        override fun getString(key: String, defValue: String?): String? =
-            (map[key] as? String) ?: defValue
-        @Suppress("UNCHECKED_CAST")
-        override fun getStringSet(key: String, defValues: MutableSet<String>?): MutableSet<String>? =
-            (map[key] as? MutableSet<String>) ?: defValues
-        override fun getInt(key: String, defValue: Int): Int = (map[key] as? Int) ?: defValue
-        override fun getLong(key: String, defValue: Long): Long = (map[key] as? Long) ?: defValue
-        override fun getFloat(key: String, defValue: Float): Float = (map[key] as? Float) ?: defValue
-        override fun getBoolean(key: String, defValue: Boolean): Boolean =
-            (map[key] as? Boolean) ?: defValue
-        override fun contains(key: String): Boolean = map.containsKey(key)
-
-        override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
-            private val pending = mutableMapOf<String, Any?>()
-            private var clearAll = false
-
-            override fun putString(key: String, value: String?): SharedPreferences.Editor = apply {
-                pending[key] = value
-            }
-            override fun putStringSet(key: String, values: MutableSet<String>?): SharedPreferences.Editor = apply {
-                pending[key] = values
-            }
-            override fun putInt(key: String, value: Int): SharedPreferences.Editor = apply {
-                pending[key] = value
-            }
-            override fun putLong(key: String, value: Long): SharedPreferences.Editor = apply {
-                pending[key] = value
-            }
-            override fun putFloat(key: String, value: Float): SharedPreferences.Editor = apply {
-                pending[key] = value
-            }
-            override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor = apply {
-                pending[key] = value
-            }
-            override fun remove(key: String): SharedPreferences.Editor = apply {
-                pending[key] = null
-            }
-            override fun clear(): SharedPreferences.Editor = apply { clearAll = true }
-            override fun commit(): Boolean {
-                apply()
-                return true
-            }
-            override fun apply() {
-                if (clearAll) map.clear()
-                pending.forEach { (k, v) -> if (v == null) map.remove(k) else map[k] = v }
-            }
-        }
-
-        override fun registerOnSharedPreferenceChangeListener(
-            listener: SharedPreferences.OnSharedPreferenceChangeListener?
-        ) = Unit
-
-        override fun unregisterOnSharedPreferenceChangeListener(
-            listener: SharedPreferences.OnSharedPreferenceChangeListener?
-        ) = Unit
     }
 }
 
