@@ -641,5 +641,24 @@ class SessionSupervisorTest {
         val ongoing = regressionTick.events.filterIsInstance<SupervisorEvent.UpdateOngoingNotification>().single()
         assertThat(ongoing.deliveredKwh).isWithin(0.01).of(12.0)
     }
+
+    @Test
+    fun handleManualStop_whenServiceRecreatedWithNullActiveSessionId_loadsFromDbAndStopsStation() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-recreated", targetKwh = 20.0),
+            slices = mutableListOf(slice("s-recreated", startKwh = 10.0))
+        )
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 14.5, voltage = 225))
+
+        // Fresh supervisor instance without onSessionStarted() (simulates ACTION_STOP_CHARGE after process kill)
+        val freshSupervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 2_000L }
+        val outcome = freshSupervisor.handleManualStop()
+
+        assertThat(gateway.callLog).containsExactly("stop")
+        assertThat(outcome.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(outcome.shouldStopService).isTrue()
+        assertThat(gateway.session.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(gateway.session.totalKwhDelivered).isWithin(0.01).of(4.5)
+    }
 }
 

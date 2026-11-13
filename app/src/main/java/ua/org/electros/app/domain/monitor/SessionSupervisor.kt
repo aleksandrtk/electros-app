@@ -673,8 +673,21 @@ class SessionSupervisor(
         if (stateMachine.getState().isTerminal) {
             return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
         }
-        val id = activeSessionId
-            ?: return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+        val id = activeSessionId ?: gateway.getActiveSession()?.id
+        if (id == null) {
+            val stopped = gateway.stopAndConfirm(allowOfflineConfirmation = true)
+            return@withLock if (stopped) {
+                stateMachine.transition(StateEvent.CancelRequested)
+                TickOutcome(stateMachine.getState(), events, shouldStopService = true)
+            } else {
+                if (!hasAlertedStopFailed) {
+                    hasAlertedStopFailed = true
+                    events += SupervisorEvent.ShowStopFailed
+                }
+                TickOutcome(SessionStatus.STOP_PENDING, events, shouldStopService = true)
+            }
+        }
+        activeSessionId = id
         if (gateway.getSessionById(id)?.status?.isTerminal == true) {
             stateMachine.transition(StateEvent.CancelRequested)
             return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
