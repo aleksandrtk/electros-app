@@ -8,15 +8,19 @@ Modern Android companion app for Electros EV home charging stations (`electros.o
 - **Power Outage Resilience**: Accumulates energy delivery across garage blackouts without resetting session progress.
 - **Fail-Safe Hardware Fallback**: Syncs expected charge duration with station hardware timers as a dead-man safeguard if the phone loses connectivity.
 - **Foreground Service**: Reliable background polling loop using `specialUse` foreground service, resilient against Android Doze mode.
-- **Material 3 UI**: Jetpack Compose dark theme dashboard with real-time voltage, neutral line drift, amperage controls, and charging statistics.
+- **Material 3 UI**: Jetpack Compose dark theme dashboard with real-time RMS grid voltage, live active amperage controls, voltage-sag DLB auto-derating, and charging statistics.
+
+## Platform Requirement
+
+- **Android 17+ only** (`minSdk = 37`, `targetSdk = 37`, `compileSdk = 37.0`)
 
 ## Tech Stack
 
-- **UI**: Jetpack Compose + Material 3 Dark Theme
+- **UI**: Jetpack Compose + Material 3 Dark Theme (Edge-to-Edge & Predictive Back)
 - **Architecture**: MVI / MVVM with Clean Architecture (Domain, Data, UI)
-- **Local Persistence**: Room Database (with session and slice entities) + EncryptedSharedPreferences (credentials)
-- **Background Work**: Coroutine-based Foreground Service + WorkManager (reboot recovery)
-- **Networking & Parsing**: OkHttp 4 + Jsoup DOM parser
+- **Local Persistence**: Room Database (session & slice ledger) + Android Keystore AES-256-GCM encrypted credentials in Jetpack DataStore
+- **Background Work**: Coroutine-based Foreground Service + `BootReceiver` recovery
+- **Networking & Parsing**: OkHttp + Jsoup DOM parser
 
 ## Building from Source
 

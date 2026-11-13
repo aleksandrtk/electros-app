@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +20,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import ua.org.electros.app.BuildConfig
 import ua.org.electros.app.ota.OtaViewModel
 import ua.org.electros.app.ui.theme.*
-import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun UpdateDialog(viewModel: OtaViewModel) {
@@ -75,10 +73,11 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                 }
                 if (!isDownloading) {
                     IconButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Закрити",
-                            tint = TextSecondaryDark
+                        Text(
+                            text = "✕",
+                            color = TextSecondaryDark,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -182,7 +181,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = String.format(Locale.getDefault(), "Завантаження оновлення: %.0f%%", downloadProgress * 100),
+                            text = "Завантаження оновлення: ${(downloadProgress * 100).roundToInt()}%",
                             color = PrimaryNeonGreen,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold

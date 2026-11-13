@@ -102,7 +102,7 @@ fun HistoryScreen(
 }
 
 private val SESSION_DATE_FORMATTER: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("dd.MM • HH:mm", Locale.getDefault())
+    DateTimeFormatter.ofPattern("dd.MM • HH:mm", Locale.ROOT)
 
 @Composable
 private fun SessionItemCard(session: ChargeSessionEntity) {

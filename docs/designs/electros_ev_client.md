@@ -83,10 +83,10 @@ The application adopts Clean Architecture with unidirectional data flow (MVI) ac
 |                     Data & Service Layer                    |
 |  - ChargeRepository: Coordinates network and Room storage   |
 |  - ChargeMonitorService (Foreground Service, specialUse)    |
-|  - ReconciliationWorker (WorkManager reboot recovery)       |
+|  - BootReceiver (reboot & package update recovery)          |
 |  - Room Database: ChargeSessionEntity, ChargeSliceEntity    |
-|  - Network Scraper: OkHttp3 + PersistentCookieJar + Jsoup   |
-|  - AuthPreferences: EncryptedSharedPreferences via Keystore |
+|  - Network Scraper: OkHttp3 + in-memory CookieJar + Jsoup   |
+|  - AuthPreferences: Keystore AES-256-GCM + DataStore        |
 +-------------------------------------------------------------+
                               | HTTPS
 +-------------------------------------------------------------+
@@ -102,7 +102,7 @@ stateDiagram-v2
     IDLE --> CHARGING: User taps Start / Schedule triggers
     CHARGING --> OUTAGE_DETECTED: Station OFFLINE / Polling timeout
     OUTAGE_DETECTED --> OUTAGE_STABILIZING: Station back ONLINE & line voltage stable
-    OUTAGE_STABILIZING --> AUTO_RESUMING: Voltage within 198V-242V across 3 ticks
+    OUTAGE_STABILIZING --> AUTO_RESUMING: Voltage within 180V-250V across 3 ticks
     AUTO_RESUMING --> CHARGING: Start command dispatched, slice committed
     CHARGING --> TARGET_REACHED: Total kWh >= Target kWh
     CHARGING --> VEHICLE_STOPPED: Current < 0.5A for > 5 min or Pilot State B
