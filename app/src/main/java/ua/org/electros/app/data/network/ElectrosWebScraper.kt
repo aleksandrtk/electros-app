@@ -233,32 +233,13 @@ class ElectrosWebScraper(
                 response.request.url.toString() to response.body?.string().orEmpty()
             }
 
-            val isLoginPage = finalUrl.contains("login.php") ||
-                finalUrl.contains("main.php") ||
-                (html.contains("name=\"password\"") && !html.contains("Станція"))
+            val isLogin = isLoginResponse(finalUrl, html)
 
-            if (isLoginPage) {
+            if (isLogin) {
                 if (!allowRelogin) {
                     return@withContext Result.failure(SecurityException("Session not established after login"))
                 }
-                val reloginResult = authMutex.withLock {
-                    if (clockMs() < authBlockedUntilMs) {
-                        return@withLock Result.failure<Unit>(
-                            SecurityException("Authentication temporarily blocked after repeated failures")
-                        )
-                    }
-                    loginUnlocked().also { res ->
-                        if (res.exceptionOrNull() is IllegalArgumentException) {
-                            authFailures++
-                            if (authFailures >= 2) {
-                                authBlockedUntilMs = clockMs() + authBackoffMs
-                            }
-                        } else if (res.isSuccess) {
-                            authFailures = 0
-                            authBlockedUntilMs = 0L
-                        }
-                    }
-                }
+                val reloginResult = reloginWithBackoff()
                 if (reloginResult.isFailure) {
                     return@withContext Result.failure(
                         reloginResult.exceptionOrNull() ?: IOException("Login failed")
@@ -267,14 +248,40 @@ class ElectrosWebScraper(
                 return@withContext fetchTelemetryHttp(allowRelogin = false)
             }
 
-            authFailures = 0
-            authBlockedUntilMs = 0L
+            authMutex.withLock {
+                authFailures = 0
+                authBlockedUntilMs = 0L
+            }
             val doc = Jsoup.parse(html)
             extractCsrfToken(doc)
 
             Result.success(parseTelemetryDocument(doc))
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private fun isLoginResponse(finalUrl: String, html: String): Boolean =
+        finalUrl.contains("login.php") ||
+            finalUrl.contains("main.php") ||
+            (html.contains("name=\"password\"") && !html.contains("Станція"))
+
+    private suspend fun reloginWithBackoff(): Result<Unit> = authMutex.withLock {
+        if (clockMs() < authBlockedUntilMs) {
+            return@withLock Result.failure(
+                SecurityException("Authentication temporarily blocked after repeated failures")
+            )
+        }
+        loginUnlocked().also { res ->
+            if (res.exceptionOrNull() is IllegalArgumentException) {
+                authFailures++
+                if (authFailures >= 2) {
+                    authBlockedUntilMs = clockMs() + authBackoffMs
+                }
+            } else if (res.isSuccess) {
+                authFailures = 0
+                authBlockedUntilMs = 0L
+            }
         }
     }
 
@@ -375,7 +382,7 @@ class ElectrosWebScraper(
         setAmperageHttp(amperes)
     }
 
-    private fun setAmperageHttp(amperes: Int): Result<Unit> = postForm(
+    private suspend fun setAmperageHttp(amperes: Int): Result<Unit> = postForm(
         listOf(
             "action" to "set_current",
             "current" to "$amperes A",
@@ -413,20 +420,45 @@ class ElectrosWebScraper(
         postForm(listOf("action" to actionName))
     }
 
-    private fun postForm(fields: List<Pair<String, String>>): Result<Unit> {
-        val formBuilder = FormBody.Builder()
-        fields.forEach { (key, value) -> formBuilder.add(key, value) }
-        lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
+    private suspend fun postForm(
+        fields: List<Pair<String, String>>,
+        allowRelogin: Boolean = true
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val formBuilder = FormBody.Builder()
+            fields.forEach { (key, value) -> formBuilder.add(key, value) }
+            lastCsrfToken?.let { formBuilder.add("csrf_token", it) }
 
-        val request = Request.Builder()
-            .url("$baseUrl/auth/protected_page.php")
-            .post(formBuilder.build())
-            .build()
+            val request = Request.Builder()
+                .url("$baseUrl/auth/protected_page.php")
+                .post(formBuilder.build())
+                .build()
 
-        return try {
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) Result.success(Unit) else Result.failure(IOException("HTTP ${response.code}"))
+            val (finalUrl, html) = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("HTTP ${response.code}"))
+                }
+                response.request.url.toString() to response.body?.string().orEmpty()
             }
+
+            if (isLoginResponse(finalUrl, html)) {
+                if (!allowRelogin) {
+                    return@withContext Result.failure(SecurityException("HTTP command rejected: session not established"))
+                }
+                val relogin = reloginWithBackoff()
+                if (relogin.isFailure) {
+                    return@withContext Result.failure(
+                        relogin.exceptionOrNull() ?: IOException("Login failed")
+                    )
+                }
+                if (lastCsrfToken == null) {
+                    fetchTelemetryHttp(allowRelogin = false)
+                }
+                return@withContext postForm(fields, allowRelogin = false)
+            }
+
+            extractCsrfToken(Jsoup.parse(html))
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -288,5 +288,90 @@ class ElectrosWebScraperCommandTest {
         assertTrue(httpPosts[0].params.contains("action" to "set_current"))
         assertTrue(httpPosts[0].params.contains("amperage" to "10"))
     }
+
+    @Test
+    fun `http fallback relogins fetches csrf token and retries post when redirected to login`() = runBlocking {
+        val loggedIn = AtomicBoolean(false)
+        val recordedPosts = CopyOnWriteArrayList<RecordedHttpPost>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val req = chain.request()
+                val form = req.body as? FormBody
+                val params = if (form != null) {
+                    (0 until form.size).map { idx -> form.name(idx) to form.value(idx) }
+                } else {
+                    emptyList()
+                }
+                if (req.method == "POST") {
+                    recordedPosts.add(RecordedHttpPost(req.url.toString(), params))
+                }
+                val html = when {
+                    req.url.encodedPath.contains("login.php") -> {
+                        loggedIn.set(true)
+                        """<html><body><input type="hidden" name="csrf_token" value="tok-42"/></body></html>"""
+                    }
+                    !loggedIn.get() -> {
+                        """<html><body><input type="password" name="password"/></body></html>"""
+                    }
+                    else -> {
+                        """<html><body>Станція ONLINE</body></html>"""
+                    }
+                }
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(html.toResponseBody("text/html; charset=utf-8".toMediaType()))
+                    .build()
+            })
+            .build()
+
+        val scraper = ElectrosWebScraper(
+            client = client,
+            serialProvider = { "12345" },
+            passwordProvider = { "secret" }
+        )
+
+        val result = scraper.stopCharge(verifyWithTelemetry = false, useHttpFallbackOnly = true)
+
+        assertTrue(result.isSuccess)
+        assertEquals(3, recordedPosts.size)
+        assertTrue(recordedPosts[0].params.contains("action" to "stop"))
+        assertTrue(recordedPosts[1].url.contains("login.php"))
+        assertTrue(recordedPosts[2].params.contains("action" to "stop"))
+        assertTrue(recordedPosts[2].params.contains("csrf_token" to "tok-42"))
+    }
+
+    @Test
+    fun `http fallback fails instead of reporting false success when login redirect persists`() = runBlocking {
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val req = chain.request()
+                val html = if (req.url.encodedPath.contains("login.php")) {
+                    """<html><body>Вхід ElectroS WiFi — Невірний номер</body></html>"""
+                } else {
+                    """<html><body><input type="password" name="password"/></body></html>"""
+                }
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(html.toResponseBody("text/html; charset=utf-8".toMediaType()))
+                    .build()
+            })
+            .build()
+
+        val scraper = ElectrosWebScraper(
+            client = client,
+            serialProvider = { "12345" },
+            passwordProvider = { "wrong" }
+        )
+
+        val result = scraper.stopCharge(verifyWithTelemetry = false, useHttpFallbackOnly = true)
+
+        assertTrue(result.isFailure)
+    }
 }
 
