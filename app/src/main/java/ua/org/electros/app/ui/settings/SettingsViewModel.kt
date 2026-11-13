@@ -12,7 +12,8 @@ data class SettingsUiState(
     val deviceSerial: String,
     val hasCredentials: Boolean,
     val config: StationConfig = StationConfig(),
-    val isBatteryOptimizationIgnored: Boolean = true
+    val isBatteryOptimizationIgnored: Boolean = true,
+    val areNotificationsEnabled: Boolean = true
 )
 
 class SettingsViewModel(
@@ -39,6 +40,10 @@ class SettingsViewModel(
 
     fun refreshBatteryOptimizationStatus(isIgnored: Boolean) {
         _uiState.value = _uiState.value.copy(isBatteryOptimizationIgnored = isIgnored)
+    }
+
+    fun refreshNotificationsStatus(isEnabled: Boolean) {
+        _uiState.value = _uiState.value.copy(areNotificationsEnabled = isEnabled)
     }
 
     fun logout() {

@@ -1,6 +1,11 @@
 package ua.org.electros.app.ui.dashboard
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.view.HapticFeedbackConstants
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -63,6 +68,19 @@ fun DashboardScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     LaunchedEffect(lifecycleOwner, viewModel) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -218,7 +236,16 @@ fun DashboardScreen(
                 targetQuotaKwh = state.targetQuotaKwh,
                 isDurationTimerEnabled = state.isDurationTimerEnabled,
                 targetDurationHours = state.targetDurationHours,
-                onStart = { viewModel.onStartClicked(context) },
+                onStart = {
+                    if (ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    viewModel.onStartClicked(context)
+                },
                 onStop = { viewModel.onStopClicked(context) }
             )
         }

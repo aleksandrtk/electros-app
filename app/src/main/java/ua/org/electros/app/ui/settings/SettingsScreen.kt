@@ -1,10 +1,14 @@
 package ua.org.electros.app.ui.settings
 
+import android.Manifest
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -48,19 +52,27 @@ fun SettingsScreen(
     var isPasswordVisible by remember { mutableStateOf(false) }
     var savedSuccess by remember { mutableStateOf(false) }
 
-    fun checkBatteryStatus() {
-        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        viewModel.refreshBatteryOptimizationStatus(pm.isIgnoringBatteryOptimizations(context.packageName))
+    fun checkSystemStatuses() {
+        val pm = context.getSystemService(PowerManager::class.java)
+        viewModel.refreshBatteryOptimizationStatus(
+            pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+        )
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val notificationsGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED && nm?.areNotificationsEnabled() == true
+        viewModel.refreshNotificationsStatus(notificationsGranted)
     }
 
     LaunchedEffect(Unit) {
-        checkBatteryStatus()
+        checkSystemStatuses()
     }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                checkBatteryStatus()
+                checkSystemStatuses()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -227,6 +239,35 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Вимкнути оптимізацію батареї", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                HorizontalDivider(color = OutlineDark)
+
+                SettingRow(
+                    label = "Сповіщення (аварії та ліміт)",
+                    value = if (state.areNotificationsEnabled) "Дозволено ✓" else "Вимкнено ⚠️"
+                )
+
+                if (!state.areNotificationsEnabled) {
+                    Text(
+                        text = "Без дозволу на сповіщення ви не отримаєте попередження про зникнення світла, завершення квоти або помилку зупинки станції.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ErrorRed,
+                        lineHeight = 17.sp
+                    )
+                    Button(
+                        onClick = {
+                            val notifIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            }
+                            context.startActivity(notifIntent)
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = WarningAmber, contentColor = OnPrimaryDark),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Увімкнути сповіщення", fontWeight = FontWeight.Bold)
                     }
                 }
             }
