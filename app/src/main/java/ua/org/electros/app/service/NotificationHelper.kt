@@ -14,6 +14,7 @@ class NotificationHelper(private val context: Context) {
     companion object {
         const val CHANNEL_ID_CHARGING = "charging_status_channel"
         const val CHANNEL_ID_ALERTS = "charging_alerts_channel"
+        const val CHANNEL_ID_BALANCING_INFO = "charging_balancing_info_channel"
         const val NOTIFICATION_ID_STATUS = 1001
         const val NOTIFICATION_ID_ALERT = 1002
         const val NOTIFICATION_ID_RESUME_ALERT = 1007
@@ -55,8 +56,17 @@ class NotificationHelper(private val context: Context) {
             description = "Сповіщення про відключення світла та завершення ліміту"
         }
 
+        val balancingInfoChannel = NotificationChannel(
+            CHANNEL_ID_BALANCING_INFO,
+            "Балансування напруги",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Інформаційні сповіщення про відновлення струму після стабілізації напруги"
+        }
+
         notificationManager.createNotificationChannel(statusChannel)
         notificationManager.createNotificationChannel(alertsChannel)
+        notificationManager.createNotificationChannel(balancingInfoChannel)
     }
 
     fun buildForegroundNotification(
@@ -106,7 +116,6 @@ class NotificationHelper(private val context: Context) {
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(android.R.drawable.ic_media_pause, "Зупинити", stopPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
 
         if (targetKwh > 0.0 || targetDurationMinutes > 0) {
             builder.setProgress(100, progress, false)
@@ -125,7 +134,6 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚠️ Світло в гаражі зникло!")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -149,7 +157,6 @@ class NotificationHelper(private val context: Context) {
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
             .setContentIntent(openAppPendingIntent)
             .addAction(android.R.drawable.ic_media_play, "Відновити заряд", resumePendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_RESUME_ALERT, builder.build())
@@ -164,7 +171,6 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚡ Зарядка завершена!")
             .setContentText("Цільовий ліміт досягнуто: залито %.1f кВт⋅год.".format(deliveredKwh))
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -183,6 +189,7 @@ class NotificationHelper(private val context: Context) {
             "Напруга стабілізувалась ($voltage В). Струм підвищено: $oldAmperes А → $newAmperes А."
         }
         val icon = if (isLowered) android.R.drawable.stat_sys_warning else android.R.drawable.ic_lock_idle_charging
+        val channelId = if (isLowered) CHANNEL_ID_ALERTS else CHANNEL_ID_BALANCING_INFO
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -194,12 +201,11 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(icon)
             .setContentIntent(pendingIntent)
-            .setPriority(if (isLowered) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
 
         val notifId = NOTIFICATION_ID_ALERT + 10 + (System.currentTimeMillis() % 100).toInt()
@@ -211,7 +217,6 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚠️ Зв'язок зі станцією втрачено!")
             .setContentText("Станція утримує струм $currentAmperes А. За відсутності інтернету балансування тимчасово призупинено.")
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 2, builder.build())
@@ -225,7 +230,6 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⏱️ Таймер зарядки завершено!")
             .setContentText("Відпрацьовано %s. Залито %.1f кВт⋅год. Станцію зупинено.".format(durLabel, deliveredKwh))
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -236,7 +240,6 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚡ Світло повернулось — зарядку відновлено")
             .setContentText("Станцію знову запущено на $amperes А. Таймер і лічильник продовжено.")
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 3, builder.build())
@@ -262,7 +265,6 @@ class NotificationHelper(private val context: Context) {
             .setContentText("Команда зупинки не підтвердилась. Продовжуємо повторні спроби зупинити зарядку.")
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 4, builder.build())
@@ -276,7 +278,6 @@ class NotificationHelper(private val context: Context) {
             .setContentText("Відкрийте застосунок, щоб продовжити моніторинг")
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_FGS_BLOCKED, builder.build())
