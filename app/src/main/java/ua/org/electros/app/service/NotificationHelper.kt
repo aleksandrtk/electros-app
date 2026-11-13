@@ -136,6 +136,7 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚠️ Світло в гаражі зникло!")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notif_warning)
+            .setContentIntent(createOpenAppPendingIntent(7))
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -173,6 +174,7 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚡ Зарядка завершена!")
             .setContentText("Цільовий ліміт досягнуто: залито %.1f кВт⋅год.".format(deliveredKwh))
             .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setContentIntent(createOpenAppPendingIntent(8))
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -218,6 +220,7 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚠️ Зв'язок зі станцією втрачено!")
             .setContentText("Станція утримує струм $currentAmperes А. За відсутності інтернету балансування тимчасово призупинено.")
             .setSmallIcon(R.drawable.ic_notif_warning)
+            .setContentIntent(createOpenAppPendingIntent(9))
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 2, builder.build())
@@ -231,6 +234,7 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⏱️ Таймер зарядки завершено!")
             .setContentText("Відпрацьовано %s. Залито %.1f кВт⋅год. Станцію зупинено.".format(durLabel, deliveredKwh))
             .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setContentIntent(createOpenAppPendingIntent(10))
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -241,6 +245,7 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("⚡ Світло повернулось — зарядку відновлено")
             .setContentText("Станцію знову запущено на $amperes А. Таймер і лічильник продовжено.")
             .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setContentIntent(createOpenAppPendingIntent(11))
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 3, builder.build())
