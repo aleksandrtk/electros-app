@@ -24,6 +24,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.resume
 
 class ElectrosWebScraper(
@@ -58,12 +59,12 @@ class ElectrosWebScraper(
     private val authMutex = Mutex()
     @Volatile private var lastCsrfToken: String? = null
     @Volatile private var authBlockedUntilMs: Long = 0L
-    private var authFailures: Int = 0
+    private val authFailures = AtomicInteger(0)
 
     private fun currentSerial(): String = serialProvider().trim()
 
     fun resetAuthBackoff() {
-        authFailures = 0
+        authFailures.set(0)
         authBlockedUntilMs = 0L
     }
 
@@ -255,7 +256,7 @@ class ElectrosWebScraper(
             }
 
             authMutex.withLock {
-                authFailures = 0
+                authFailures.set(0)
                 authBlockedUntilMs = 0L
             }
             val doc = Jsoup.parse(html)
@@ -280,12 +281,11 @@ class ElectrosWebScraper(
         }
         loginUnlocked().also { res ->
             if (res.exceptionOrNull() is IllegalArgumentException) {
-                authFailures++
-                if (authFailures >= 2) {
+                if (authFailures.incrementAndGet() >= 2) {
                     authBlockedUntilMs = clockMs() + authBackoffMs
                 }
             } else if (res.isSuccess) {
-                authFailures = 0
+                authFailures.set(0)
                 authBlockedUntilMs = 0L
             }
         }
@@ -297,12 +297,12 @@ class ElectrosWebScraper(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         authMutex.withLock {
             if (serial != null || password != null) {
-                authFailures = 0
+                authFailures.set(0)
                 authBlockedUntilMs = 0L
             }
             loginUnlocked(serial, password).also { res ->
                 if (res.isSuccess) {
-                    authFailures = 0
+                    authFailures.set(0)
                     authBlockedUntilMs = 0L
                 }
             }

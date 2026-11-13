@@ -234,8 +234,13 @@ class DashboardViewModel(
 
     suspend fun pollWhileVisible() {
         repository.cancelStaleSessionsIfOffline(isMonitorServiceRunning = isMonitorServiceRunning())
+        var isInitialFetch = true
         while (currentCoroutineContext().isActive) {
-            repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
+            val monitorRunning = isMonitorServiceRunning()
+            if (isInitialFetch || !monitorRunning) {
+                repository.fetchLatestTelemetry(isMonitorServiceRunning = monitorRunning)
+                isInitialFetch = false
+            }
             delay(60_000L)
         }
     }

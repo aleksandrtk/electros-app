@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -342,7 +343,13 @@ class SettingsStore internal constructor(
                         batch.forEach { applyEdit -> applyEdit(prefs) }
                     }
                 } catch (_: IOException) {
-                    null
+                    if (!initialLoad.isCompleted) {
+                        runCatching { dataStore.data.first() }.getOrNull()
+                            ?.toMutablePreferences()
+                            ?.apply { batch.forEach { applyEdit -> applyEdit(this) } }
+                    } else {
+                        null
+                    }
                 }
                 val done = synchronized(stateLock) {
                     val isIdle = pendingEdits.isEmpty()
