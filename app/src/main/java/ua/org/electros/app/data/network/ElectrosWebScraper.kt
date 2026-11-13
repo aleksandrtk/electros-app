@@ -705,7 +705,7 @@ class ElectrosWebScraper(
     companion object {
         private const val MIN_WS_LINES = 14
         private const val DEFAULT_AUTH_BACKOFF_MS = 15 * 60_000L
-        private const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36"
+        private const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 17) AppleWebKit/537.36"
 
         private val WS_DATE_FORMATTER: DateTimeFormatter =
             DateTimeFormatter.ofPattern("dd.MM.yyyy'T'HH:mm:ss", Locale.US)
