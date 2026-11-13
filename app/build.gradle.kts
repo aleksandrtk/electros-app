@@ -7,12 +7,16 @@ plugins {
 
 android {
     namespace = "ua.org.electros.app"
-    compileSdk = 35
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
 
     defaultConfig {
         applicationId = "ua.org.electros.app"
-        minSdk = 26
-        targetSdk = 35
+        minSdk = 37
+        targetSdk = 37
         versionCode = 272
         versionName = "2.7.2"
 

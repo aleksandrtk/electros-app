@@ -36,4 +36,26 @@ class BootReceiverTest {
         assertThat(BootReceiver.shouldResumeOnBoot(stopPending)).isTrue()
         assertThat(BootReceiver.shouldResumeOnBoot(cancelled)).isFalse()
     }
+
+    @Test
+    fun canStartSpecialUseFgsFromReceiver_requiresBatteryExemptionOnBootCompleted() {
+        assertThat(
+            BootReceiver.canStartSpecialUseFgsFromReceiver(
+                action = Intent.ACTION_BOOT_COMPLETED,
+                isIgnoringBatteryOptimizations = false
+            )
+        ).isFalse()
+        assertThat(
+            BootReceiver.canStartSpecialUseFgsFromReceiver(
+                action = Intent.ACTION_BOOT_COMPLETED,
+                isIgnoringBatteryOptimizations = true
+            )
+        ).isTrue()
+        assertThat(
+            BootReceiver.canStartSpecialUseFgsFromReceiver(
+                action = Intent.ACTION_MY_PACKAGE_REPLACED,
+                isIgnoringBatteryOptimizations = false
+            )
+        ).isTrue()
+    }
 }

@@ -1,9 +1,11 @@
 package ua.org.electros.app.service
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.PowerManager
 import kotlinx.coroutines.CoroutineScope
@@ -74,8 +76,8 @@ class ChargeMonitorService : Service() {
         voltageLoadBalancer.maxAmperage = settings.voltageMaxAmperage
     }
 
-    private fun ensureForegroundStarted() {
-        if (foregroundStarted) return
+    private fun ensureForegroundStarted(): Boolean {
+        if (foregroundStarted) return true
         val initialNotification = notificationHelper.buildForegroundNotification(
             powerKw = 0.0,
             deliveredKwh = 0.0,
@@ -84,8 +86,20 @@ class ChargeMonitorService : Service() {
             targetDurationMinutes = supervisor.activeTargetDurationMinutes,
             accumulatedChargingMs = supervisor.accumulatedChargingMs
         )
-        startForeground(NotificationHelper.NOTIFICATION_ID_STATUS, initialNotification)
-        foregroundStarted = true
+        return try {
+            startForeground(
+                NotificationHelper.NOTIFICATION_ID_STATUS,
+                initialNotification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+            foregroundStarted = true
+            true
+        } catch (_: ForegroundServiceStartNotAllowedException) {
+            isRunning = false
+            notificationHelper.showMonitorRestartRequiredAlert()
+            stopSelf()
+            false
+        }
     }
 
     private fun acquireSessionWakeLock() {
@@ -104,12 +118,12 @@ class ChargeMonitorService : Service() {
         isRunning = true
         when (intent?.action) {
             NotificationHelper.ACTION_STOP_CHARGE -> {
-                ensureForegroundStarted()
+                if (!ensureForegroundStarted()) return START_NOT_STICKY
                 handleManualStop()
                 return START_NOT_STICKY
             }
             NotificationHelper.ACTION_RESUME_CHARGE -> {
-                ensureForegroundStarted()
+                if (!ensureForegroundStarted()) return START_NOT_STICKY
                 acquireSessionWakeLock()
                 handleManualResume()
                 return START_REDELIVER_INTENT
@@ -122,7 +136,7 @@ class ChargeMonitorService : Service() {
             targetDurationMinutes = intent?.getIntExtra(EXTRA_TARGET_DURATION_MIN, 0) ?: 0
         )
 
-        ensureForegroundStarted()
+        if (!ensureForegroundStarted()) return START_NOT_STICKY
         // Keep PARTIAL_WAKE_LOCK across the whole session so Doze does not stretch poll intervals.
         acquireSessionWakeLock()
         startMonitoringLoop()

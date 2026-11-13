@@ -31,6 +31,8 @@ fun LoginScreen(
         modifier = modifier
             .fillMaxSize()
             .background(SurfaceDark)
+            .safeDrawingPadding()
+            .imePadding()
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
