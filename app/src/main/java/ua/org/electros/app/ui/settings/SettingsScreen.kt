@@ -50,7 +50,6 @@ fun SettingsScreen(
     var passwordInput by remember { mutableStateOf("") }
     var isSerialVisible by remember { mutableStateOf(false) }
     var isPasswordVisible by remember { mutableStateOf(false) }
-    var savedSuccess by remember { mutableStateOf(false) }
 
     fun checkSystemStatuses() {
         val pm = context.getSystemService(PowerManager::class.java)
@@ -106,7 +105,7 @@ fun SettingsScreen(
                     value = serialInput,
                     onValueChange = {
                         serialInput = it
-                        savedSuccess = false
+                        viewModel.clearCredentialsFeedback()
                     },
                     label = { Text("Номер пристрою (наприклад, a1234)") },
                     singleLine = true,
@@ -133,9 +132,9 @@ fun SettingsScreen(
                     value = passwordInput,
                     onValueChange = {
                         passwordInput = it
-                        savedSuccess = false
+                        viewModel.clearCredentialsFeedback()
                     },
-                    label = { Text("Пароль пристрою") },
+                    label = { Text("Новий пароль пристрою") },
                     singleLine = true,
                     visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -157,16 +156,35 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                if (!state.credentialsError.isNullOrBlank()) {
+                    Text(
+                        text = state.credentialsError.orEmpty(),
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
                 Button(
                     onClick = {
-                        viewModel.updateCredentials(serialInput, passwordInput)
-                        savedSuccess = true
+                        viewModel.updateCredentials(serialInput, passwordInput) {
+                            passwordInput = ""
+                        }
                     },
+                    enabled = !state.isSavingCredentials &&
+                        serialInput.isNotBlank() &&
+                        passwordInput.isNotBlank(),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (savedSuccess) "✓ Збережено" else "Зберегти нові дані", fontWeight = FontWeight.Bold)
+                    Text(
+                        text = when {
+                            state.isSavingCredentials -> "Перевірка..."
+                            state.credentialsSaved -> "✓ Збережено"
+                            else -> "Зберегти нові дані"
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 OutlinedButton(
