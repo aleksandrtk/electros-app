@@ -709,3 +709,69 @@ internal fun hasMatchingSigningCertificate(context: Context, apkFile: File): Boo
 - Обновить версии плагинов и библиотек в `gradle/libs.versions.toml` под SDK 37 и включить `checkTestSources = true`.
 - Добавить регрессионные unit-тесты на потерю среза при `OFFLINE (0.0 кВт⋅ч)`, авто-перелогин в `postForm`, фильтрацию текущего месяца в `HistoryViewModel`, валидацию пароля в `SettingsViewModel` и полный `logout`.
 - Актуализировать `README.md` и `docs/designs/electros_ev_client.md` под архитектуру только для Android 17+.
+
+---
+
+# Раунд 2: повторный аудит (после закрытия п. 1–25)
+
+- **Дата:** 2026-11-13, ветка `fix/review-round-2`.
+- **Результат проверки раунда 1:** п. 1–13, 16–22, 25 закрыты; п. 14, 15, 23, 24 закрыты частично (см. «Остаточные замечания»). Тесты (103) и lint (0 ошибок) проходили до начала раунда 2.
+
+## Сводная таблица новых находок
+
+| # | Уровень | Файлы | Описание | Статус |
+|---|:---:|---|---|---|
+| R2-1 | 🔴 Major | `ElectrosWebScraper.kt` | Таймаут WebSocket (`withTimeout(5000)`) пробрасывается как `CancellationException`: HTTP-fallback не вызывается, цикл `ChargeMonitorService` тихо завершается, сервис висит с уведомлением и wake lock | Исправлено |
+| R2-2 | 🟠 Medium | `ChargeDao.kt`, `ChargeRepository.kt`, `BootReceiver.kt` | `cancelAllActiveSessions` закрывает сессию без финализации открытого среза → потеря учтённых кВт⋅ч в истории | Исправлено |
+| R2-3 | 🟠 Medium | `ChargeRepository.kt` | При `logout` с активной сессией на станции остаётся окно Dead-Man таймера как ежедневное расписание | Исправлено |
+| R2-4 | 🟠 Medium | `DashboardScreen.kt` | Индикатор тока справа вверху показывает ток сессии/станции, а не значение ручки, когда зарядка не идёт; при расхождении предпочитает значение сессии вместо телеметрии | Исправлено |
+| R2-5 | 🟡 Minor | `NotificationHelper.kt` | Алерты (отключение света, лимит, связь потеряна, возобновление) без `contentIntent` — нажатие ничего не открывает | Исправлено |
+| R2-6 | 🟡 Minor | `ElectrosWebScraper.kt` | `catch (e: Exception)` в `queryWebSocket`, `fetchTelemetryHttp`, `postForm` глотает настоящую отмену корутины | Исправлено вместе с R2-1 |
+
+### R2-1. Таймаут WebSocket-команды молча убивает мониторинг
+
+**Где:** [ElectrosWebScraper.kt](app/src/main/java/ua/org/electros/app/data/network/ElectrosWebScraper.kt) — `sendCommandWebSocket` (`catch (e: CancellationException)`), `queryWebSocket`.
+
+**Что найдено.** `TimeoutCancellationException` — подкласс `CancellationException`. Если сокет не открылся за 5 с, блок `catch (e: CancellationException) { throw e }` пробрасывает исключение наружу, HTTP-fallback в `stopCharge`/`startCharge`/`setTimer` не вызывается, а корутина цикла мониторинга отменяется без ошибки. Воспроизведено временным unit-тестом: `stopCharge` бросает `TimeoutCancellationException`, `reachedAfterCall=false`. Последствия: остановка по квоте не повторяется, сервис остаётся висеть, кнопка на Dashboard зависает в состоянии «запуск».
+
+**Как исправить.** Ловить `TimeoutCancellationException` отдельно и превращать в `Result.failure(IOException(...))`; настоящую отмену (`CancellationException`) пробрасывать. В `catch (e: Exception)` добавить `if (e is CancellationException) throw e` (R2-6).
+
+### R2-2. Потеря энергии при `cancelAllActiveSessions`
+
+**Где:** [ChargeDao.kt](app/src/main/java/ua/org/electros/app/data/local/dao/ChargeDao.kt), [ChargeRepository.kt](app/src/main/java/ua/org/electros/app/data/repository/ChargeRepository.kt) (`logout`, `startNewSession`, `attachSessionToOngoingCharge`), [BootReceiver.kt](app/src/main/java/ua/org/electros/app/service/BootReceiver.kt).
+
+**Что найдено.** Запрос просто ставит `status = CANCELLED`, не закрывая открытый срез и не пересчитывая `totalKwhDelivered`. Всё, что набежало в последнем срезе, в истории исчезает.
+
+**Как исправить.** Перед отменой финализировать срез активной сессии (`finalizeActiveSliceAndCommit` с `stationCounterLastKwh`) — вынесено в `ChargeRepository.cancelActiveSessionsPreservingEnergy()` и используется во всех трёх местах.
+
+### R2-3. Расписание станции после `logout`
+
+**Где:** `ChargeRepository.logout`.
+
+**Что найдено.** Пока шла сессия с лимитом, на станции стоит окно Dead-Man таймера. После выхода из аккаунта приложение его не снимает, и станция воспринимает это окно как ежедневное расписание (по коду; на реальной станции не проверялось).
+
+**Как исправить.** Перед очисткой учётных данных, если есть активная сессия с лимитом, вернуть пользовательское расписание (или `00:00–00:00`) через `restoreScheduleTimer` (best-effort).
+
+### R2-4. Индикатор тока справа вверху
+
+**Где:** [DashboardScreen.kt](app/src/main/java/ua/org/electros/app/ui/dashboard/DashboardScreen.kt) — расчёт `actualAmperes`.
+
+**Что найдено.** Требование: показывать актуальный ток (выставлено 6 — «6», 10 — «10», DLB поднял/снизил — новое значение). Два расхождения: (1) без зарядки показывается ток из телеметрии/сессии, а не значение ручки; (2) при расхождении предпочитается `session.amperageSetting`, а не телеметрия станции.
+
+**Как исправить.** Чистая функция `resolveDisplayedAmperes`: при активной зарядке — `telemetry.selectedCurrentAmperes`, иначе — значение ручки. Покрыта unit-тестом.
+
+### R2-5. Уведомления без `contentIntent`
+
+**Где:** `NotificationHelper.showOutageAlert/showTargetReachedAlert/showConnectionLostAlert/showDurationTargetReachedAlert/showOutageResumedAlert`.
+
+**Как исправить.** Добавить `setContentIntent(createOpenAppPendingIntent(...))` с уникальными `requestCode`.
+
+## Остаточные замечания (не исправлялись в раунде 2)
+
+- **DLB поднимает ток выше ручки до `voltageMaxAmperage`** — осознанное поведение (автоподъём при нормальной сети), не дефект. Опционально: подсказка «Auto-ramp up to N A» на карточке DLB.
+- **`BootReceiver` не стартует мониторинг после перезагрузки без исключения из оптимизации батареи.** Требует проверки на устройстве с Android 17: ограничение для `specialUse` из `BOOT_COMPLETED` не подтверждено, `try/catch` на `ForegroundServiceStartNotAllowedException` уже есть.
+- **Сеть/батарея:** новое WebSocket-соединение с TLS каждые 10 с, wake lock держится часами при отключении света — рассмотреть одно постоянное соединение.
+- **Холодный старт:** `runBlocking` в `AuthPreferences.ensureLoaded()` на главном потоке при первой композиции.
+- **OTA:** APK не удаляется из кэша после обновления; `file_paths.xml` открывает весь `cacheDir`, а не подпапку.
+- **Зависимости:** OkHttp 4.12 → 5.x, Kotlin 2.3.21 → 2.4.21, Gradle 9.6.1 → 9.9.1.
+- **Пункты раунда 1 с частичным закрытием:** п. 14 (слайдер макс. тока DLB допускает 14 А, которого нет на ручке), п. 15 (смешение языков, ошибки распознаются по подстрокам, `strings.xml` содержит только `app_name`), п. 23 (`DashboardScreen.kt` — 2122 строки), п. 24 (нет предупреждения о сборке неподписанного release APK).
