@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
+import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -61,7 +62,7 @@ fun HistoryScreen(
                         color = TextPrimaryDark
                     )
                     Text(
-                        text = "Листопад 2026",
+                        text = state.currentMonthLabel,
                         fontSize = 12.sp,
                         color = TextSecondaryDark
                     )
@@ -93,7 +94,7 @@ fun HistoryScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(state.sessions) { session ->
+                items(state.sessions, key = { it.id }) { session ->
                     SessionItemCard(session)
                 }
             }
@@ -122,7 +123,7 @@ private fun SessionItemCard(session: ChargeSessionEntity) {
                 Text(text = formattedDate, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimaryDark)
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "${session.amperageSetting}A • ${session.status.name}",
+                    text = "${session.amperageSetting}A • ${formatSessionStatus(session.status)}",
                     fontSize = 11.sp,
                     color = TextSecondaryDark
                 )
@@ -136,5 +137,17 @@ private fun SessionItemCard(session: ChargeSessionEntity) {
             )
         }
     }
+}
+
+private fun formatSessionStatus(status: SessionStatus): String = when (status) {
+    SessionStatus.TARGET_REACHED -> "Ліміт досягнуто"
+    SessionStatus.VEHICLE_STOPPED -> "Завершено авто"
+    SessionStatus.CANCELLED -> "Зупинено"
+    SessionStatus.CHARGING -> "Заряджання"
+    SessionStatus.OUTAGE_DETECTED,
+    SessionStatus.OUTAGE_STABILIZING,
+    SessionStatus.AUTO_RESUMING -> "Очікування світла"
+    SessionStatus.STOP_PENDING -> "Зупинка..."
+    SessionStatus.IDLE -> "Очікування"
 }
 
