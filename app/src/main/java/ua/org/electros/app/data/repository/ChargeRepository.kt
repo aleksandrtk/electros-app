@@ -75,6 +75,9 @@ class ChargeRepository(
     }
 
     suspend fun logout() {
+        // The dead-man window armed for a limited session would otherwise stay on the station
+        // as a daily schedule once the app can no longer talk to it, so restore it first.
+        restoreScheduleTimer(session = chargeDao.getActiveSession())
         authPreferences?.clearCredentials()
         scraper.clearSession()
         _telemetryState.value = null

@@ -459,6 +459,34 @@ class ChargeRepositoryLifecycleTest {
         assertThat(dao.getSlicesForSession("s1").single().endedAt).isNotNull()
     }
 
+    @Test
+    fun logout_withLimitedActiveSession_restoresStationScheduleBeforeSignOut() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s1",
+                targetKwh = 10.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L
+            )
+        )
+        val wsCommands = CopyOnWriteArrayList<String>()
+        val scraper = buildScraper(wsCommands) { wsPayload(statusCode = 2, energyKwh = 14.0) }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            scheduleConfigProvider = { Triple(false, "23:00", "07:00") },
+            clockMs = { 9_000L }
+        )
+
+        repo.logout()
+
+        val timerCommands = wsCommands.filter { it.contains("\ndatetime\n") }
+        assertThat(timerCommands).hasSize(1)
+        assertThat(timerCommands.single()).endsWith("\n00:00\n00:00\n")
+    }
+
     private class FakeChargeDao : ChargeDao {
         private val sessions = linkedMapOf<String, ChargeSessionEntity>()
         private val slices = mutableListOf<ChargeSliceEntity>()
