@@ -373,5 +373,35 @@ class ElectrosWebScraperCommandTest {
 
         assertTrue(result.isFailure)
     }
-}
 
+    @Test
+    fun stopCharge_whenWebSocketNeverOpens_timesOutAndFallsBackToHttp() = runBlocking {
+        val httpPosts = AtomicInteger(0)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val req = chain.request()
+                if (req.method == "POST") httpPosts.incrementAndGet()
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body("<html><body>Станція</body></html>".toResponseBody("text/html".toMediaType()))
+                    .build()
+            })
+            .build()
+        // Socket that never calls onOpen -> withTimeout(5000) fires inside sendCommandWebSocket.
+        val silentFactory = WebSocket.Factory { request, _ -> FakeWebSocket(request) { _, _ -> } }
+        val scraper = ElectrosWebScraper(
+            client = client,
+            wsFactory = silentFactory,
+            serialProvider = { "12345" },
+            passwordProvider = { "pw" }
+        )
+
+        val result = scraper.stopCharge(verifyWithTelemetry = false)
+
+        assertTrue("timeout must not cancel the caller", result.isSuccess)
+        assertEquals("HTTP fallback must run after WS timeout", 1, httpPosts.get())
+    }
+}

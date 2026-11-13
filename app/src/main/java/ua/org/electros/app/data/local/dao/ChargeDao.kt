@@ -34,6 +34,27 @@ interface ChargeDao {
     @Query("UPDATE charge_sessions SET status = 'CANCELLED', completedAt = :currentTime WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING')")
     suspend fun cancelAllActiveSessions(currentTime: Long = System.currentTimeMillis())
 
+    /**
+     * Cancels every active session but first closes the open slice of the current one so the energy
+     * already delivered stays in history instead of being dropped with the cancelled session.
+     */
+    @Transaction
+    suspend fun cancelActiveSessionsPreservingEnergy(currentTime: Long = System.currentTimeMillis()) {
+        val active = getActiveSession()
+        if (active != null) {
+            val latest = getLatestSliceForSession(active.id)
+            if (latest != null && latest.endedAt == null) {
+                finalizeActiveSliceAndCommit(
+                    sessionId = active.id,
+                    lastSampledKwh = latest.stationCounterLastKwh,
+                    reason = SliceEndReason.MANUAL_STOP,
+                    endTime = currentTime
+                )
+            }
+        }
+        cancelAllActiveSessions(currentTime)
+    }
+
     @Query("UPDATE charge_sessions SET status = :status, completedAt = :completedAt, lastTickAt = :lastTickAt WHERE id = :sessionId")
     suspend fun updateSessionStatus(
         sessionId: String,

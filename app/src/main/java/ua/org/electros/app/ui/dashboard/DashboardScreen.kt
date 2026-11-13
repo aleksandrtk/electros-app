@@ -108,18 +108,7 @@ fun DashboardScreen(
             val telemetry = state.telemetry
             val activeSession = state.activeSession
             val isChargingOrSessionActive = (telemetry?.isChargingActive == true) || activeSession != null
-            val actualAmperes = when {
-                activeSession != null && activeSession.amperageSetting in 6..32 && activeSession.amperageSetting != state.selectedAmperes -> {
-                    activeSession.amperageSetting
-                }
-                telemetry != null && telemetry.selectedCurrentAmperes in 6..32 -> {
-                    telemetry.selectedCurrentAmperes
-                }
-                activeSession != null && activeSession.amperageSetting in 6..32 -> {
-                    activeSession.amperageSetting
-                }
-                else -> state.selectedAmperes
-            }
+            val actualAmperes = resolveDisplayedAmperes(telemetry, state.selectedAmperes)
 
             // 1. Clean Connection Status Plate + Live Actual Amperage Pill (zero extra vertical space)
             StudioTopHeader(

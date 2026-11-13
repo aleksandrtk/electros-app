@@ -38,7 +38,7 @@ class BootReceiver : BroadcastReceiver() {
                             NotificationHelper(appContext).showMonitorRestartRequiredAlert()
                         }
                     } else {
-                        dao.cancelAllActiveSessions()
+                        dao.cancelActiveSessionsPreservingEnergy()
                     }
                 }
             } finally {
