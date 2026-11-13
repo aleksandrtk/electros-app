@@ -339,24 +339,9 @@ class ChargeMonitorService : Service() {
                 putExtra(EXTRA_TARGET_KWH, targetKwh)
                 putExtra(EXTRA_TARGET_DURATION_MIN, targetDurationMinutes)
             }
-            when {
-                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
-                    startForegroundApi31(context, intent)
-                }
-                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O -> {
-                    context.startForegroundService(intent)
-                }
-                else -> {
-                    context.startService(intent)
-                }
-            }
-        }
-
-        @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
-        private fun startForegroundApi31(context: Context, intent: Intent) {
             try {
                 context.startForegroundService(intent)
-            } catch (_: android.app.ForegroundServiceStartNotAllowedException) {
+            } catch (_: ForegroundServiceStartNotAllowedException) {
                 NotificationHelper(context.applicationContext).showMonitorRestartRequiredAlert()
             }
         }

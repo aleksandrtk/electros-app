@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import ua.org.electros.app.MainActivity
 
@@ -29,11 +28,7 @@ class NotificationHelper(private val context: Context) {
             this.action = action
         }
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PendingIntent.getForegroundService(context, requestCode, intent, flags)
-        } else {
-            PendingIntent.getService(context, requestCode, intent, flags)
-        }
+        return PendingIntent.getForegroundService(context, requestCode, intent, flags)
     }
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -43,27 +38,25 @@ class NotificationHelper(private val context: Context) {
     }
 
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val statusChannel = NotificationChannel(
-                CHANNEL_ID_CHARGING,
-                "Статус заряджання",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Постійне сповіщення про поточний процес зарядки"
-                setShowBadge(false)
-            }
-
-            val alertsChannel = NotificationChannel(
-                CHANNEL_ID_ALERTS,
-                "Важливі сповіщення",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Сповіщення про відключення світла та завершення ліміту"
-            }
-
-            notificationManager.createNotificationChannel(statusChannel)
-            notificationManager.createNotificationChannel(alertsChannel)
+        val statusChannel = NotificationChannel(
+            CHANNEL_ID_CHARGING,
+            "Статус заряджання",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Постійне сповіщення про поточний процес зарядки"
+            setShowBadge(false)
         }
+
+        val alertsChannel = NotificationChannel(
+            CHANNEL_ID_ALERTS,
+            "Важливі сповіщення",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Сповіщення про відключення світла та завершення ліміту"
+        }
+
+        notificationManager.createNotificationChannel(statusChannel)
+        notificationManager.createNotificationChannel(alertsChannel)
     }
 
     fun buildForegroundNotification(

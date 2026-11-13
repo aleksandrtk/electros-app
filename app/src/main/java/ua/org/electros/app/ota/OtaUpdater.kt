@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -120,34 +119,20 @@ object OtaUpdater {
         joinToString("") { "%02x".format(Locale.US, it) }
 
     internal fun hasMatchingSigningCertificate(context: Context, apkFile: File): Boolean {
-        val pm = context.packageManager
-        val installedDigests: List<String>
-        val archivePackageName: String?
-        val archiveDigests: List<String>
-
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                @Suppress("DEPRECATION")
-                val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                @Suppress("DEPRECATION")
-                val archive = pm.getPackageArchiveInfo(apkFile.path, PackageManager.GET_SIGNING_CERTIFICATES)
-                archivePackageName = archive?.packageName
-                installedDigests = installed.signingInfo?.apkContentsSigners.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
-                archiveDigests = archive?.signingInfo?.apkContentsSigners.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
-            } else {
-                @Suppress("DEPRECATION")
-                val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
-                @Suppress("DEPRECATION")
-                val archive = pm.getPackageArchiveInfo(apkFile.path, PackageManager.GET_SIGNATURES)
-                archivePackageName = archive?.packageName
-                @Suppress("DEPRECATION")
-                installedDigests = installed.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
-                @Suppress("DEPRECATION")
-                archiveDigests = archive?.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
-            }
+            val pm = context.packageManager
+            val flags = PackageManager.PackageInfoFlags.of(
+                PackageManager.GET_SIGNING_CERTIFICATES.toLong()
+            )
+            val installed = pm.getPackageInfo(context.packageName, flags)
+            val archive = pm.getPackageArchiveInfo(apkFile.path, flags)
+            val installedDigests = installed.signingInfo?.apkContentsSigners
+                .orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
+            val archiveDigests = archive?.signingInfo?.apkContentsSigners
+                .orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
             doCertificatesMatch(
                 expectedPackage = context.packageName,
-                archivePackage = archivePackageName,
+                archivePackage = archive?.packageName,
                 installedDigests = installedDigests,
                 archiveDigests = archiveDigests
             )
@@ -442,31 +427,25 @@ object OtaUpdater {
             return InstallOutcome.FAILED
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!appContext.packageManager.canRequestPackageInstalls()) {
-                return try {
-                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${appContext.packageName}")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    appContext.startActivity(settingsIntent)
-                    InstallOutcome.NEEDS_UNKNOWN_SOURCES_PERMISSION
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to launch unknown sources settings: ${e.message}")
-                    InstallOutcome.FAILED
+        if (!appContext.packageManager.canRequestPackageInstalls()) {
+            return try {
+                val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${appContext.packageName}")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
+                appContext.startActivity(settingsIntent)
+                InstallOutcome.NEEDS_UNKNOWN_SOURCES_PERMISSION
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to launch unknown sources settings: ${e.message}")
+                InstallOutcome.FAILED
             }
         }
 
-        val apkUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            FileProvider.getUriForFile(
-                appContext,
-                "${appContext.packageName}.fileprovider",
-                apkFile
-            )
-        } else {
-            Uri.fromFile(apkFile)
-        }
+        val apkUri: Uri = FileProvider.getUriForFile(
+            appContext,
+            "${appContext.packageName}.fileprovider",
+            apkFile
+        )
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(apkUri, "application/vnd.android.package-archive")
