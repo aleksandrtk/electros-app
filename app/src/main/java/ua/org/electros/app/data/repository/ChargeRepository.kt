@@ -78,7 +78,7 @@ class ChargeRepository(
         authPreferences?.clearCredentials()
         scraper.clearSession()
         _telemetryState.value = null
-        chargeDao.cancelAllActiveSessions(clockMs())
+        chargeDao.cancelActiveSessionsPreservingEnergy(clockMs())
     }
 
     suspend fun getSessionById(sessionId: String): ChargeSessionEntity? {
@@ -230,7 +230,7 @@ class ChargeRepository(
         }
 
         // Clear any leftover inactive/stale sessions before starting clean
-        chargeDao.cancelAllActiveSessions(clockMs())
+        chargeDao.cancelActiveSessionsPreservingEnergy(clockMs())
 
         val sessionId = UUID.randomUUID().toString()
         val now = clockMs()
@@ -287,7 +287,7 @@ class ChargeRepository(
     ): Result<String> {
         val anchorTelemetry = fetchFreshTelemetryForAnchor()
             ?: return Result.failure(IOException("No telemetry to anchor slice"))
-        chargeDao.cancelAllActiveSessions()
+        chargeDao.cancelActiveSessionsPreservingEnergy(clockMs())
         val sessionId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val session = ChargeSessionEntity(

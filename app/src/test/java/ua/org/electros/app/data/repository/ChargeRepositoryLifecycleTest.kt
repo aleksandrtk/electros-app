@@ -427,6 +427,38 @@ class ChargeRepositoryLifecycleTest {
         assertThat(wsCommands.any { it.contains("\nstart\n") }).isFalse()
     }
 
+    @Test
+    fun logout_withOpenSlice_preservesDeliveredEnergyInHistory() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s1",
+                targetKwh = 0.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L
+            )
+        )
+        dao.insertSlice(
+            ChargeSliceEntity(
+                sessionId = "s1",
+                sliceIndex = 0,
+                stationCounterStartKwh = 10.0,
+                stationCounterLastKwh = 14.0,
+                startedAt = 1_000L
+            )
+        )
+        val scraper = buildScraper(CopyOnWriteArrayList()) { wsPayload(statusCode = 2, energyKwh = 14.0) }
+        val repo = ChargeRepository(scraper = scraper, chargeDao = dao, clockMs = { 9_000L })
+
+        repo.logout()
+
+        val session = dao.getSessionById("s1")
+        assertThat(session?.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(session?.totalKwhDelivered).isWithin(0.001).of(4.0)
+        assertThat(dao.getSlicesForSession("s1").single().endedAt).isNotNull()
+    }
+
     private class FakeChargeDao : ChargeDao {
         private val sessions = linkedMapOf<String, ChargeSessionEntity>()
         private val slices = mutableListOf<ChargeSliceEntity>()
