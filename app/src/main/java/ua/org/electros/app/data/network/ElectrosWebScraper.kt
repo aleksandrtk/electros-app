@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -131,6 +132,10 @@ class ElectrosWebScraper(
                     }
                 }
             }
+        } catch (e: TimeoutCancellationException) {
+            Result.failure(IOException("WebSocket query timed out", e))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -201,6 +206,10 @@ class ElectrosWebScraper(
                 }
                 Result.success(Unit)
             }
+        } catch (e: TimeoutCancellationException) {
+            ws?.cancel()
+            cancelled = true
+            Result.failure(IOException("WebSocket command timed out", e))
         } catch (e: CancellationException) {
             cancelled = true
             ws?.cancel()
@@ -263,6 +272,8 @@ class ElectrosWebScraper(
             extractCsrfToken(doc)
 
             Result.success(parseTelemetryDocument(doc))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -468,6 +479,8 @@ class ElectrosWebScraper(
 
             extractCsrfToken(Jsoup.parse(html))
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
