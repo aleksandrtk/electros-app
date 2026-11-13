@@ -77,11 +77,15 @@ object OtaUpdater {
         expectedPackage: String,
         archivePackage: String?,
         installedDigests: List<String>,
-        archiveDigests: List<String>
+        archiveDigests: List<String>,
+        archiveHistoryDigests: List<String> = emptyList()
     ): Boolean {
         if (archivePackage != expectedPackage) return false
         if (installedDigests.isEmpty() || archiveDigests.isEmpty()) return false
-        return installedDigests == archiveDigests
+        if (installedDigests == archiveDigests) return true
+        // APK Signature Scheme v3 key rotation: the update is signed with a newer key whose
+        // proof-of-rotation lineage includes the certificate the installed app is signed with.
+        return installedDigests.size == 1 && installedDigests.single() in archiveHistoryDigests
     }
 
     /** Parses GitHub asset digest format ("sha256:abcdef...") into bare hex, or null. */
@@ -131,11 +135,18 @@ object OtaUpdater {
                 .orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
             val archiveDigests = archive?.signingInfo?.apkContentsSigners
                 .orEmpty().map { sha256Hex(it.toByteArray()) }.sorted()
+            val archiveSigningInfo = archive?.signingInfo
+            val archiveHistoryDigests = if (archiveSigningInfo?.hasPastSigningCertificates() == true) {
+                archiveSigningInfo.signingCertificateHistory.orEmpty().map { sha256Hex(it.toByteArray()) }
+            } else {
+                emptyList()
+            }
             doCertificatesMatch(
                 expectedPackage = context.packageName,
                 archivePackage = archive?.packageName,
                 installedDigests = installedDigests,
-                archiveDigests = archiveDigests
+                archiveDigests = archiveDigests,
+                archiveHistoryDigests = archiveHistoryDigests
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to verify APK signing certificate: ${e.message}")
