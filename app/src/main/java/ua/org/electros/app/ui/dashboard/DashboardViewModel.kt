@@ -363,7 +363,7 @@ class DashboardViewModel(
     fun onStartClicked(context: Context) {
         val telemetry = uiState.value.telemetry
         if (telemetry != null && !telemetry.isOnline) {
-            _errorMessage.value = "Станція вимкнена з розетки (OFFLINE). Підключіть живлення, щоб почати зарядку."
+            _errorMessage.value = "Station is offline. Connect power to start charging."
             return
         }
 
@@ -380,7 +380,7 @@ class DashboardViewModel(
             result.onSuccess { sessionId ->
                 ChargeMonitorService.start(context, sessionId, quota, durationMin)
             }.onFailure { err ->
-                _errorMessage.value = err.message ?: "Не вдалося розпочати зарядку"
+                _errorMessage.value = err.message ?: "Failed to start charging"
             }
             _isBusy.value = false
         }
@@ -400,7 +400,7 @@ class DashboardViewModel(
                 ChargeMonitorService.stop(context)
             }
             res.onFailure { err ->
-                _errorMessage.value = err.message ?: "Не вдалося зупинити станцію"
+                _errorMessage.value = err.message ?: "Failed to stop station"
             }
             repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             _isBusy.value = false

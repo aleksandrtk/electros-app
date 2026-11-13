@@ -88,28 +88,30 @@ fun DashboardScreen(
         ) {
             val telemetry = state.telemetry
             val isChargingOrSessionActive = (telemetry?.isChargingActive == true) || state.activeSession != null
+            val actualAmperes = if (telemetry != null && telemetry.selectedCurrentAmperes > 0) {
+                telemetry.selectedCurrentAmperes
+            } else {
+                state.selectedAmperes
+            }
 
-            // 1. Clean Connection Status Plate + Compact Mode Pill (zero extra vertical space)
+            // 1. Clean Connection Status Plate + Live Actual Amperage Pill (zero extra vertical space)
             StudioTopHeader(
                 isOnline = telemetry?.isOnline ?: false,
-                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "В МЕРЕЖІ" else "OFFLINE",
+                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "ONLINE" else "OFFLINE",
                 isChargingOrSessionActive = isChargingOrSessionActive && !state.isOutageActive,
                 isChargingActive = telemetry?.isChargingActive == true,
-                activeTargetKwh = state.activeTargetKwh,
+                actualAmperes = actualAmperes,
+                nominalAmperes = state.selectedAmperes,
                 activeTargetDurationMinutes = state.activeTargetDurationMinutes,
                 accumulatedChargingMs = state.accumulatedChargingMs,
-                lastTickAt = state.lastTickAt,
-                isScheduleEnabled = state.isScheduleEnabled,
-                scheduleStartTime = state.scheduleStartTime,
-                scheduleStopTime = state.scheduleStopTime,
-                selectedAmperes = state.selectedAmperes
+                lastTickAt = state.lastTickAt
             )
 
             // Error or pending-stop warning banner
             if (!state.errorMessage.isNullOrBlank()) {
                 ErrorMessageCard(message = state.errorMessage ?: "")
             } else if (state.isStopPending) {
-                ErrorMessageCard(message = "Не вдалося підтвердити зупинку станції — продовжуємо спроби зупинити зарядку.")
+                ErrorMessageCard(message = "Failed to confirm station stop — retrying stop command.")
             }
 
             // Outage / Offline Warning
@@ -166,7 +168,6 @@ fun DashboardScreen(
                 isKwhLimitEnabled = state.isKwhLimitEnabled,
                 targetQuotaKwh = state.targetQuotaKwh,
                 activeTargetKwh = state.activeTargetKwh,
-                totalDeliveredKwh = state.totalDeliveredKwh,
                 hasActiveSession = state.activeSession != null,
                 onSelectKwhLimit = { enabled, quotaKwh ->
                     viewModel.setKwhLimit(context, enabled, quotaKwh)
@@ -219,14 +220,11 @@ private fun StudioTopHeader(
     statusText: String,
     isChargingOrSessionActive: Boolean,
     isChargingActive: Boolean,
-    activeTargetKwh: Double,
+    actualAmperes: Int,
+    nominalAmperes: Int,
     activeTargetDurationMinutes: Int,
     accumulatedChargingMs: Long,
-    lastTickAt: Long,
-    isScheduleEnabled: Boolean,
-    scheduleStartTime: String,
-    scheduleStopTime: String,
-    selectedAmperes: Int
+    lastTickAt: Long
 ) {
     val nowMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(isChargingActive, activeTargetDurationMinutes, lastTickAt, accumulatedChargingMs) {
@@ -246,19 +244,17 @@ private fun StudioTopHeader(
     val elapsedMs = (accumulatedChargingMs + liveDeltaMs).coerceAtLeast(0L)
     val remainingMs = (targetMs - elapsedMs).coerceAtLeast(0L)
 
-    val hasKwhTarget = activeTargetKwh > 0.0
     val hasTimerTarget = activeTargetDurationMinutes > 0
-    val (modeLabel, modeAccent) = when {
-        hasKwhTarget && hasTimerTarget ->
-            "${selectedAmperes}A · КВОТА + ${formatCountdownHms(remainingMs)}" to StudioGreen
-        hasKwhTarget ->
-            "${selectedAmperes}A · КВОТА" to StudioGreen
-        hasTimerTarget ->
-            "${selectedAmperes}A · ${formatCountdownHms(remainingMs)}" to AmberNixie
-        isScheduleEnabled ->
-            "${selectedAmperes}A · $scheduleStartTime–$scheduleStopTime" to SecondaryCyan
-        else ->
-            "${selectedAmperes}A · БЕЗ ЛІМІТУ" to AmberNixie
+    val isDerated = actualAmperes < nominalAmperes
+    val modeLabel = if (hasTimerTarget) {
+        "${actualAmperes}A · ${formatCountdownHms(remainingMs)}"
+    } else {
+        "${actualAmperes}A"
+    }
+    val modeAccent = when {
+        isDerated -> AmberNixie
+        hasTimerTarget -> AmberNixie
+        else -> StudioGreen
     }
 
     Row(
@@ -280,7 +276,7 @@ private fun StudioTopHeader(
                     .background(if (isOnline) StudioGreen else IndustrialRed)
             )
             Text(
-                text = "ГАРАЖ • $statusText",
+                text = "GARAGE • ${formatHeaderStatus(statusText, isOnline)}",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
@@ -310,6 +306,26 @@ private fun StudioTopHeader(
                 )
             }
         }
+    }
+}
+
+private fun formatHeaderStatus(statusText: String, isOnline: Boolean): String {
+    val raw = statusText.trim()
+    return when {
+        !isOnline -> "OFFLINE"
+        raw.contains("Чекаю підключення", ignoreCase = true) || raw.contains("Waiting", ignoreCase = true) -> "WAITING FOR VEHICLE"
+        raw.contains("Підключено. Немає заряду", ignoreCase = true) -> "CONNECTED • IDLE"
+        raw.contains("Заряджання", ignoreCase = true) || raw.contains("Заряджається", ignoreCase = true) || raw.contains("Charging", ignoreCase = true) -> "CHARGING"
+        raw.contains("Помилка заряджання", ignoreCase = true) -> "CHARGE ERROR"
+        raw.contains("Заборона заряджання", ignoreCase = true) -> "CHARGING FORBIDDEN"
+        raw.contains("Напруга нижче", ignoreCase = true) -> "LOW VOLTAGE"
+        raw.contains("Помилка зв'язку", ignoreCase = true) -> "COMMUNICATION ERROR"
+        raw.contains("Ток витоку", ignoreCase = true) -> "LEAKAGE DETECTED"
+        raw.contains("перевищив 40", ignoreCase = true) -> "OVERCURRENT > 40A"
+        raw.contains("Станція OFFLINE", ignoreCase = true) || raw.contains("OFFLINE", ignoreCase = true) -> "OFFLINE"
+        raw.contains("В МЕРЕЖІ", ignoreCase = true) || raw.contains("Підключено", ignoreCase = true) || raw.contains("ONLINE", ignoreCase = true) -> "ONLINE"
+        raw.isNotBlank() -> raw.uppercase(Locale.US)
+        else -> "ONLINE"
     }
 }
 
@@ -364,7 +380,7 @@ private fun StudioClassicNixieCard(
                 )
                 if (isSessionActive) {
                     Text(
-                        text = if (isOnline) "ЗА СЕСІЮ" else "НАКОПИЧЕНО",
+                        text = if (isOnline) "SESSION ENERGY" else "STORED ENERGY",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
@@ -453,7 +469,7 @@ private fun StudioClassicNixieCard(
                                         modifier = Modifier.padding(bottom = 2.dp)
                                     )
                                     Text(
-                                        text = "кВт⋅год",
+                                        text = "kWh",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace,
@@ -462,7 +478,7 @@ private fun StudioClassicNixieCard(
                                     )
                                 }
                                 Text(
-                                    text = "Лишилось %.2f · %d%%".format(Locale.US, remainingKwh, pct),
+                                    text = "Remaining %.2f · %d%%".format(Locale.US, remainingKwh, pct),
                                     fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace,
                                     color = TextSecondaryDark
@@ -480,7 +496,7 @@ private fun StudioClassicNixieCard(
                                         color = AmberNixie
                                     )
                                     Text(
-                                        text = "кВт⋅год",
+                                        text = "kWh",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace,
@@ -1071,7 +1087,7 @@ private fun StudioClassicDlbCard(
                             .padding(horizontal = 7.dp, vertical = 3.dp)
                     ) {
                         Text(
-                            text = if (isDlbEnabled) "ВИМК" else "УВІМК",
+                            text = if (isDlbEnabled) "ON" else "OFF",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -1083,16 +1099,16 @@ private fun StudioClassicDlbCard(
 
             if (isDlbEnabled && selectedAmperes > voltageMaxAmperage) {
                 Text(
-                    text = "Максимум автоструму: ${voltageMaxAmperage} А (обрано ${selectedAmperes} А)",
+                    text = "Max auto-current: ${voltageMaxAmperage}A (selected ${selectedAmperes}A)",
                     style = MaterialTheme.typography.labelSmall,
                     color = StudioAmberWarn
                 )
             } else {
                 Text(
                     text = if (isDlbEnabled) {
-                        "Натисніть, щоб вимкнути • Автозниження <${lowThreshold}В, розгін до ${voltageMaxAmperage}А"
+                        "Tap to disable • Derate <${lowThreshold}V, ramp to ${voltageMaxAmperage}A"
                     } else {
-                        "Натисніть, щоб увімкнути захист від просадки напруги"
+                        "Tap to enable voltage-sag protection"
                     },
                     fontSize = 10.sp,
                     color = TextTertiaryDark
@@ -1107,7 +1123,6 @@ private fun StudioClassicKwhLimitCard(
     isKwhLimitEnabled: Boolean,
     targetQuotaKwh: Double,
     activeTargetKwh: Double,
-    totalDeliveredKwh: Double,
     hasActiveSession: Boolean,
     onSelectKwhLimit: (Boolean, Double) -> Unit
 ) {
@@ -1115,17 +1130,10 @@ private fun StudioClassicKwhLimitCard(
     val expanded = remember { mutableStateOf(false) }
     val hasActiveQuota = hasActiveSession && activeTargetKwh > 0.0
     val isLimitOn = isKwhLimitEnabled || hasActiveQuota
+    val displayKwh = if (hasActiveQuota) activeTargetKwh else targetQuotaKwh
 
-    val statusText = when {
-        hasActiveQuota -> "%.1f / %.0f кВт⋅год".format(totalDeliveredKwh, activeTargetKwh)
-        isKwhLimitEnabled -> "ON • ${targetQuotaKwh.toInt()} кВт⋅год"
-        else -> "OFF"
-    }
-    val statusColor = when {
-        hasActiveQuota -> StudioGreen
-        isKwhLimitEnabled -> StudioGreen
-        else -> TextTertiaryDark
-    }
+    val statusText = if (isLimitOn) "ON • ${displayKwh.toInt()} kWh" else "OFF"
+    val statusColor = if (isLimitOn) StudioGreen else TextTertiaryDark
     val borderColor = if (isLimitOn) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
 
     Card(
@@ -1189,25 +1197,6 @@ private fun StudioClassicKwhLimitCard(
                 }
             }
 
-            if (hasActiveQuota) {
-                Spacer(modifier = Modifier.height(8.dp))
-                val progress = (totalDeliveredKwh / activeTargetKwh).toFloat().coerceIn(0f, 1f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(StudioScreenDark)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .height(3.dp)
-                            .background(StudioGreen)
-                    )
-                }
-            }
-
             if (expanded.value) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
@@ -1216,7 +1205,7 @@ private fun StudioClassicKwhLimitCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "AUTO-STOP QUOTA (БЕЗ АВТОСТАРТУ)",
+                        text = "AUTO-STOP QUOTA (NO AUTO-START)",
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
@@ -1278,7 +1267,7 @@ private fun StudioClassicKwhLimitCard(
                         )
                     }
                     Text(
-                        text = "${targetQuotaKwh.toInt()} кВт⋅год",
+                        text = "${targetQuotaKwh.toInt()} kWh",
                         fontSize = 14.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Black,
@@ -1807,7 +1796,7 @@ private fun StudioClassicActionButton(
     onStop: () -> Unit
 ) {
     if (isCharging) {
-        // Red Emergency Stop Switch Button
+        // Red Stop Button
         Button(
             onClick = onStop,
             enabled = !isBusy,
@@ -1826,7 +1815,7 @@ private fun StudioClassicActionButton(
                 .height(48.dp)
         ) {
             Text(
-                text = if (isBusy) "ЗУПИНКА..." else "EMERGENCY STOP",
+                text = if (isBusy) "STOPPING..." else "STOP",
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
@@ -1854,11 +1843,11 @@ private fun StudioClassicActionButton(
         ) {
             Text(
                 text = when {
-                    isBusy -> "ЗАПУСК..."
+                    isBusy -> "STARTING..."
                     isKwhLimitEnabled && isDurationTimerEnabled ->
-                        "START CHARGE (${targetQuotaKwh.toInt()} кВт⋅год • ${targetDurationHours}H)"
+                        "START CHARGE (${targetQuotaKwh.toInt()} kWh • ${targetDurationHours}H)"
                     isKwhLimitEnabled ->
-                        "START CHARGE (${targetQuotaKwh.toInt()} кВт⋅год)"
+                        "START CHARGE (${targetQuotaKwh.toInt()} kWh)"
                     isDurationTimerEnabled -> "START CHARGE (${targetDurationHours}H)"
                     else -> "START CHARGE"
                 },
@@ -1901,41 +1890,41 @@ private fun OutageBanner(
     remainingTimerText: String? = null,
     onCancelOutage: () -> Unit
 ) {
-    val timerSuffix = if (remainingTimerText != null) " • Залишок таймера: %s".format(remainingTimerText) else ""
+    val timerSuffix = if (remainingTimerText != null) " • Timer remaining: %s".format(remainingTimerText) else ""
     val titleText = if (!isAutoResumeEnabled && isStationOnline) {
-        "ЖИВЛЕННЯ ВІДНОВЛЕНО • ОЧІКУЄ ЗАПУСКУ"
+        "POWER RESTORED • AWAITING START"
     } else {
-        "ЗНИКЛО СВІТЛО В ГАРАЖІ"
+        "GRID POWER LOST"
     }
     val bodyText = when {
         !isAutoResumeEnabled && isStationOnline ->
-            "Збережено %.1f кВт⋅год%s. Автопродовження вимкнене — натисніть СТАРТ, щоб продовжити, або скасуйте сесію.".format(
+            "Preserved %.1f kWh%s. Auto-resume is off — press START to continue, or cancel session.".format(
                 deliveredKwh,
                 timerSuffix
             )
         !isAutoResumeEnabled ->
-            "Збережено %.1f кВт⋅год%s. Автопродовження вимкнене в налаштуваннях — після появи світла зарядка не запуститься сама.".format(
+            "Preserved %.1f kWh%s. Auto-resume is disabled in settings — charging will not resume automatically.".format(
                 deliveredKwh,
                 timerSuffix
             )
         remainingTimerText != null && isLimitEnabled ->
-            "Збережено %.1f кВт⋅год (таймер: %s). Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(
+            "Preserved %.1f kWh (timer: %s). Charging will resume automatically up to %.0f kWh when power returns.".format(
                 deliveredKwh,
                 remainingTimerText,
                 targetKwh
             )
         remainingTimerText != null ->
-            "Збережено %.1f кВт⋅год%s. Зарядка продовжиться автоматично при відновленні живлення.".format(
+            "Preserved %.1f kWh%s. Charging will resume automatically when power returns.".format(
                 deliveredKwh,
                 timerSuffix
             )
         isLimitEnabled ->
-            "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично до %.0f кВт⋅год при відновленні живлення.".format(
+            "Preserved %.1f kWh. Charging will resume automatically up to %.0f kWh when power returns.".format(
                 deliveredKwh,
                 targetKwh
             )
         else ->
-            "Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично при відновленні живлення.".format(
+            "Preserved %.1f kWh. Charging will resume automatically when power returns.".format(
                 deliveredKwh
             )
     }
@@ -1980,7 +1969,7 @@ private fun OutageBanner(
                     )
                 ) {
                     Text(
-                        text = if (isBusy) "СКАСУВАННЯ..." else "СКАСУВАТИ СЕСІЮ",
+                        text = if (isBusy) "CANCELLING..." else "CANCEL SESSION",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
@@ -2009,14 +1998,14 @@ private fun OfflineWarningCard() {
             Text(text = "🔌", fontSize = 20.sp)
             Column {
                 Text(
-                    text = "СТАНЦІЯ OFFLINE (НЕМАЄ ЖИВЛЕННЯ)",
+                    text = "STATION OFFLINE (NO POWER)",
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     color = IndustrialRed
                 )
                 Text(
-                    text = "Немає живлення від мережі 220В або станція вимкнена з розетки.",
+                    text = "No 220V grid power or station unplugged.",
                     fontSize = 11.sp,
                     color = TextSecondaryDark
                 )
