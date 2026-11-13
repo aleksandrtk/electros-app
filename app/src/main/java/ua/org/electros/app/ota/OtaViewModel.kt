@@ -2,8 +2,8 @@ package ua.org.electros.app.ota
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,7 +77,7 @@ class OtaViewModel : ViewModel() {
         val downloadUrl = info.downloadUrl
         if (downloadUrl.isNullOrEmpty()) {
             if (!info.releaseHtmlUrl.isNullOrEmpty()) {
-                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(info.releaseHtmlUrl)).apply {
+                val browserIntent = Intent(Intent.ACTION_VIEW, info.releaseHtmlUrl.toUri()).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 appContext.startActivity(browserIntent)

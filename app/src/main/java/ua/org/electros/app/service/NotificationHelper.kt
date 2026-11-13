@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import ua.org.electros.app.MainActivity
+import ua.org.electros.app.R
 
 class NotificationHelper(private val context: Context) {
 
@@ -112,10 +113,10 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CHARGING)
             .setContentTitle("Electros: %.1f кВт • %s".format(powerKw, statusText))
             .setContentText(contentText)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setSmallIcon(R.drawable.ic_nav_bolt)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
-            .addAction(android.R.drawable.ic_media_pause, "Зупинити", stopPendingIntent)
+            .addAction(R.drawable.ic_notif_stop, "Зупинити", stopPendingIntent)
 
         if (targetKwh > 0.0 || targetDurationMinutes > 0) {
             builder.setProgress(100, progress, false)
@@ -133,7 +134,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚠️ Світло в гаражі зникло!")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_notif_warning)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -154,9 +155,9 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚡ Світло з'явилось — станція в мережі")
             .setContentText("Збережено %.1f кВт⋅год. Натисніть «Відновити заряд» для запуску на %d А.".format(retainedKwh, amperes))
-            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setSmallIcon(R.drawable.ic_nav_bolt)
             .setContentIntent(openAppPendingIntent)
-            .addAction(android.R.drawable.ic_media_play, "Відновити заряд", resumePendingIntent)
+            .addAction(R.drawable.ic_notif_play, "Відновити заряд", resumePendingIntent)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_RESUME_ALERT, builder.build())
@@ -170,7 +171,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚡ Зарядка завершена!")
             .setContentText("Цільовий ліміт досягнуто: залито %.1f кВт⋅год.".format(deliveredKwh))
-            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setSmallIcon(R.drawable.ic_nav_bolt)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -188,7 +189,7 @@ class NotificationHelper(private val context: Context) {
         } else {
             "Напруга стабілізувалась ($voltage В). Струм підвищено: $oldAmperes А → $newAmperes А."
         }
-        val icon = if (isLowered) android.R.drawable.stat_sys_warning else android.R.drawable.ic_lock_idle_charging
+        val icon = if (isLowered) R.drawable.ic_notif_warning else R.drawable.ic_nav_bolt
         val channelId = if (isLowered) CHANNEL_ID_ALERTS else CHANNEL_ID_BALANCING_INFO
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
@@ -216,7 +217,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚠️ Зв'язок зі станцією втрачено!")
             .setContentText("Станція утримує струм $currentAmperes А. За відсутності інтернету балансування тимчасово призупинено.")
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_notif_warning)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 2, builder.build())
@@ -229,7 +230,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⏱️ Таймер зарядки завершено!")
             .setContentText("Відпрацьовано %s. Залито %.1f кВт⋅год. Станцію зупинено.".format(durLabel, deliveredKwh))
-            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setSmallIcon(R.drawable.ic_nav_bolt)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT, builder.build())
@@ -239,7 +240,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚡ Світло повернулось — зарядку відновлено")
             .setContentText("Станцію знову запущено на $amperes А. Таймер і лічильник продовжено.")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setSmallIcon(R.drawable.ic_nav_bolt)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_ALERT + 3, builder.build())
@@ -263,7 +264,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("⚠️ Не вдалося зупинити станцію")
             .setContentText("Команда зупинки не підтвердилась. Продовжуємо повторні спроби зупинити зарядку.")
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_notif_warning)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
@@ -276,7 +277,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle("Потрібен ручний запуск моніторингу")
             .setContentText("Відкрийте застосунок, щоб продовжити моніторинг")
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_notif_warning)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 

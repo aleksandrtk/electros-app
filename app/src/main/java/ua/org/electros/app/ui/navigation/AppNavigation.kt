@@ -74,7 +74,7 @@ fun AppNavigation(application: ElectrosApplication) {
                     containerColor = StudioPanelDark,
                     tonalElevation = 0.dp
                 ) {
-                    NavTab.values().forEach { tab ->
+                    NavTab.entries.forEach { tab ->
                         val isSelected = currentTab == tab
                         NavigationBarItem(
                             selected = isSelected,

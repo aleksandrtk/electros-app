@@ -17,8 +17,9 @@ import androidx.compose.ui.unit.sp
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.SessionStatus
 import ua.org.electros.app.ui.theme.*
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -102,10 +103,16 @@ fun HistoryScreen(
     }
 }
 
+private val SESSION_DATE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd.MM • HH:mm", Locale.getDefault())
+
 @Composable
 private fun SessionItemCard(session: ChargeSessionEntity) {
-    val dateFormatter = remember { SimpleDateFormat("dd.MM • HH:mm", Locale.getDefault()) }
-    val formattedDate = remember(session.startedAt) { dateFormatter.format(Date(session.startedAt)) }
+    val formattedDate = remember(session.startedAt) {
+        SESSION_DATE_FORMATTER.format(
+            Instant.ofEpochMilli(session.startedAt).atZone(ZoneId.systemDefault())
+        )
+    }
 
     Card(
         shape = RoundedCornerShape(18.dp),

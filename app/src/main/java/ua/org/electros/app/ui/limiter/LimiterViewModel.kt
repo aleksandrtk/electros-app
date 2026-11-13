@@ -55,10 +55,6 @@ class LimiterViewModel(
     )
 
     private fun toUiState(settings: AppSettings, status: ScheduleStatus): LimiterUiState {
-        val (low, high) = normalizeThresholds(
-            settings.voltageLowThreshold,
-            settings.voltageHighThreshold
-        )
         return LimiterUiState(
             isKwhLimitEnabled = settings.isKwhLimitEnabled,
             targetKwh = settings.targetKwhLimit,
@@ -72,8 +68,8 @@ class LimiterViewModel(
             isApplyingSchedule = status.applying,
             scheduleError = status.error,
             isVoltageBalancingEnabled = settings.isVoltageBalancingEnabled,
-            voltageLowThreshold = low,
-            voltageHighThreshold = high,
+            voltageLowThreshold = settings.voltageLowThreshold,
+            voltageHighThreshold = settings.voltageHighThreshold,
             voltageMaxAmperage = settings.voltageMaxAmperage
         )
     }
@@ -185,18 +181,5 @@ class LimiterViewModel(
 
     fun setVoltageMaxAmperage(amperage: Int) {
         settingsStore.setVoltageMaxAmperage(amperage)
-    }
-
-    companion object {
-        const val MIN_HYSTERESIS_V = AppSettings.MIN_HYSTERESIS_V
-
-        internal fun clampLowThreshold(requestedLow: Int, currentHigh: Int): Int =
-            AppSettings.clampLowThreshold(requestedLow, currentHigh)
-
-        internal fun clampHighThreshold(requestedHigh: Int, currentLow: Int): Int =
-            AppSettings.clampHighThreshold(requestedHigh, currentLow)
-
-        internal fun normalizeThresholds(rawLow: Int, rawHigh: Int): Pair<Int, Int> =
-            AppSettings.normalizeThresholds(rawLow, rawHigh)
     }
 }

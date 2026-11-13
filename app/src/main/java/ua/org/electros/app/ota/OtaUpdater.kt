@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -430,7 +431,7 @@ object OtaUpdater {
         if (!appContext.packageManager.canRequestPackageInstalls()) {
             return try {
                 val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                    data = Uri.parse("package:${appContext.packageName}")
+                    data = "package:${appContext.packageName}".toUri()
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 appContext.startActivity(settingsIntent)
