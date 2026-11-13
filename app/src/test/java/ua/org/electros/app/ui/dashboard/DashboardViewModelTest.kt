@@ -465,6 +465,16 @@ class DashboardViewModelTest {
             publish()
         }
 
+        override suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double) {
+            val idx = slices.indexOfLast { it.sessionId == sessionId && it.endedAt == null }
+            if (idx >= 0) {
+                val cur = slices[idx]
+                if (counterKwh > cur.stationCounterLastKwh) {
+                    slices[idx] = cur.copy(stationCounterLastKwh = counterKwh)
+                }
+            }
+        }
+
         override fun getAllSessions(): Flow<List<ChargeSessionEntity>> = sessionsFlow
 
         override suspend fun insertSlice(slice: ChargeSliceEntity): Long {

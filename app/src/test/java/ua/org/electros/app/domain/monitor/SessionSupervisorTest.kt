@@ -342,9 +342,10 @@ class SessionSupervisorTest {
             val idx = slices.indexOfLast { it.endedAt == null }
             if (idx >= 0) {
                 val cur = slices[idx]
-                val delivered = (lastCounter - cur.stationCounterStartKwh).coerceAtLeast(0.0)
+                val effectiveLast = maxOf(lastCounter, cur.stationCounterLastKwh)
+                val delivered = (effectiveLast - cur.stationCounterStartKwh).coerceAtLeast(0.0)
                 slices[idx] = cur.copy(
-                    stationCounterLastKwh = lastCounter,
+                    stationCounterLastKwh = effectiveLast,
                     finalizedKwh = delivered,
                     endedAt = 900L,
                     terminationReason = reason
@@ -381,6 +382,16 @@ class SessionSupervisorTest {
 
         override suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long) {
             session = session.copy(accumulatedChargingMs = accumulatedMs, lastTickAt = lastTickAt)
+        }
+
+        override suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double) {
+            val idx = slices.indexOfLast { it.endedAt == null }
+            if (idx >= 0) {
+                val cur = slices[idx]
+                if (counterKwh > cur.stationCounterLastKwh) {
+                    slices[idx] = cur.copy(stationCounterLastKwh = counterKwh)
+                }
+            }
         }
 
         override suspend fun handleOutageDetected(sessionId: String, lastCounter: Double) {
@@ -574,6 +585,61 @@ class SessionSupervisorTest {
         assertThat(recoverOutcome.shouldStopService).isTrue()
         assertThat(recoverOutcome.events).contains(SupervisorEvent.CancelManualResumeAlert)
         assertThat(gateway.autoResumeCalls).isEqualTo(0)
+    }
+
+    @Test
+    fun outageWithZeroCounter_preservesLastSampledCounterAndDeliveredKwh() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-outage-zero"),
+            slices = mutableListOf(slice("s-outage-zero", startKwh = 100.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-outage-zero", targetKwh = 20.0, targetDurationMinutes = 0)
+
+        // Actively charging, advances counter to 105.0 kWh
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 105.0, voltage = 225))
+        supervisor.tick()
+
+        // Power goes out, station reports offline with 0.0 kWh
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = false, isCharging = false, counterKwh = 0.0, voltage = null))
+        val outcome = supervisor.tick()
+
+        assertThat(outcome.status).isEqualTo(SessionStatus.OUTAGE_DETECTED)
+        assertThat(gateway.outageCounters.last()).isEqualTo(105.0)
+        assertThat(gateway.session.totalKwhDelivered).isEqualTo(5.0)
+        assertThat(gateway.slices.first().finalizedKwh).isEqualTo(5.0)
+        val outageAlert = outcome.events.filterIsInstance<SupervisorEvent.ShowOutageAlert>().single()
+        assertThat(outageAlert.deliveredKwh).isWithin(0.01).of(5.0)
+
+        // Power returns with rebooted 0.0 kWh counter: must still go through stabilization without premature stop
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 0.0, voltage = 225))
+        val stabilize1 = supervisor.tick()
+        assertThat(stabilize1.status).isEqualTo(SessionStatus.OUTAGE_STABILIZING)
+        assertThat(gateway.autoResumeCalls).isEqualTo(0)
+        assertThat(gateway.session.totalKwhDelivered).isWithin(0.01).of(5.0)
+    }
+
+    @Test
+    fun counterRegressionToExactZero_resetsActiveCounterWithoutInflatingTotalDelivered() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-reg-zero", targetKwh = 30.0),
+            slices = mutableListOf(slice("s-reg-zero", startKwh = 100.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-reg-zero", targetKwh = 30.0, targetDurationMinutes = 0)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 112.0, voltage = 225))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+
+        // Station rapidly reboots to 0.0 kWh while staying online
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 0.0, voltage = 225))
+        val regressionTick = supervisor.tick()
+        assertThat(regressionTick.status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(regressionTick.shouldStopService).isFalse()
+        val ongoing = regressionTick.events.filterIsInstance<SupervisorEvent.UpdateOngoingNotification>().single()
+        assertThat(ongoing.deliveredKwh).isWithin(0.01).of(12.0)
     }
 }
 

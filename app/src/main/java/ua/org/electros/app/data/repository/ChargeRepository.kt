@@ -331,6 +331,10 @@ class ChargeRepository(
         chargeDao.updateSessionAmperage(sessionId, amperes)
     }
 
+    suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double) {
+        chargeDao.updateActiveSliceCounter(sessionId, counterKwh)
+    }
+
     /**
      * Sends stop command and confirms via fresh telemetry that charging stopped.
      * Waits and polls telemetry once per attempt here rather than double-verifying inside the scraper.
@@ -407,8 +411,11 @@ class ChargeRepository(
             return Result.failure(IOException("Не вдалося зупинити станцію"))
         }
         if (session != null) {
-            val lastCounter = _telemetryState.value?.consumedEnergyKwh
-                ?: fetchFreshTelemetryForAnchor()?.consumedEnergyKwh
+            val latestSlice = chargeDao.getLatestSliceForSession(sessionId)
+            val onlineTelemetry = _telemetryState.value?.takeIf { it.isOnline }?.consumedEnergyKwh
+                ?: fetchFreshTelemetryForAnchor()?.takeIf { it.isOnline }?.consumedEnergyKwh
+            val lastCounter = onlineTelemetry
+                ?: latestSlice?.stationCounterLastKwh
                 ?: 0.0
             finalizeSessionStopped(
                 sessionId = sessionId,

@@ -251,6 +251,9 @@ class ChargeMonitorService : Service() {
         override suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long) =
             repository.updateDurationProgress(sessionId, accumulatedMs, lastTickAt)
 
+        override suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double) =
+            repository.updateActiveSliceCounter(sessionId, counterKwh)
+
         override suspend fun handleOutageDetected(sessionId: String, lastCounter: Double) =
             repository.handleOutageDetected(sessionId, lastCounter)
 

@@ -72,6 +72,16 @@ interface ChargeDao {
     @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex DESC LIMIT 1")
     suspend fun getLatestSliceForSession(sessionId: String): ChargeSliceEntity?
 
+    @Query("""
+        UPDATE charge_slices
+        SET stationCounterLastKwh = CASE
+            WHEN :counterKwh > stationCounterLastKwh THEN :counterKwh
+            ELSE stationCounterLastKwh
+        END
+        WHERE sessionId = :sessionId AND endedAt IS NULL
+    """)
+    suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double)
+
     @Transaction
     suspend fun finalizeActiveSliceAndCommit(
         sessionId: String,
@@ -81,9 +91,10 @@ interface ChargeDao {
     ) {
         val latestSlice = getLatestSliceForSession(sessionId) ?: return
         if (latestSlice.endedAt == null) {
-            val delivered = (lastSampledKwh - latestSlice.stationCounterStartKwh).coerceAtLeast(0.0)
+            val effectiveLast = maxOf(lastSampledKwh, latestSlice.stationCounterLastKwh)
+            val delivered = (effectiveLast - latestSlice.stationCounterStartKwh).coerceAtLeast(0.0)
             val updated = latestSlice.copy(
-                stationCounterLastKwh = lastSampledKwh,
+                stationCounterLastKwh = effectiveLast,
                 finalizedKwh = delivered,
                 endedAt = endTime,
                 terminationReason = reason

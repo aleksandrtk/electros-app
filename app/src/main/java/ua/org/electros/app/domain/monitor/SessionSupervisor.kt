@@ -18,6 +18,7 @@ interface SessionMonitorGateway {
     suspend fun getActiveSession(): ChargeSessionEntity?
     suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity>
     suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long)
+    suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double)
     suspend fun handleOutageDetected(sessionId: String, lastCounter: Double)
     suspend fun handleOutageStabilizing(sessionId: String)
     suspend fun restoreChargingFromExistingSlice(sessionId: String, currentCounter: Double)
@@ -129,6 +130,8 @@ class SessionSupervisor(
             lastKnownAmperes = dbSession.amperageSetting
             stateMachine = ChargingStateMachine(dbSession.status)
             inactiveOnlineConsecutiveTicks = 0
+            val latestSlice = gateway.getSlicesForSession(id).lastOrNull()
+            lastSampledCounterKwh = latestSlice?.stationCounterLastKwh ?: 0.0
             if (dbSession.accumulatedChargingMs > 0L || dbSession.totalKwhDelivered > 0.0 || dbSession.lastTickAt > 0L) {
                 hasObservedActiveCharging = true
             }
@@ -216,18 +219,28 @@ class SessionSupervisor(
         var slices = gateway.getSlicesForSession(sessionId)
         var activeSlice = slices.lastOrNull { it.endedAt == null }
 
-        if (data.isOnline && EnergyAccumulator.isCounterRegression(data.consumedEnergyKwh, lastSampledCounterKwh)) {
+        val priorSliceCounter = maxOf(lastSampledCounterKwh, activeSlice?.stationCounterLastKwh ?: 0.0)
+        if (data.isOnline &&
+            activeSlice != null &&
+            EnergyAccumulator.isCounterRegression(data.consumedEnergyKwh, priorSliceCounter)
+        ) {
             handleCounterRegression(
                 sessionId = sessionId,
                 dbSession = dbSession,
                 slices = slices,
-                activeSliceStart = activeSlice?.stationCounterStartKwh ?: lastSampledCounterKwh,
+                activeSliceStart = activeSlice.stationCounterStartKwh,
+                preRebootCounter = priorSliceCounter,
                 events = events
             )
             slices = gateway.getSlicesForSession(sessionId)
             activeSlice = slices.lastOrNull { it.endedAt == null }
         }
-        lastSampledCounterKwh = data.consumedEnergyKwh
+        if (data.isOnline) {
+            lastSampledCounterKwh = data.consumedEnergyKwh
+            if (activeSlice != null) {
+                gateway.updateActiveSliceCounter(sessionId, data.consumedEnergyKwh)
+            }
+        }
 
         if (data.isOnline &&
             data.isChargingActive &&
@@ -244,12 +257,22 @@ class SessionSupervisor(
             activeSlice = slices.lastOrNull { it.endedAt == null }
         }
 
+        val effectiveCounter = if (data.isOnline) {
+            data.consumedEnergyKwh
+        } else {
+            maxOf(
+                data.consumedEnergyKwh,
+                lastSampledCounterKwh,
+                activeSlice?.stationCounterLastKwh ?: 0.0
+            )
+        }
+
         // Only open slices contribute active counter delta; closed slices are already in finalizedSlices.
-        val sliceStart = activeSlice?.stationCounterStartKwh ?: data.consumedEnergyKwh
+        val sliceStart = activeSlice?.stationCounterStartKwh ?: effectiveCounter
         val totalDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
             finalizedSlices = slices.filter { it.endedAt != null },
             activeSliceStartKwh = sliceStart,
-            currentStationCounterKwh = data.consumedEnergyKwh
+            currentStationCounterKwh = effectiveCounter
         )
         val hasEvidence = hasChargingEvidence(totalDelivered, dbSession.lastTickAt)
 
@@ -257,7 +280,7 @@ class SessionSupervisor(
             lastActiveChargingSampleAt = 0L
             gateway.updateDurationProgress(sessionId, accumulatedChargingMs, 0L)
             if (stateMachine.getState() == SessionStatus.CHARGING && !hasEvidence) {
-                closeStoppedOrUnstartedSession(sessionId, data.consumedEnergyKwh, hasEvidence = false)
+                closeStoppedOrUnstartedSession(sessionId, effectiveCounter, hasEvidence = false)
                 return true
             }
             if (stateMachine.getState() == SessionStatus.CHARGING ||
@@ -266,7 +289,7 @@ class SessionSupervisor(
             ) {
                 stateMachine.transition(StateEvent.OutageDetected)
                 hasAlertedManualResume = false
-                gateway.handleOutageDetected(sessionId, data.consumedEnergyKwh)
+                gateway.handleOutageDetected(sessionId, effectiveCounter)
                 events += SupervisorEvent.ShowOutageAlert(totalDelivered, gateway.isAutoResumeEnabled())
             }
         } else {
@@ -318,15 +341,16 @@ class SessionSupervisor(
         dbSession: ChargeSessionEntity,
         slices: List<ChargeSliceEntity>,
         activeSliceStart: Double,
+        preRebootCounter: Double,
         events: MutableList<SupervisorEvent>
     ) {
         lastActiveChargingSampleAt = 0L
         stateMachine.transition(StateEvent.OutageDetected)
-        gateway.handleOutageDetected(sessionId, lastSampledCounterKwh)
+        gateway.handleOutageDetected(sessionId, preRebootCounter)
         val outageDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
             finalizedSlices = slices.filter { it.endedAt != null },
             activeSliceStartKwh = activeSliceStart,
-            currentStationCounterKwh = lastSampledCounterKwh
+            currentStationCounterKwh = preRebootCounter
         )
         if (gateway.isAutoResumeEnabled()) {
             val resumeRes = gateway.resumeAfterOutage(sessionId)
