@@ -7,13 +7,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import ua.org.electros.app.data.local.AuthPreferences
-import ua.org.electros.app.data.model.StationConfig
 import ua.org.electros.app.data.repository.ChargeRepository
 
 data class SettingsUiState(
     val deviceSerial: String,
     val hasCredentials: Boolean,
-    val config: StationConfig = StationConfig(),
     val isBatteryOptimizationIgnored: Boolean = true,
     val areNotificationsEnabled: Boolean = true,
     val isSavingCredentials: Boolean = false,

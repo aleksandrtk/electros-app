@@ -205,22 +205,6 @@ fun SettingsScreen(
             }
         }
 
-        // Hardware Parameters Card
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(text = "АПАРАТНІ ПАРАМЕТРИ СТАНЦІЇ", style = MaterialTheme.typography.labelSmall, color = SecondaryCyan)
-
-                SettingRow(label = "Контроль заземлення", value = "Увімкнено")
-                SettingRow(label = "Струм витоку (УЗО)", value = state.config.leakageCurrentThreshold)
-                SettingRow(label = "Мін. напруга заряджання", value = "${state.config.minChargingVoltage} В")
-                SettingRow(label = "Сервер станції", value = "${state.config.serverHost}:${state.config.serverPort}")
-            }
-        }
-
         // Background Monitoring / Doze Card
         Card(
             shape = RoundedCornerShape(24.dp),
