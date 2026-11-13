@@ -32,8 +32,8 @@ class ElectrosApplication : Application() {
         super.onCreate()
         database = AppDatabase.getInstance(this)
         authPreferences = AuthPreferences(this)
-        settingsStore = SettingsStore.getInstance(this, authPreferences)
-        cookieStorage = CookieStorage(this)
+        settingsStore = SettingsStore.getInstance(this)
+        cookieStorage = CookieStorage()
         scraper = ElectrosWebScraper(cookieStorage, authPreferences)
         repository = ChargeRepository(scraper, database.chargeDao(), authPreferences, settingsStore)
     }

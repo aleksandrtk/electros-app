@@ -389,14 +389,13 @@ class SettingsStore internal constructor(
         @Volatile
         private var instance: SettingsStore? = null
 
-        fun getInstance(context: Context, authPreferences: AuthPreferences): SettingsStore {
+        fun getInstance(context: Context): SettingsStore {
             return instance ?: synchronized(this) {
                 instance ?: run {
                     val appContext = context.applicationContext
                     val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
                     val dataStore = PreferenceDataStoreFactory.create(
                         corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
-                        migrations = listOf(legacyAuthPrefsMigration(authPreferences.legacyPrefsForMigration())),
                         scope = ioScope,
                         produceFile = { appContext.preferencesDataStoreFile(DATASTORE_FILE_NAME) }
                     )
