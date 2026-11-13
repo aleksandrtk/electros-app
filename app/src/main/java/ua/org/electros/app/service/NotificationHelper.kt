@@ -20,6 +20,7 @@ class NotificationHelper(private val context: Context) {
         const val NOTIFICATION_ID_ALERT = 1002
         const val NOTIFICATION_ID_RESUME_ALERT = 1007
         const val NOTIFICATION_ID_FGS_BLOCKED = 1008
+        const val NOTIFICATION_ID_BALANCING = 1009
 
         const val ACTION_STOP_CHARGE = "ua.org.electros.app.ACTION_STOP_CHARGE"
         const val ACTION_RESUME_CHARGE = "ua.org.electros.app.ACTION_RESUME_CHARGE"
@@ -209,8 +210,7 @@ class NotificationHelper(private val context: Context) {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
-        val notifId = NOTIFICATION_ID_ALERT + 10 + (System.currentTimeMillis() % 100).toInt()
-        notificationManager.notify(notifId, builder.build())
+        notificationManager.notify(NOTIFICATION_ID_BALANCING, builder.build())
     }
 
     fun showConnectionLostAlert(currentAmperes: Int) {

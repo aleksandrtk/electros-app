@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1233,7 +1234,7 @@ private fun StudioClassicKwhLimitCard(
     onSelectKwhLimit: (Boolean, Double) -> Unit
 ) {
     val view = LocalView.current
-    val expanded = remember { mutableStateOf(false) }
+    val expanded = rememberSaveable { mutableStateOf(false) }
     val hasActiveQuota = hasActiveSession && activeTargetKwh > 0.0
     val isLimitOn = isKwhLimitEnabled || hasActiveQuota
     val displayKwh = if (hasActiveQuota) activeTargetKwh else targetQuotaKwh
@@ -1455,25 +1456,25 @@ private fun StudioClassicTimerCard(
     onSelectDuration: (Boolean, Int) -> Unit
 ) {
     val view = LocalView.current
-    val expanded = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val nowMs = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(System.currentTimeMillis()) }
+    val expanded = rememberSaveable { mutableStateOf(false) }
+    val nowMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    androidx.compose.runtime.LaunchedEffect(
+    LaunchedEffect(
         isChargingActive,
         isOutageActive,
         activeTargetDurationMinutes,
         lastTickAt,
         accumulatedChargingMs
     ) {
-        nowMs.value = System.currentTimeMillis()
+        nowMs.longValue = System.currentTimeMillis()
         while (isChargingActive && !isOutageActive && activeTargetDurationMinutes > 0 && lastTickAt > 0L) {
-            kotlinx.coroutines.delay(1000L)
-            nowMs.value = System.currentTimeMillis()
+            delay(1000L)
+            nowMs.longValue = System.currentTimeMillis()
         }
     }
 
     val liveDeltaMs = if (isChargingActive && !isOutageActive && activeTargetDurationMinutes > 0 && lastTickAt > 0L) {
-        (nowMs.value - lastTickAt).coerceAtLeast(0L)
+        (nowMs.longValue - lastTickAt).coerceAtLeast(0L)
     } else {
         0L
     }
@@ -1681,12 +1682,12 @@ private fun StudioClassicScheduleCard(
     onUpdateSchedule: (Boolean, String, String) -> Unit
 ) {
     val view = LocalView.current
-    val expanded = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val draftStart = androidx.compose.runtime.remember(scheduleStartTime) {
-        androidx.compose.runtime.mutableStateOf(scheduleStartTime)
+    val expanded = rememberSaveable { mutableStateOf(false) }
+    val draftStart = rememberSaveable(scheduleStartTime) {
+        mutableStateOf(scheduleStartTime)
     }
-    val draftStop = androidx.compose.runtime.remember(scheduleStopTime) {
-        androidx.compose.runtime.mutableStateOf(scheduleStopTime)
+    val draftStop = rememberSaveable(scheduleStopTime) {
+        mutableStateOf(scheduleStopTime)
     }
 
     val statusText = if (isScheduleEnabled) "ON • $scheduleStartTime–$scheduleStopTime" else "OFF"

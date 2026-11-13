@@ -1,9 +1,11 @@
 package ua.org.electros.app.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -46,7 +48,7 @@ fun AppNavigation(application: ElectrosApplication) {
         UpdateDialog(viewModel = otaViewModel)
     }
 
-    var isLoggedIn by remember {
+    var isLoggedIn by rememberSaveable {
         mutableStateOf(application.authPreferences.hasValidCredentials())
     }
 
@@ -60,7 +62,10 @@ fun AppNavigation(application: ElectrosApplication) {
             onLoginSuccess = { isLoggedIn = true }
         )
     } else {
-        var currentTab by remember { mutableStateOf(NavTab.CHARGING) }
+        var currentTab by rememberSaveable { mutableStateOf(NavTab.CHARGING) }
+        BackHandler(enabled = currentTab != NavTab.CHARGING) {
+            currentTab = NavTab.CHARGING
+        }
 
         val dashboardViewModel: DashboardViewModel = viewModel(factory = factory)
         val limiterViewModel: LimiterViewModel = viewModel(factory = factory)
@@ -114,9 +119,9 @@ fun AppNavigation(application: ElectrosApplication) {
                 )
                 NavTab.SETTINGS -> SettingsScreen(
                     viewModel = settingsViewModel,
+                    modifier = Modifier.padding(innerPadding),
                     otaViewModel = otaViewModel,
-                    onLogout = { isLoggedIn = false },
-                    modifier = Modifier.padding(innerPadding)
+                    onLogout = { isLoggedIn = false }
                 )
             }
         }

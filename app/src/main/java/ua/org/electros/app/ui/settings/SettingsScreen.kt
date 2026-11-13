@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -40,17 +41,17 @@ import ua.org.electros.app.ui.theme.*
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    modifier: Modifier = Modifier,
     otaViewModel: OtaViewModel? = null,
-    onLogout: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onLogout: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var serialInput by remember(state.deviceSerial) { mutableStateOf(state.deviceSerial) }
-    var passwordInput by remember { mutableStateOf("") }
-    var isSerialVisible by remember { mutableStateOf(false) }
-    var isPasswordVisible by remember { mutableStateOf(false) }
+    var serialInput by rememberSaveable(state.deviceSerial) { mutableStateOf(state.deviceSerial) }
+    var passwordInput by rememberSaveable { mutableStateOf("") }
+    var isSerialVisible by rememberSaveable { mutableStateOf(false) }
+    var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
 
     fun checkSystemStatuses() {
         val pm = context.getSystemService(PowerManager::class.java)
