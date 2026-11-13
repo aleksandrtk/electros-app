@@ -10,9 +10,6 @@ val StudioScreenDark = Color(0xFF090A0E)        // Recessed cathode display wind
 val StudioScreenBorder = Color(0xFF232733)      // Inner display bezel
 
 val AmberNixie = Color(0xFFFF9900)             // Signature glowing warm amber
-val AmberNixieDim = Color(0xFFB46E00)          // Secondary/dim amber
-val AmberNixieGlow = Color(0x66FF9900)         // Cathode tube glow overlay
-val AmberNixieText = Color(0xFFFFCC80)         // Soft warm text
 
 val StudioCyan = Color(0xFF38BDF8)             // Subtle engineering blue
 val StudioGreen = Color(0xFF10B981)            // Status OK / DLB active
@@ -40,4 +37,3 @@ val OnSecondaryContainerDark = Color(0xFFBBE9FF)
 val ErrorRed = IndustrialRed
 val ErrorContainerDark = Color(0xFF451111)
 val WarningAmber = StudioAmberWarn
-val WarningContainerDark = Color(0xFF3D2700)

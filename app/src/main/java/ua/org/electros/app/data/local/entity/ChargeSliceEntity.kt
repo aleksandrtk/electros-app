@@ -9,8 +9,7 @@ enum class SliceEndReason {
     POWER_OUTAGE,
     TARGET_REACHED,
     MANUAL_STOP,
-    VEHICLE_STOPPED,
-    COUNTER_REGRESSION
+    VEHICLE_STOPPED
 }
 
 @Entity(

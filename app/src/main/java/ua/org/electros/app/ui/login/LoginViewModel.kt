@@ -13,8 +13,7 @@ data class LoginUiState(
     val deviceSerial: String = "",
     val password: String = "",
     val isLoading: Boolean = false,
-    val errorMessage: String? = null,
-    val isSuccess: Boolean = false
+    val errorMessage: String? = null
 )
 
 class LoginViewModel(
@@ -58,7 +57,7 @@ class LoginViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             val result = repository.login(serial, password)
             result.onSuccess {
-                _uiState.value = _uiState.value.copy(password = "", isLoading = false, isSuccess = true)
+                _uiState.value = _uiState.value.copy(password = "", isLoading = false)
                 onSuccess()
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(

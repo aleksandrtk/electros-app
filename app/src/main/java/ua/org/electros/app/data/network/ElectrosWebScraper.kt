@@ -523,30 +523,12 @@ class ElectrosWebScraper(
         // Line 12: power in dW (divide by 10,000 to get kW)
         val powerKw = (lines.getOrNull(12)?.trim()?.toDoubleOrNull() ?: 0.0) / 10_000.0
 
-        // Line 13: neutral voltage (null when omitted)
-        val neutralV = lines.getOrNull(13)?.trim()?.toIntOrNull()
-
-        val vMax = lines.getOrNull(16)?.trim()?.toIntOrNull() ?: vCur
-        val vMin = lines.getOrNull(17)?.trim()?.toIntOrNull() ?: vCur
-        val vAvg = lines.getOrNull(20)?.trim()?.toIntOrNull() ?: vCur
-
-        val nMax = lines.getOrNull(18)?.trim()?.toIntOrNull() ?: neutralV
-        val nMin = lines.getOrNull(19)?.trim()?.toIntOrNull() ?: neutralV
-        val nAvg = lines.getOrNull(21)?.trim()?.toIntOrNull() ?: neutralV
-
         val isChargingActive = statusCode == 2 || (isOnline && (measuredA > 0.5 || powerKw > 0.1))
 
         return TelemetryData(
             statusText = statusText,
             isOnline = isOnline,
-            voltageMin = vMin,
-            voltageAvg = vAvg,
             voltageCurrent = vCur,
-            voltageMax = vMax,
-            neutralMin = nMin,
-            neutralAvg = nAvg,
-            neutralCurrent = neutralV,
-            neutralMax = nMax,
             selectedCurrentAmperes = selectedA,
             measuredCurrentAmperes = measuredA,
             consumedEnergyKwh = energyKwh,
@@ -559,10 +541,7 @@ class ElectrosWebScraper(
         val bodyText = doc.body().text()
 
         // Grid Voltage row: Min / Середня / Поточна / Max
-        var vMin: Int? = null
-        var vAvg: Int? = null
         var vCur: Int? = null
-        var vMax: Int? = null
         val vTable = doc.select("table").firstOrNull { table ->
             val txt = table.text().lowercase()
             txt.contains("напруга") && txt.contains("мереж")
@@ -576,19 +555,11 @@ class ElectrosWebScraper(
                 val numbers = cells.mapNotNull {
                     it.text().trim().replace(NON_DIGITS_REGEX, "").toIntOrNull()
                 }
-                if (numbers.size >= 4) {
-                    vMin = numbers[0]
-                    vAvg = numbers[1]
-                    vCur = numbers[2]
-                    vMax = numbers[3]
-                } else if (numbers.size == 3) {
-                    vMin = numbers[0]
-                    vAvg = numbers[1]
-                    vCur = numbers[1]
-                    vMax = numbers[2]
-                } else if (numbers.isNotEmpty()) {
-                    vCur = numbers.last()
-                    vAvg = numbers.last()
+                vCur = when {
+                    numbers.size >= 4 -> numbers[2]
+                    numbers.size == 3 -> numbers[1]
+                    numbers.isNotEmpty() -> numbers.last()
+                    else -> null
                 }
             }
         }
@@ -598,7 +569,6 @@ class ElectrosWebScraper(
                 val foundV = voltMatcher.groupValues[1].toIntOrNull()
                 if (foundV != null && foundV in 100..450) {
                     vCur = foundV
-                    vAvg = foundV
                 }
             }
         }
@@ -650,32 +620,6 @@ class ElectrosWebScraper(
             extractedStatus.isNotBlank() -> extractedStatus
             isOnline -> "Підключено"
             else -> "Станція OFFLINE"
-        }
-
-        // Neutral Voltage row (nullable when not reported in HTML)
-        var nMin: Int? = null
-        var nAvg: Int? = null
-        var nCur: Int? = null
-        var nMax: Int? = null
-        val nTable = doc.select("table").firstOrNull { table ->
-            val txt = table.text().lowercase()
-            txt.contains("напруга") && txt.contains("нейтрал")
-        }
-        if (nTable != null) {
-            val dataRows = nTable.select("tr").filter { it.select("td").isNotEmpty() }
-            val lastDataRow = dataRows.lastOrNull()
-            val cells = lastDataRow?.select("td")
-            if (cells != null && cells.isNotEmpty()) {
-                val numbers = cells.mapNotNull {
-                    it.text().trim().replace(NON_DIGITS_REGEX, "").toIntOrNull()
-                }
-                if (numbers.size >= 4) {
-                    nMin = numbers[0]
-                    nAvg = numbers[1]
-                    nCur = numbers[2]
-                    nMax = numbers[3]
-                }
-            }
         }
 
         // Selected Amperes dropdown
@@ -747,14 +691,7 @@ class ElectrosWebScraper(
         return TelemetryData(
             statusText = statusText,
             isOnline = isOnline,
-            voltageMin = vMin,
-            voltageAvg = vAvg,
             voltageCurrent = vCur,
-            voltageMax = vMax,
-            neutralMin = nMin,
-            neutralAvg = nAvg,
-            neutralCurrent = nCur,
-            neutralMax = nMax,
             selectedCurrentAmperes = selectedA,
             measuredCurrentAmperes = measuredA,
             consumedEnergyKwh = energyKwh,
