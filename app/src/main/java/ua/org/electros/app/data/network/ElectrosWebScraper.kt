@@ -67,6 +67,12 @@ class ElectrosWebScraper(
         authBlockedUntilMs = 0L
     }
 
+    fun clearSession() {
+        cookieStorage?.clear()
+        lastCsrfToken = null
+        resetAuthBackoff()
+    }
+
     suspend fun fetchTelemetry(): Result<TelemetryData> = withContext(Dispatchers.IO) {
         val serial = currentSerial()
         if (serial.isNotBlank()) {

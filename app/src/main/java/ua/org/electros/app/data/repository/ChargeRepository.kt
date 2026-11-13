@@ -61,6 +61,10 @@ class ChargeRepository(
     }
 
     suspend fun login(serial: String, password: String): Result<Unit> {
+        val previousSerial = authPreferences?.deviceSerial.orEmpty()
+        if (previousSerial.isNotBlank() && previousSerial != serial.trim()) {
+            scraper.clearSession()
+        }
         val result = scraper.login(serial, password)
         if (result.isSuccess) {
             authPreferences?.deviceSerial = serial
@@ -70,10 +74,11 @@ class ChargeRepository(
         return result
     }
 
-    fun logout() {
+    suspend fun logout() {
         authPreferences?.clearCredentials()
-        scraper.resetAuthBackoff()
+        scraper.clearSession()
         _telemetryState.value = null
+        chargeDao.cancelAllActiveSessions(clockMs())
     }
 
     suspend fun getSessionById(sessionId: String): ChargeSessionEntity? {

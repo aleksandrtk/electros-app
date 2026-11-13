@@ -100,11 +100,38 @@ class SettingsViewModel(
         _uiState.value = _uiState.value.copy(areNotificationsEnabled = isEnabled)
     }
 
-    fun logout() {
-        repository?.logout() ?: authPreferences.clearCredentials()
+    fun reloadCredentials() {
         _uiState.value = _uiState.value.copy(
-            deviceSerial = "",
-            hasCredentials = false
+            deviceSerial = authPreferences.deviceSerial,
+            hasCredentials = authPreferences.hasValidCredentials(),
+            isSavingCredentials = false,
+            credentialsSaved = false,
+            credentialsError = null
         )
+    }
+
+    fun logout(onComplete: () -> Unit = {}) {
+        val repo = repository
+        if (repo == null) {
+            authPreferences.clearCredentials()
+            _uiState.value = _uiState.value.copy(
+                deviceSerial = "",
+                hasCredentials = false,
+                credentialsSaved = false,
+                credentialsError = null
+            )
+            onComplete()
+            return
+        }
+        viewModelScope.launch {
+            repo.logout()
+            _uiState.value = _uiState.value.copy(
+                deviceSerial = "",
+                hasCredentials = false,
+                credentialsSaved = false,
+                credentialsError = null
+            )
+            onComplete()
+        }
     }
 }

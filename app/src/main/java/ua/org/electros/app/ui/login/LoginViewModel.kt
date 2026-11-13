@@ -58,7 +58,7 @@ class LoginViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             val result = repository.login(serial, password)
             result.onSuccess {
-                _uiState.value = _uiState.value.copy(isLoading = false, isSuccess = true)
+                _uiState.value = _uiState.value.copy(password = "", isLoading = false, isSuccess = true)
                 onSuccess()
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(

@@ -34,6 +34,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import ua.org.electros.app.BuildConfig
 import ua.org.electros.app.ota.OtaViewModel
+import ua.org.electros.app.service.ChargeMonitorService
 import ua.org.electros.app.ui.theme.*
 
 @Composable
@@ -65,6 +66,7 @@ fun SettingsScreen(
     }
 
     LaunchedEffect(Unit) {
+        viewModel.reloadCredentials()
         checkSystemStatuses()
     }
 
@@ -189,8 +191,10 @@ fun SettingsScreen(
 
                 OutlinedButton(
                     onClick = {
-                        viewModel.logout()
-                        onLogout()
+                        ChargeMonitorService.stop(context)
+                        viewModel.logout {
+                            onLogout()
+                        }
                     },
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
