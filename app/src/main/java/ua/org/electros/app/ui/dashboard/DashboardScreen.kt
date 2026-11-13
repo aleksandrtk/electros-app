@@ -9,6 +9,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -50,6 +52,7 @@ import kotlinx.coroutines.delay
 import ua.org.electros.app.ui.theme.*
 import java.util.Locale
 import kotlin.math.atan2
+import kotlin.math.hypot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,11 +90,19 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val telemetry = state.telemetry
-            val isChargingOrSessionActive = (telemetry?.isChargingActive == true) || state.activeSession != null
-            val actualAmperes = if (telemetry != null && telemetry.selectedCurrentAmperes > 0) {
-                telemetry.selectedCurrentAmperes
-            } else {
-                state.selectedAmperes
+            val activeSession = state.activeSession
+            val isChargingOrSessionActive = (telemetry?.isChargingActive == true) || activeSession != null
+            val actualAmperes = when {
+                activeSession != null && activeSession.amperageSetting in 6..32 && activeSession.amperageSetting != state.selectedAmperes -> {
+                    activeSession.amperageSetting
+                }
+                telemetry != null && telemetry.selectedCurrentAmperes in 6..32 -> {
+                    telemetry.selectedCurrentAmperes
+                }
+                activeSession != null && activeSession.amperageSetting in 6..32 -> {
+                    activeSession.amperageSetting
+                }
+                else -> state.selectedAmperes
             }
 
             // 1. Clean Connection Status Plate + Live Actual Amperage Pill (zero extra vertical space)
@@ -244,8 +255,9 @@ private fun StudioTopHeader(
     val elapsedMs = (accumulatedChargingMs + liveDeltaMs).coerceAtLeast(0L)
     val remainingMs = (targetMs - elapsedMs).coerceAtLeast(0L)
 
-    val hasTimerTarget = activeTargetDurationMinutes > 0
+    val hasTimerTarget = activeTargetDurationMinutes > 0 && isChargingOrSessionActive
     val isDerated = actualAmperes < nominalAmperes
+    val isBoosted = actualAmperes > nominalAmperes
     val modeLabel = if (hasTimerTarget) {
         "${actualAmperes}A · ${formatCountdownHms(remainingMs)}"
     } else {
@@ -253,6 +265,7 @@ private fun StudioTopHeader(
     }
     val modeAccent = when {
         isDerated -> AmberNixie
+        isBoosted -> SecondaryCyan
         hasTimerTarget -> AmberNixie
         else -> StudioGreen
     }
@@ -287,24 +300,23 @@ private fun StudioTopHeader(
             )
         }
 
-        if (isChargingOrSessionActive) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(StudioScreenDark)
-                    .border(1.dp, modeAccent.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            ) {
-                Text(
-                    text = modeLabel,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = modeAccent,
-                    maxLines = 1
-                )
-            }
+        // Live actual amperage pill (always visible)
+        Spacer(modifier = Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(StudioScreenDark)
+                .border(1.dp, modeAccent.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = modeLabel,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = modeAccent,
+                maxLines = 1
+            )
         }
     }
 }
@@ -548,11 +560,39 @@ private fun StudioClassicRotaryKnobCard(
     fun angleForIndex(idx: Int) = stopAngles[idx.coerceIn(0, stopAngles.lastIndex)]
     val targetAngle = angleForIndex(currentIndex)
 
+    fun findClosestStopIndex(angle: Float): Int {
+        var best = 0
+        var minDiff = Float.MAX_VALUE
+        stopAngles.forEachIndexed { i, a ->
+            val diff = kotlin.math.abs(angle - a)
+            if (diff < minDiff) {
+                minDiff = diff
+                best = i
+            }
+        }
+        return best
+    }
+
+    var isDragging by remember { mutableStateOf(false) }
+    var dragAngle by remember { mutableFloatStateOf(targetAngle) }
+    var lastHapticIndex by remember { mutableIntStateOf(currentIndex) }
+
+    LaunchedEffect(targetAngle, isDragging) {
+        if (!isDragging) {
+            dragAngle = targetAngle
+        }
+    }
+
     val animatedAngle by animateFloatAsState(
         targetValue = targetAngle,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(
+            dampingRatio = 0.85f,
+            stiffness = Spring.StiffnessMedium
+        ),
         label = "knobRotation"
     )
+
+    val currentAngle = if (isDragging) dragAngle else animatedAngle
 
     val stageCenterOffsetY = 10.dp
     val labelOffsets = listOf(
@@ -608,52 +648,11 @@ private fun StudioClassicRotaryKnobCard(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Compact tactile stage matching dark machined cam switch aesthetic
+            // Compact tactile stage matching dark machined cam switch aesthetic (drag only on knob)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-                    .pointerInput(stops) {
-                        detectDragGestures { change, _ ->
-                            change.consume()
-                            val center = Offset(size.width / 2f, size.height / 2f + stageCenterOffsetY.toPx())
-                            val pos = change.position
-                            val dx = pos.x - center.x
-                            val dy = pos.y - center.y
-                            val angleRad = atan2(dx.toDouble(), -dy.toDouble())
-                            val angleDeg = Math.toDegrees(angleRad).toFloat()
-
-                            // Deadzone at bottom
-                            if (angleDeg > 130f) {
-                                if (selectedAmperes != 16) {
-                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                    onAmperageSelected(16)
-                                }
-                                return@detectDragGestures
-                            } else if (angleDeg < -130f) {
-                                if (selectedAmperes != 6) {
-                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                    onAmperageSelected(6)
-                                }
-                                return@detectDragGestures
-                            }
-
-                            var bestIdx = 0
-                            var minDiff = Float.MAX_VALUE
-                            stops.indices.forEach { idx ->
-                                val stopAngle = angleForIndex(idx)
-                                val diff = kotlin.math.abs(angleDeg - stopAngle)
-                                if (diff < minDiff) {
-                                    minDiff = diff
-                                    bestIdx = idx
-                                }
-                            }
-                            if (stops[bestIdx] != selectedAmperes) {
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                onAmperageSelected(stops[bestIdx])
-                            }
-                        }
-                    },
+                    .height(180.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -698,17 +697,98 @@ private fun StudioClassicRotaryKnobCard(
                         modifier = Modifier
                             .size(140.dp)
                             .pointerInput(stops, currentIndex) {
-                                detectTapGestures { offset ->
-                                    val isRightSide = offset.x >= (size.width / 2f)
-                                    val newIdx = if (isRightSide) {
-                                        (currentIndex + 1).coerceAtMost(stops.lastIndex)
-                                    } else {
-                                        (currentIndex - 1).coerceAtLeast(0)
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val cx = size.width / 2f
+                                    val cy = size.height / 2f
+                                    val radius = size.width * 0.48f
+                                    val startDist = hypot(down.position.x - cx, down.position.y - cy)
+
+                                    // Only interact if the touch starts inside the circular knob well
+                                    if (startDist > radius) return@awaitEachGesture
+
+                                    var isDragStarted = false
+                                    var totalDragMovement = 0f
+                                    val startPos = down.position
+                                    var lastTouchAngle = Math.toDegrees(atan2((startPos.x - cx).toDouble(), -(startPos.y - cy).toDouble())).toFloat()
+                                    var currentKnobAngle = targetAngle
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                        if (!change.pressed) {
+                                            // Finger released
+                                            if (isDragStarted) {
+                                                change.consume()
+                                                isDragging = false
+                                                val finalIdx = findClosestStopIndex(dragAngle)
+                                                if (finalIdx != currentIndex) {
+                                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                                    onAmperageSelected(stops[finalIdx])
+                                                } else {
+                                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                                }
+                                            } else if (totalDragMovement < 8.dp.toPx()) {
+                                                // Tap on knob: left half decreases, right half increases
+                                                change.consume()
+                                                val isRightSide = startPos.x >= cx
+                                                val newIdx = if (isRightSide) {
+                                                    (currentIndex + 1).coerceAtMost(stops.lastIndex)
+                                                } else {
+                                                    (currentIndex - 1).coerceAtLeast(0)
+                                                }
+                                                if (newIdx != currentIndex) {
+                                                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                                    onAmperageSelected(stops[newIdx])
+                                                }
+                                            }
+                                            break
+                                        }
+
+                                        val curPos = change.position
+                                        val dx = curPos.x - cx
+                                        val dy = curPos.y - cy
+                                        val distFromStart = hypot(curPos.x - startPos.x, curPos.y - startPos.y)
+                                        totalDragMovement += distFromStart
+
+                                        if (!isDragStarted && distFromStart > 6.dp.toPx()) {
+                                            isDragStarted = true
+                                            isDragging = true
+                                            lastHapticIndex = currentIndex
+                                            currentKnobAngle = targetAngle
+                                            dragAngle = targetAngle
+                                        }
+
+                                        if (isDragStarted) {
+                                            change.consume()
+                                            val currentTouchAngle = Math.toDegrees(atan2(dx.toDouble(), -dy.toDouble())).toFloat()
+                                            var delta = currentTouchAngle - lastTouchAngle
+                                            if (delta > 180f) delta -= 360f
+                                            if (delta < -180f) delta += 360f
+                                            lastTouchAngle = currentTouchAngle
+
+                                            // Accumulate angle
+                                            currentKnobAngle += delta
+
+                                            // End-stop resistance past -114° and +114°
+                                            val boundedAngle = when {
+                                                currentKnobAngle > 114f -> 114f + ((currentKnobAngle - 114f) * 0.18f).coerceAtMost(14f)
+                                                currentKnobAngle < -114f -> -114f + ((currentKnobAngle - (-114f)) * 0.18f).coerceAtLeast(-14f)
+                                                else -> currentKnobAngle
+                                            }
+
+                                            // Apply rotational weight/damping (0.72)
+                                            dragAngle = dragAngle + (boundedAngle - dragAngle) * 0.72f
+
+                                            val closestIdx = findClosestStopIndex(dragAngle)
+                                            if (closestIdx != lastHapticIndex) {
+                                                lastHapticIndex = closestIdx
+                                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                            }
+                                        }
                                     }
-                                    if (newIdx != currentIndex) {
-                                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                                        onAmperageSelected(stops[newIdx])
-                                    }
+                                    isDragging = false
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -814,7 +894,7 @@ private fun StudioClassicRotaryKnobCard(
                             // World-space shadow cast by handle onto disc
                             clipPath(discClip) {
                                 translate(left = 3.dp.toPx(), top = 4.dp.toPx()) {
-                                    rotate(degrees = animatedAngle, pivot = centerOffset) {
+                                    rotate(degrees = currentAngle, pivot = centerOffset) {
                                         drawRoundRect(
                                             color = Color(0x88040508),
                                             topLeft = Offset(cx - w * 0.145f, cy - w * 0.405f),
@@ -827,7 +907,7 @@ private fun StudioClassicRotaryKnobCard(
 
                             // Sculpted left & right sloped chamfer skirts clipped flush to disc rim
                             clipPath(discClip) {
-                                rotate(degrees = animatedAngle, pivot = centerOffset) {
+                                rotate(degrees = currentAngle, pivot = centerOffset) {
                                     val skirtTop = cy - w * 0.428f
                                     val skirtBottom = cy + w * 0.428f
                                     val shoulderUpper = cy - w * 0.27f
@@ -891,7 +971,7 @@ private fun StudioClassicRotaryKnobCard(
                             }
 
                             // Raised satin flat front plateau + recessed indicator slot + warm amber LED pill
-                            rotate(degrees = animatedAngle, pivot = centerOffset) {
+                            rotate(degrees = currentAngle, pivot = centerOffset) {
                                 drawRoundRect(
                                     brush = Brush.linearGradient(
                                         colors = listOf(Color(0xFF383F4D), Color(0xFF2C323E), Color(0xFF212630)),
