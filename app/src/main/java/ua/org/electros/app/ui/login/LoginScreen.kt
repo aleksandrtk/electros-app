@@ -77,6 +77,10 @@ fun LoginScreen(
                         onValueChange = { viewModel.onSerialChanged(it) },
                         label = { Text("Номер пристрою (наприклад, a1234)") },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Ascii,
+                            autoCorrectEnabled = false
+                        ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimaryDark,
                             unfocusedTextColor = TextPrimaryDark,
@@ -92,7 +96,10 @@ fun LoginScreen(
                         label = { Text("Пароль пристрою") },
                         singleLine = true,
                         visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            autoCorrectEnabled = false
+                        ),
                         trailingIcon = {
                             TextButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
                                 Text(

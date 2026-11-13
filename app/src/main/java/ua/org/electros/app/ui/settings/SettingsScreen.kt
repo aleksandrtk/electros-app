@@ -112,6 +112,10 @@ fun SettingsScreen(
                     label = { Text("Номер пристрою (наприклад, a1234)") },
                     singleLine = true,
                     visualTransformation = if (isSerialVisible) VisualTransformation.None else SerialMaskVisualTransformation,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Ascii,
+                        autoCorrectEnabled = false
+                    ),
                     trailingIcon = {
                         TextButton(onClick = { isSerialVisible = !isSerialVisible }) {
                             Text(
@@ -139,7 +143,10 @@ fun SettingsScreen(
                     label = { Text("Новий пароль пристрою") },
                     singleLine = true,
                     visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        autoCorrectEnabled = false
+                    ),
                     trailingIcon = {
                         TextButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
                             Text(
