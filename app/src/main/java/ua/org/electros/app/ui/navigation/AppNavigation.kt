@@ -1,0 +1,129 @@
+package ua.org.electros.app.ui.navigation
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import ua.org.electros.app.ElectrosApplication
+import ua.org.electros.app.R
+import ua.org.electros.app.ota.OtaViewModel
+import ua.org.electros.app.ui.dashboard.DashboardScreen
+import ua.org.electros.app.ui.dashboard.DashboardViewModel
+import ua.org.electros.app.ui.history.HistoryScreen
+import ua.org.electros.app.ui.history.HistoryViewModel
+import ua.org.electros.app.ui.limiter.LimiterScreen
+import ua.org.electros.app.ui.limiter.LimiterViewModel
+import ua.org.electros.app.ui.login.LoginScreen
+import ua.org.electros.app.ui.login.LoginViewModel
+import ua.org.electros.app.ui.ota.UpdateDialog
+import ua.org.electros.app.ui.settings.SettingsScreen
+import ua.org.electros.app.ui.settings.SettingsViewModel
+import ua.org.electros.app.ui.theme.*
+
+enum class NavTab(val title: String, val iconRes: Int) {
+    CHARGING("Заряд", R.drawable.ic_nav_bolt),
+    LIMITER("Ліміт", R.drawable.ic_nav_tune),
+    HISTORY("Історія", R.drawable.ic_nav_bar_chart),
+    SETTINGS("Налаштування", R.drawable.ic_nav_settings)
+}
+
+@Composable
+fun AppNavigation(application: ElectrosApplication) {
+    val factory = remember(application) { AppViewModelFactory(application) }
+    val otaViewModel: OtaViewModel = viewModel(factory = factory)
+    val showUpdateDialog by otaViewModel.showUpdateDialog.collectAsState()
+
+    LaunchedEffect(Unit) {
+        otaViewModel.checkForUpdates(manual = false)
+    }
+
+    if (showUpdateDialog) {
+        UpdateDialog(viewModel = otaViewModel)
+    }
+
+    var isLoggedIn by rememberSaveable {
+        mutableStateOf(application.authPreferences.hasValidCredentials())
+    }
+
+    if (!isLoggedIn) {
+        val loginViewModel: LoginViewModel = viewModel(factory = factory)
+        LaunchedEffect(Unit) {
+            loginViewModel.reloadFromPreferences()
+        }
+        LoginScreen(
+            viewModel = loginViewModel,
+            onLoginSuccess = { isLoggedIn = true }
+        )
+    } else {
+        var currentTab by rememberSaveable { mutableStateOf(NavTab.CHARGING) }
+        BackHandler(enabled = currentTab != NavTab.CHARGING) {
+            currentTab = NavTab.CHARGING
+        }
+
+        val dashboardViewModel: DashboardViewModel = viewModel(factory = factory)
+        val limiterViewModel: LimiterViewModel = viewModel(factory = factory)
+        val historyViewModel: HistoryViewModel = viewModel(factory = factory)
+        val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
+
+        Scaffold(
+            containerColor = StudioChassisDark,
+            bottomBar = {
+                NavigationBar(
+                    containerColor = StudioPanelDark,
+                    tonalElevation = 0.dp
+                ) {
+                    NavTab.entries.forEach { tab ->
+                        val isSelected = currentTab == tab
+                        NavigationBarItem(
+                            selected = isSelected,
+                            onClick = { currentTab = tab },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(id = tab.iconRes),
+                                    contentDescription = tab.title,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            label = { Text(text = tab.title, style = MaterialTheme.typography.labelSmall) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.Black,
+                                selectedTextColor = AmberNixie,
+                                indicatorColor = AmberNixie,
+                                unselectedIconColor = TextSecondaryDark,
+                                unselectedTextColor = TextSecondaryDark
+                            )
+                        )
+                    }
+                }
+            }
+        ) { innerPadding ->
+            when (currentTab) {
+                NavTab.CHARGING -> DashboardScreen(
+                    viewModel = dashboardViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+                NavTab.LIMITER -> LimiterScreen(
+                    viewModel = limiterViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+                NavTab.HISTORY -> HistoryScreen(
+                    viewModel = historyViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+                NavTab.SETTINGS -> SettingsScreen(
+                    viewModel = settingsViewModel,
+                    modifier = Modifier.padding(innerPadding),
+                    otaViewModel = otaViewModel,
+                    onLogout = { isLoggedIn = false }
+                )
+            }
+        }
+    }
+}

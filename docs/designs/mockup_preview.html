@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Electros EV — Analog Hardware Studio Variations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* =========================================================
+       GLOBAL RESET & SHOWCASE FRAMEWORK
+       ========================================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #090B0E;
+      color: #D1D5DB;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 32px 20px 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header.showcase-header {
+      text-align: center;
+      max-width: 820px;
+      margin-bottom: 24px;
+    }
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(255, 153, 0, 0.1);
+      border: 1px solid rgba(255, 153, 0, 0.25);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #FF9900;
+      margin-bottom: 12px;
+    }
+    .badge-pill span.dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #FF9900;
+      box-shadow: 0 0 8px #FF9900;
+    }
+    header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #FFFFFF;
+      margin-bottom: 8px;
+    }
+    header p {
+      color: #9CA3AF;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* Showcase Grid */
+    .showcase-stage {
+      width: 100%;
+      max-width: 1320px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 36px;
+      justify-items: center;
+      margin-top: 12px;
+    }
+
+    /* Phone Shell & Meta */
+    .phone-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 375px;
+    }
+    .phone-meta {
+      width: 100%;
+      text-align: left;
+      padding: 0 4px;
+    }
+    .phone-meta .var-tag {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #FF9900;
+      margin-bottom: 2px;
+    }
+    .phone-meta .var-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #FFFFFF;
+      letter-spacing: -0.01em;
+    }
+    .phone-meta .var-desc {
+      font-size: 12px;
+      color: #9CA3AF;
+      line-height: 1.4;
+      margin-top: 4px;
+    }
+
+    /* Shared Phone Chassis */
+    .phone-chassis {
+      width: 375px;
+      height: 780px;
+      border-radius: 50px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 24px 60px -12px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      background: #111318;
+      border: 8px solid #1A1D24;
+    }
+    .island {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 118px;
+      height: 30px;
+      background: #000000;
+      border-radius: 20px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+    }
+    .island-dot { width: 10px; height: 10px; border-radius: 50%; background: #1a1a1a; }
+    .island-cam { width: 9px; height: 9px; border-radius: 50%; background: #0c1428; border: 1px solid #1a233a; }
+    .status-bar {
+      height: 48px;
+      padding: 12px 24px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 50;
+      position: relative;
+      color: #9CA3AF;
+    }
+
+    /* Common Tactile Studio Styling */
+    .studio-viewport {
+      flex: 1;
+      padding: 4px 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: #121419;
+    }
+
+    .studio-subhead {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid #232733;
+      padding-bottom: 6px;
+    }
+    .studio-model-code {
+      font-size: 11px;
+      font-weight: 800;
+      color: #FF9900;
+      letter-spacing: 0.08em;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .studio-serial {
+      font-size: 10px;
+      color: #6B7280;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Tactile Bezel Card */
+    .tactile-face {
+      background: #1A1D24;
+      border: 2px solid #282D3A;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8), 0 4px 14px rgba(0,0,0,0.6);
+      border-radius: 16px;
+      padding: 14px 16px;
+      position: relative;
+    }
+
+    /* Amber Glowing Nixie/LED Segment Display */
+    .nixie-display {
+      background: #090A0E;
+      border: 2px solid #232733;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: 'JetBrains Mono', monospace;
+      color: #FF9900;
+      text-shadow: 0 0 12px rgba(255, 153, 0, 0.65), 0 0 24px rgba(255, 153, 0, 0.25);
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+    }
+    .nixie-unit {
+      font-size: 13px;
+      font-weight: 700;
+      color: #D97706;
+      text-shadow: none;
+    }
+
+    /* Center Rotary Knob Container */
+    .rotary-panel {
+      text-align: center;
+      padding: 14px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .rotary-panel-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      color: #8E95A5;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .rotary-stage {
+      position: relative;
+      width: 210px;
+      height: 185px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0 auto;
+    }
+    .knob-grad-val {
+      position: absolute;
+      font-size: 11px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      color: #6B7280;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: color 0.2s ease, text-shadow 0.2s ease;
+    }
+    .knob-grad-val.active-target {
+      color: #FF9900;
+      text-shadow: 0 0 10px rgba(255, 153, 0, 0.7);
+    }
+    .g-6a  { left: 30px;  top: 122px; }
+    .g-8a  { left: 40px;  top: 50px;  }
+    .g-10a { left: 105px; top: 16px;  }
+    .g-12a { left: 170px; top: 50px;  }
+    .g-16a { left: 180px; top: 122px; }
+
+    /* The Iconic Heavy Rotary Knob */
+    .rotary-knob-heavy {
+      width: 118px;
+      height: 118px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #353B4B 0%, #151820 70%);
+      box-shadow: 0 14px 28px rgba(0,0,0,0.9), inset 0 2px 3px rgba(255,255,255,0.25), 0 0 0 6px #242936;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      user-select: none;
+      z-index: 5;
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    }
+    .knob-marker-line {
+      position: absolute;
+      top: 6px;
+      width: 4px;
+      height: 16px;
+      background: #FF9900;
+      border-radius: 2px;
+      box-shadow: 0 0 10px #FF9900, 0 0 20px rgba(255, 153, 0, 0.5);
+    }
+    .knob-center-core {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: #111317;
+      border: 2px solid #2E3442;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #FF9900;
+      font-size: 20px;
+      font-weight: 900;
+      font-family: 'JetBrains Mono', monospace;
+      text-shadow: 0 0 10px rgba(255, 153, 0, 0.6);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    }
+
+    .rotary-caption {
+      font-size: 11px;
+      color: #FF9900;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 10px;
+    }
+
+    /* Heavy Switch Button */
+    .heavy-switch-btn {
+      width: 100%;
+      height: 48px;
+      border-radius: 12px;
+      border: 2px solid #991B1B;
+      background: linear-gradient(180deg, #DC2626 0%, #991B1B 100%);
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4), inset 0 1px 2px rgba(255,255,255,0.4);
+      margin-top: auto;
+    }
+    .heavy-switch-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+    }
+
+    /* =========================================================
+       VARIATION 4.1: ORIGINAL MK-IV EVOLVED
+       ========================================================= */
+    .dlb-indicator-pill {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .dlb-indicator-pill .dlb-lbl { color: #8E95A5; }
+    .dlb-indicator-pill .dlb-val {
+      color: #10B981;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dlb-indicator-pill .dlb-val .lamp {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10B981;
+      box-shadow: 0 0 8px #10B981;
+    }
+
+    /* Variation 4.1 3D Dial & Timer Upgrades */
+    .rotary-panel-v41 {
+      padding: 10px 10px 8px 10px;
+    }
+    .rotary-header-v41 {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .rotary-kw-badge {
+      background: #0D0F14;
+      border: 1px solid #262B36;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 900;
+      color: #FF9900;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .rotary-stage-v41 {
+      position: relative;
+      width: 100%;
+      height: 174px;
+      background: transparent;
+      border: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 2px auto 0 auto;
+      overflow: hidden;
+    }
+    .rotary-stage-v41 .knob-grad-val {
+      font-size: 16.5px;
+      font-weight: 800;
+      font-family: 'Inter', 'JetBrains Mono', sans-serif;
+      color: #8E97A8;
+      padding: 4px 6px;
+      border-radius: 6px;
+      z-index: 6;
+      letter-spacing: 0.01em;
+      transition: color 0.2s ease, text-shadow 0.2s ease, transform 0.2s ease;
+    }
+    .rotary-stage-v41 .knob-grad-val.active-target {
+      font-size: 17px;
+      font-weight: 900;
+      color: #FF9F1C;
+      background: transparent;
+      box-shadow: none;
+      text-shadow: 0 0 12px rgba(255, 159, 28, 0.72), 0 0 22px rgba(255, 140, 0, 0.35);
+    }
+    .rotary-stage-v41 .g-6a  { left: calc(50% - 96px); top: 128px; }
+    .rotary-stage-v41 .g-8a  { left: calc(50% - 96px); top: 68px;  }
+    .rotary-stage-v41 .g-10a { left: 50%;              top: 17px;  }
+    .rotary-stage-v41 .g-12a { left: calc(50% + 96px); top: 68px;  }
+    .rotary-stage-v41 .g-16a { left: calc(50% + 96px); top: 128px; }
+    .hager-switch-wrap {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      margin-top: 22px;
+      cursor: grab;
+      user-select: none;
+      z-index: 5;
+    }
+    .hager-rotor-g {
+      transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+      transform-origin: 70px 70px;
+    }
+    .timer-grid-v41 {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .timer-chip-v41 {
+      background: #0D0F14;
+      border: 1px solid #262B36;
+      border-radius: 6px;
+      color: #8E95A5;
+      font-size: 10px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: center;
+      padding: 5px 0;
+      cursor: pointer;
+    }
+    .timer-chip-v41.active {
+      background: #2B1D0A;
+      border-color: #FF9900;
+      color: #FF9900;
+    }
+
+    /* =========================================================
+       VARIATION 4.2: DUAL-DISPLAY WITH GRID SAG VOLTAGE METER
+       ========================================================= */
+    .sag-ladder-strip {
+      background: #090A0E;
+      border: 2px solid #232733;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+    .sag-ladder-title {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      font-weight: 800;
+      color: #8E95A5;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 6px;
+    }
+    .sag-track {
+      height: 10px;
+      background: #1A1D24;
+      border-radius: 5px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+    }
+    .sag-zone-danger { width: 25%; background: #EF4444; }
+    .sag-zone-warn   { width: 35%; background: #F59E0B; }
+    .sag-zone-safe   { width: 40%; background: #10B981; }
+    .sag-current-pin {
+      position: absolute;
+      top: -2px;
+      left: 72%;
+      width: 6px;
+      height: 14px;
+      border-radius: 3px;
+      background: #FFFFFF;
+      box-shadow: 0 0 8px #FFFFFF;
+    }
+
+    /* =========================================================
+       VARIATION 4.3: SURROUND LED RING ILLUMINATION
+       ========================================================= */
+    .led-ring-pip {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #252A36;
+      transition: all 0.2s ease;
+    }
+    .led-ring-pip.lit {
+      background: #FF9900;
+      box-shadow: 0 0 8px #FF9900, 0 0 14px #FF9900;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="showcase-header">
+    <div class="badge-pill">
+      <span class="dot"></span>
+      Analog Hardware Studio Edition
+    </div>
+    <h1>3 Evolutions of the Analog Studio Aesthetic</h1>
+    <p>Preserving the heavy dark titanium chassis, physical 130px rotary current knob, glowing amber nixie telemetry, and tactile studio rack controls that stood out in Concept 4.</p>
+  </header>
+
+  <div class="showcase-stage">
+
+    <!-- ====================================================
+         VARIATION 4.1: STUDIO MK-IV (ORIGINAL EVOLVED)
+         ==================================================== -->
+    <div class="phone-column">
+      <div class="phone-meta">
+        <div class="var-tag">Variation 4.1</div>
+        <div class="var-title">Studio Classic (4.1)</div>
+        <div class="var-desc">Clean header, 136px 3D machined potentiometer, DLB indicator, and 1–12h charge timer with outage auto-resume.</div>
+      </div>
+      <div class="phone-chassis">
+        <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
+        <div class="status-bar"><span>14:00</span><span>ONLINE</span></div>
+        <div class="studio-viewport">
+          <!-- RMS Line Voltage Panel -->
+          <div class="tactile-face">
+            <div style="font-size:10px; font-weight:800; color:#8E95A5; letter-spacing:0.06em; margin-bottom:6px;">LINE VOLTAGE (RMS)</div>
+            <div class="nixie-display">
+              <span id="nix-v-1">218</span>
+              <span class="nixie-unit">VOLTS AC</span>
+            </div>
+          </div>
+
+          <!-- Central 3D Rotary Current Knob Panel -->
+          <div class="tactile-face rotary-panel rotary-panel-v41">
+            <div class="rotary-header-v41">
+              <div class="rotary-panel-label" style="margin-bottom:0;">CHARGE CURRENT</div>
+              <div class="rotary-kw-badge" id="kw-cap-1">2.18 kW</div>
+            </div>
+            <div class="rotary-stage-v41" id="stage-1">
+              <span class="knob-grad-val g-6a" id="g1-6" onclick="setKnob1(6)">6A</span>
+              <span class="knob-grad-val g-8a" id="g1-8" onclick="setKnob1(8)">8A</span>
+              <span class="knob-grad-val g-10a active-target" id="g1-10" onclick="setKnob1(10)">10A</span>
+              <span class="knob-grad-val g-12a" id="g1-12" onclick="setKnob1(12)">12A</span>
+              <span class="knob-grad-val g-16a" id="g1-16" onclick="setKnob1(16)">16A</span>
+
+              <div class="hager-switch-wrap" id="knob-1-wrap">
+                <svg viewBox="0 0 140 140" width="140" height="140" style="overflow:visible;">
+                  <defs>
+                    <linearGradient id="wellCavityGrad" x1="15%" y1="15%" x2="85%" y2="85%">
+                      <stop offset="0%" stop-color="#07090D"/>
+                      <stop offset="55%" stop-color="#0C0E14"/>
+                      <stop offset="100%" stop-color="#191D26"/>
+                    </linearGradient>
+                    <linearGradient id="wellOuterRimGrad" x1="15%" y1="15%" x2="85%" y2="85%">
+                      <stop offset="0%" stop-color="#090B0F"/>
+                      <stop offset="65%" stop-color="#1D222D"/>
+                      <stop offset="100%" stop-color="#2E3545"/>
+                    </linearGradient>
+                    <linearGradient id="dialFaceGrad" x1="15%" y1="10%" x2="85%" y2="90%">
+                      <stop offset="0%" stop-color="#383F4E"/>
+                      <stop offset="50%" stop-color="#282E3A"/>
+                      <stop offset="100%" stop-color="#1B2029"/>
+                    </linearGradient>
+                    <linearGradient id="dialRimGrad" x1="12%" y1="12%" x2="88%" y2="88%">
+                      <stop offset="0%" stop-color="#535D70"/>
+                      <stop offset="50%" stop-color="#2E3442"/>
+                      <stop offset="100%" stop-color="#12151C"/>
+                    </linearGradient>
+                    <linearGradient id="skirtLeftGrad" x1="0%" y1="10%" x2="100%" y2="90%">
+                      <stop offset="0%" stop-color="#485163"/>
+                      <stop offset="100%" stop-color="#2E3543"/>
+                    </linearGradient>
+                    <linearGradient id="skirtRightGrad" x1="0%" y1="10%" x2="100%" y2="90%">
+                      <stop offset="0%" stop-color="#20252F"/>
+                      <stop offset="100%" stop-color="#13161D"/>
+                    </linearGradient>
+                    <linearGradient id="plateauTopGrad" x1="20%" y1="0%" x2="80%" y2="100%">
+                      <stop offset="0%" stop-color="#383F4D"/>
+                      <stop offset="55%" stop-color="#2C323E"/>
+                      <stop offset="100%" stop-color="#212630"/>
+                    </linearGradient>
+                    <linearGradient id="plateauEdgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#5D677B"/>
+                      <stop offset="50%" stop-color="#323946"/>
+                      <stop offset="100%" stop-color="#171A22"/>
+                    </linearGradient>
+                    <linearGradient id="amberPillGrad" x1="20%" y1="0%" x2="80%" y2="100%">
+                      <stop offset="0%" stop-color="#FFE285"/>
+                      <stop offset="38%" stop-color="#FFA51F"/>
+                      <stop offset="100%" stop-color="#D95B00"/>
+                    </linearGradient>
+                    <filter id="discDropShadow" x="-25%" y="-25%" width="150%" height="150%">
+                      <feDropShadow dx="2" dy="4" stdDeviation="3.5" flood-color="#040507" flood-opacity="0.72"/>
+                    </filter>
+                    <filter id="handleWorldDrop" x="-30%" y="-25%" width="160%" height="160%">
+                      <feDropShadow dx="3" dy="4" stdDeviation="3" flood-color="#050609" flood-opacity="0.65"/>
+                    </filter>
+                    <filter id="amberBloom" x="-120%" y="-80%" width="340%" height="260%">
+                      <feGaussianBlur stdDeviation="3.8"/>
+                    </filter>
+                    <clipPath id="dialDiscClip">
+                      <circle cx="70" cy="70" r="56.4"/>
+                    </clipPath>
+                  </defs>
+
+                  <!-- Outer machined housing ring & recessed circular well -->
+                  <circle cx="70" cy="70" r="67" fill="url(#wellCavityGrad)" stroke="url(#wellOuterRimGrad)" stroke-width="1.6"/>
+                  <circle cx="70" cy="70" r="64.5" fill="none" stroke="rgba(0,0,0,0.6)" stroke-width="1.5"/>
+
+                  <!-- Raised Circular Satin Charcoal Dial Base Disc -->
+                  <circle cx="70" cy="70" r="57" fill="url(#dialFaceGrad)" stroke="url(#dialRimGrad)" stroke-width="1.2" filter="url(#discDropShadow)"/>
+                  <circle cx="70" cy="70" r="55.4" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.8"/>
+
+                  <!-- Static World-Space Shadow Host for the Rotating Chamfered Toggle Bar -->
+                  <g filter="url(#handleWorldDrop)">
+                    <g id="knob-1" class="hager-rotor-g">
+                      <g clip-path="url(#dialDiscClip)">
+                        <!-- Left & Right Sculpted Sloped Chamfer Skirts merging cleanly to the disc perimeter -->
+                        <path d="M47,10 L70,10 L70,130 L47,130 C49,122 50,115 50,108 L50,32 C50,25 49,18 47,10 Z" fill="url(#skirtLeftGrad)"/>
+                        <path d="M70,10 L93,10 C91,18 90,25 90,32 L90,108 C90,115 91,122 93,130 L70,130 Z" fill="url(#skirtRightGrad)"/>
+                        <!-- Smooth curved outer shoulder fillet contour -->
+                        <path d="M51,14 Q53,24 53,36 L53,104 Q53,116 51,126 M89,14 Q87,24 87,36 L87,104 Q87,116 89,126" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+                      </g>
+
+                      <!-- Raised Satin Flat Front Plateau -->
+                      <rect x="56" y="16" width="28" height="108" rx="8" fill="url(#plateauTopGrad)" stroke="url(#plateauEdgeGrad)" stroke-width="1.1"/>
+                      <!-- Subtle top-left inner catchlight on plateau ridge -->
+                      <rect x="57.2" y="17.2" width="25.6" height="105.6" rx="7" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="0.7"/>
+
+                      <!-- Deep Recessed Vertical Slot Track -->
+                      <rect x="65.2" y="22.5" width="9.6" height="39.5" rx="4.8" fill="#07090D" stroke="#222732" stroke-width="0.9"/>
+                      <!-- Inner bottom wall catchlight inside track -->
+                      <path d="M66.6,58.5 A3.6,3.6 0 0,0 73.4,58.5" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="0.8"/>
+
+                      <!-- Warm Glowing Amber LED Pill inside Upper ~55% of Recessed Track -->
+                      <rect x="66" y="23.5" width="8" height="18.5" rx="4" fill="#FF9500" opacity="0.58" filter="url(#amberBloom)"/>
+                      <rect x="66.6" y="24" width="6.8" height="17" rx="3.4" fill="url(#amberPillGrad)"/>
+                      <!-- Hot specular filament center line inside pill -->
+                      <rect x="68.6" y="26" width="2.8" height="12" rx="1.4" fill="#FFF3C4" opacity="0.72"/>
+                    </g>
+                  </g>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- DLB Auto-Derate Status -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill" id="dlb-pill-1" onclick="toggleDlb1()" style="cursor: pointer;" title="Click to toggle Enabled/Disabled">
+              <span class="dlb-lbl">DLB AUTO-DERATE</span>
+              <span class="dlb-val" id="dlb-status-1">
+                <span class="lamp"></span> ENGAGED (&gt;185V)
+              </span>
+            </div>
+          </div>
+
+          <!-- Charge Timer Status + 1-12H Picker -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill" onclick="toggleTimerDrawer1()" style="cursor: pointer;">
+              <span class="dlb-lbl">CHARGE TIMER ▾</span>
+              <span class="dlb-val" id="timer-status-1" style="color:#FF9900;">
+                <span class="lamp" id="timer-lamp-1" style="background:#FF9900; box-shadow:0 0 8px #FF9900;"></span> ON • 02:00:00
+              </span>
+            </div>
+            <div id="timer-drawer-1" style="display:none;">
+              <div class="timer-grid-v41" id="timer-grid-1"></div>
+            </div>
+          </div>
+
+          <!-- Daily Schedule Status Indicator -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill" onclick="toggleSchedule1()" style="cursor: pointer;" title="Click to toggle schedule indicator">
+              <span class="dlb-lbl">SCHEDULE TIMER</span>
+              <span class="dlb-val" id="sched-status-1">
+                <span class="lamp"></span> ON • 02:00–16:00
+              </span>
+            </div>
+          </div>
+
+          <button class="heavy-switch-btn" onclick="alert('Emergency Stop Triggered')">
+            EMERGENCY STOP
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         VARIATION 4.2: DUAL DISPLAY & VOLTAGE SAG HEADROOM
+         ==================================================== -->
+    <div class="phone-column">
+      <div class="phone-meta">
+        <div class="var-tag">Variation 4.2</div>
+        <div class="var-title">Studio Sag-Watch Pro</div>
+        <div class="var-desc">Adds a physical amber line sag margin strip (185V threshold monitor) directly above the heavy knob.</div>
+      </div>
+      <div class="phone-chassis">
+        <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
+        <div class="status-bar"><span>14:00</span><span>50.0 Hz</span></div>
+        <div class="studio-viewport">
+          <div class="studio-subhead">
+            <span class="studio-model-code">SAG-WATCH MONITOR</span>
+            <span class="studio-serial">DLB: ACTIVE</span>
+          </div>
+
+          <!-- Voltage Display + Sag Strip -->
+          <div class="tactile-face" style="padding-bottom: 10px;">
+            <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:800; color:#8E95A5; margin-bottom:4px;">
+              <span>MAINS VOLTAGE</span>
+              <span style="color:#FF9900;">HEADROOM: +33V</span>
+            </div>
+            <div class="nixie-display" style="font-size: 26px; padding: 6px 12px;">
+              <span>218.4</span>
+              <span class="nixie-unit">VAC @ 50Hz</span>
+            </div>
+
+            <!-- Sag Headroom Bar -->
+            <div class="sag-ladder-strip">
+              <div class="sag-ladder-title">
+                <span>&lt; 185V CUTOFF</span>
+                <span>205V RECOVER</span>
+                <span>240V NOM</span>
+              </div>
+              <div class="sag-track">
+                <div class="sag-zone-danger"></div>
+                <div class="sag-zone-warn"></div>
+                <div class="sag-zone-safe"></div>
+                <div class="sag-current-pin"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Knob -->
+          <div class="tactile-face rotary-panel" style="padding: 10px 12px;">
+            <div class="rotary-panel-label">DYNAMIC CURRENT LIMIT</div>
+            <div class="rotary-stage" style="transform: scale(0.95); margin: -4px 0;">
+              <div class="knob-graduations"></div>
+              <span class="knob-grad-val g-6a">6A</span>
+              <span class="knob-grad-val g-8a">8A</span>
+              <span class="knob-grad-val g-10a active-target">10A</span>
+              <span class="knob-grad-val g-12a">12A</span>
+              <span class="knob-grad-val g-16a">16A</span>
+
+              <div class="rotary-knob-heavy" id="knob-2" onclick="stepKnob2()">
+                <div class="knob-marker-line"></div>
+                <div class="knob-center-core" id="knob-val-2">10A</div>
+              </div>
+            </div>
+            <div class="rotary-caption" id="kw-cap-2">OUTPUT: 2.18 kW ACTIVE</div>
+          </div>
+
+          <!-- Dual Telemetry Row -->
+          <div class="tactile-face" style="padding: 10px 14px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family:'JetBrains Mono'; font-size:11px;">
+              <div>
+                <span style="color:#6B7280; font-size:9px;">DELIVERED:</span><br>
+                <strong style="color:#FF9900;">14.82 kWh</strong>
+              </div>
+              <div>
+                <span style="color:#6B7280; font-size:9px;">TIME ACTIVE:</span><br>
+                <strong style="color:#FFF;">01:42:18</strong>
+              </div>
+            </div>
+          </div>
+
+          <button class="heavy-switch-btn" onclick="alert('Trip Breaker')">
+            TRIP RELAY BREAKER
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         VARIATION 4.3: SURROUND AMBER LED RING
+         ==================================================== -->
+    <div class="phone-column">
+      <div class="phone-meta">
+        <div class="var-tag">Variation 4.3</div>
+        <div class="var-title">Studio LED Halo Console</div>
+        <div class="var-desc">The heavy rotary dial surrounded by an illuminated 16-pip amber LED halo that lights up with current draw.</div>
+      </div>
+      <div class="phone-chassis">
+        <div class="island"><div class="island-dot"></div><div class="island-cam"></div></div>
+        <div class="status-bar"><span>14:00</span><span>MOD-IV HALO</span></div>
+        <div class="studio-viewport">
+          <div class="studio-subhead">
+            <span class="studio-model-code">HALO CONSOLE</span>
+            <span class="studio-serial">16-PIP RING</span>
+          </div>
+
+          <!-- Voltage Display -->
+          <div class="tactile-face">
+            <div style="font-size:10px; font-weight:800; color:#8E95A5; margin-bottom:4px;">MAINS VOLTAGE (RMS)</div>
+            <div class="nixie-display">
+              <span>218.4</span>
+              <span class="nixie-unit">VOLTS</span>
+            </div>
+          </div>
+
+          <!-- Knob with LED Halo -->
+          <div class="tactile-face rotary-panel">
+            <div class="rotary-panel-label">LOAD CURRENT POTENTIOMETER</div>
+            <div class="rotary-stage" id="halo-stage">
+              <!-- Circular LED Ring Pips -->
+              <div class="led-ring-pip lit" style="top: 8px; left: 81px;"></div>
+              <div class="led-ring-pip lit" style="top: 18px; left: 115px;"></div>
+              <div class="led-ring-pip lit" style="top: 42px; left: 142px;"></div>
+              <div class="led-ring-pip lit" style="top: 76px; left: 154px;"></div>
+              <div class="led-ring-pip lit" style="top: 110px; left: 146px;"></div>
+              <div class="led-ring-pip lit" style="top: 138px; left: 122px;"></div>
+              <div class="led-ring-pip" style="top: 152px; left: 81px;"></div>
+              <div class="led-ring-pip" style="top: 142px; left: 44px;"></div>
+              <div class="led-ring-pip" style="top: 116px; left: 18px;"></div>
+              <div class="led-ring-pip" style="top: 81px; left: 8px;"></div>
+              <div class="led-ring-pip" style="top: 47px; left: 16px;"></div>
+              <div class="led-ring-pip" style="top: 20px; left: 44px;"></div>
+
+              <div class="rotary-knob-heavy" id="knob-3" onclick="stepKnob3()">
+                <div class="knob-marker-line"></div>
+                <div class="knob-center-core" id="knob-val-3">10A</div>
+              </div>
+            </div>
+            <div class="rotary-caption" id="kw-cap-3">OUTPUT: 2.18 kW ACTIVE</div>
+          </div>
+
+          <!-- DLB Status Panel -->
+          <div class="tactile-face">
+            <div class="dlb-indicator-pill">
+              <span class="dlb-lbl">DLB DERATE LOGIC</span>
+              <span class="dlb-val">
+                <span class="lamp"></span> STABLE (&gt;185V)
+              </span>
+            </div>
+          </div>
+
+          <button class="heavy-switch-btn" onclick="alert('Cutout Engaged')">
+            POWER CUTOUT
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const ampValues = [6, 8, 10, 12, 16];
+    const knobAngles = { 6: -114, 8: -58, 10: 0, 12: 58, 16: 114 };
+
+    let currentAmp1 = 10;
+    let currentAmp2 = 10;
+    let currentAmp3 = 10;
+
+    function setKnob1(v) {
+      currentAmp1 = v;
+      const ang = knobAngles[v];
+      const rotor = document.getElementById('knob-1');
+      if (rotor) {
+        rotor.style.transform = `rotate(${ang}deg)`;
+      }
+      const kw = ((218 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-1').innerText = `${kw} kW`;
+      ampValues.forEach(val => {
+        const el = document.getElementById(`g1-${val}`);
+        if (el) el.classList.toggle('active-target', val === v);
+      });
+    }
+
+    function stepKnob1(dir) {
+      let idx = ampValues.indexOf(currentAmp1);
+      let newIdx = idx + dir;
+      if (newIdx >= 0 && newIdx < ampValues.length) {
+        setKnob1(ampValues[newIdx]);
+      }
+    }
+
+    function setKnob2(v) {
+      currentAmp2 = v;
+      const ang = knobAngles[v];
+      document.getElementById('knob-2').style.transform = `rotate(${ang}deg)`;
+      const valEl = document.getElementById('knob-val-2');
+      valEl.style.transform = `rotate(${-ang}deg)`;
+      valEl.innerText = `${v}A`;
+      const kw = ((218.4 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-2').innerText = `OUTPUT: ${kw} kW ACTIVE`;
+    }
+
+    function stepKnob2(dir) {
+      let idx = ampValues.indexOf(currentAmp2);
+      let newIdx = idx + dir;
+      if (newIdx >= 0 && newIdx < ampValues.length) {
+        setKnob2(ampValues[newIdx]);
+      }
+    }
+
+    function setKnob3(v) {
+      currentAmp3 = v;
+      const ang = knobAngles[v];
+      document.getElementById('knob-3').style.transform = `rotate(${ang}deg)`;
+      const valEl = document.getElementById('knob-val-3');
+      valEl.style.transform = `rotate(${-ang}deg)`;
+      valEl.innerText = `${v}A`;
+      const kw = ((218.4 * v) / 1000).toFixed(2);
+      document.getElementById('kw-cap-3').innerText = `OUTPUT: ${kw} kW ACTIVE`;
+
+      const pips = document.querySelectorAll('#halo-stage .led-ring-pip');
+      const litCount = Math.round((v / 16) * pips.length);
+      pips.forEach((p, i) => {
+        p.classList.toggle('lit', i < litCount);
+      });
+    }
+
+    function stepKnob3(dir) {
+      let idx = ampValues.indexOf(currentAmp3);
+      let newIdx = idx + dir;
+      if (newIdx >= 0 && newIdx < ampValues.length) {
+        setKnob3(ampValues[newIdx]);
+      }
+    }
+
+    // Attach Bidirectional Rotary Drag & Touch Physics
+    function attachRotaryPhysics(knobId, setFn, stepFn) {
+      const knob = document.getElementById(knobId);
+      if (!knob) return;
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let didMove = false;
+
+      function getAngleFromCenter(e) {
+        const rect = knob.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        // 0 deg is UP (12 o'clock), positive is clockwise
+        return Math.atan2(dx, -dy) * (180 / Math.PI);
+      }
+
+      knob.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        didMove = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        knob.setPointerCapture(e.pointerId);
+      });
+
+      knob.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) > 5) {
+          didMove = true;
+        }
+        const deg = getAngleFromCenter(e);
+
+        // Clamping at boundaries (no flip across bottom dead zone)
+        if (deg > 130) {
+          setFn(16);
+          return;
+        } else if (deg < -130) {
+          setFn(6);
+          return;
+        }
+
+        // Find nearest stop
+        let bestAmp = 10;
+        let minDiff = 999;
+        ampValues.forEach(v => {
+          const diff = Math.abs(deg - knobAngles[v]);
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestAmp = v;
+          }
+        });
+        setFn(bestAmp);
+      });
+
+      knob.addEventListener('pointerup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        try { knob.releasePointerCapture(e.pointerId); } catch(err) {}
+
+        // If it was a quick click without dragging:
+        if (!didMove) {
+          const rect = knob.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          // Right half clicks clockwise (+1), left half clicks counter-clockwise (-1)
+          if (clickX >= rect.width / 2) {
+            stepFn(+1);
+          } else {
+            stepFn(-1);
+          }
+        }
+      });
+
+      // Mouse wheel support (Wheel Up = CW +1, Wheel Down = CCW -1)
+      knob.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          stepFn(+1);
+        } else if (e.deltaY > 0) {
+          stepFn(-1);
+        }
+      }, { passive: false });
+    }
+
+    let dlb1Enabled = true;
+    function toggleDlb1() {
+      dlb1Enabled = !dlb1Enabled;
+      const el = document.getElementById('dlb-status-1');
+      if (dlb1Enabled) {
+        el.innerHTML = '<span class="lamp"></span> ENGAGED (&gt;185V)';
+        el.style.color = '#10B981';
+      } else {
+        el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> DISABLED';
+        el.style.color = '#8E95A5';
+      }
+    }
+
+    let sched1Enabled = true;
+    function toggleSchedule1() {
+      sched1Enabled = !sched1Enabled;
+      const el = document.getElementById('sched-status-1');
+      if (sched1Enabled) {
+        el.innerHTML = '<span class="lamp"></span> ON • 02:00–16:00';
+        el.style.color = '#10B981';
+      } else {
+        el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> OFF';
+        el.style.color = '#8E95A5';
+      }
+    }
+
+    let timer1Enabled = true;
+    let timer1Hours = 2;
+    function toggleTimerDrawer1() {
+      const d = document.getElementById('timer-drawer-1');
+      d.style.display = d.style.display === 'none' ? 'block' : 'none';
+      renderTimerGrid1();
+    }
+    function setTimer1(enabled, hrs) {
+      timer1Enabled = enabled;
+      if (hrs) timer1Hours = hrs;
+      const el = document.getElementById('timer-status-1');
+      if (timer1Enabled) {
+        const hh = String(timer1Hours).padStart(2, '0');
+        el.innerHTML = `<span class="lamp" style="background:#FF9900; box-shadow:0 0 8px #FF9900;"></span> ON • ${hh}:00:00`;
+        el.style.color = '#FF9900';
+      } else {
+        el.innerHTML = '<span class="lamp" style="background:#4B5563; box-shadow:none;"></span> OFF';
+        el.style.color = '#8E95A5';
+      }
+      renderTimerGrid1();
+    }
+    function renderTimerGrid1() {
+      const g = document.getElementById('timer-grid-1');
+      if (!g) return;
+      let html = '';
+      for (let h = 1; h <= 11; h++) {
+        const act = timer1Enabled && timer1Hours === h ? ' active' : '';
+        html += `<div class="timer-chip-v41${act}" onclick="event.stopPropagation(); setTimer1(true, ${h})">${h}H</div>`;
+      }
+      const act12 = timer1Enabled && timer1Hours === 12 ? ' active' : '';
+      html += `<div class="timer-chip-v41${act12}" onclick="event.stopPropagation(); setTimer1(true, 12)">12H</div>`;
+      html += `<div class="timer-chip-v41${!timer1Enabled ? ' active' : ''}" style="grid-column: span 6;" onclick="event.stopPropagation(); setTimer1(false)">DISABLE TIMER (OFF)</div>`;
+      g.innerHTML = html;
+    }
+
+    attachRotaryPhysics('knob-1-wrap', setKnob1, stepKnob1);
+    attachRotaryPhysics('knob-2', setKnob2, stepKnob2);
+    attachRotaryPhysics('knob-3', setKnob3, stepKnob3);
+  </script>
+</body>
+</html>

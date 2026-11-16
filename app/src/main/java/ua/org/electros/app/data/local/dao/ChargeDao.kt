@@ -1,0 +1,181 @@
+package ua.org.electros.app.data.local.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
+import ua.org.electros.app.data.local.entity.ChargeSessionEntity
+import ua.org.electros.app.data.local.entity.ChargeSliceEntity
+import ua.org.electros.app.data.local.entity.SessionStatus
+import ua.org.electros.app.data.local.entity.SliceEndReason
+import ua.org.electros.app.domain.accumulator.EnergyAccumulator
+
+@Dao
+interface ChargeDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSession(session: ChargeSessionEntity)
+
+    @Update
+    suspend fun updateSession(session: ChargeSessionEntity)
+
+    @Query("SELECT * FROM charge_sessions WHERE id = :sessionId LIMIT 1")
+    suspend fun getSessionById(sessionId: String): ChargeSessionEntity?
+
+    @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING') ORDER BY startedAt DESC LIMIT 1")
+    suspend fun getActiveSession(): ChargeSessionEntity?
+
+    @Query("SELECT * FROM charge_sessions WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING') ORDER BY startedAt DESC LIMIT 1")
+    fun observeActiveSession(): Flow<ChargeSessionEntity?>
+
+    @Query("UPDATE charge_sessions SET status = 'CANCELLED', completedAt = :currentTime WHERE status IN ('CHARGING', 'OUTAGE_DETECTED', 'OUTAGE_STABILIZING', 'AUTO_RESUMING', 'STOP_PENDING')")
+    suspend fun cancelAllActiveSessions(currentTime: Long = System.currentTimeMillis())
+
+    /**
+     * Cancels every active session but first closes the open slice of the current one so the energy
+     * already delivered stays in history instead of being dropped with the cancelled session.
+     */
+    @Transaction
+    suspend fun cancelActiveSessionsPreservingEnergy(currentTime: Long = System.currentTimeMillis()) {
+        val active = getActiveSession()
+        if (active != null) {
+            val latest = getLatestSliceForSession(active.id)
+            if (latest != null && latest.endedAt == null) {
+                finalizeActiveSliceAndCommit(
+                    sessionId = active.id,
+                    lastSampledKwh = latest.stationCounterLastKwh,
+                    reason = SliceEndReason.MANUAL_STOP,
+                    endTime = currentTime
+                )
+            }
+        }
+        cancelAllActiveSessions(currentTime)
+    }
+
+    @Query("UPDATE charge_sessions SET status = :status, completedAt = :completedAt, lastTickAt = :lastTickAt WHERE id = :sessionId")
+    suspend fun updateSessionStatus(
+        sessionId: String,
+        status: SessionStatus,
+        completedAt: Long? = null,
+        lastTickAt: Long = 0L
+    )
+
+    @Query("UPDATE charge_sessions SET accumulatedChargingMs = :accumulatedMs, lastTickAt = :lastTickAt WHERE id = :sessionId")
+    suspend fun updateDurationProgress(sessionId: String, accumulatedMs: Long, lastTickAt: Long)
+
+    @Query("UPDATE charge_sessions SET targetDurationMinutes = :targetDurationMinutes WHERE id = :sessionId")
+    suspend fun updateTargetDurationMinutes(sessionId: String, targetDurationMinutes: Int)
+
+    @Query("UPDATE charge_sessions SET targetKwh = :targetKwh WHERE id = :sessionId")
+    suspend fun updateTargetKwh(sessionId: String, targetKwh: Double)
+
+    @Query("UPDATE charge_sessions SET amperageSetting = :amperes WHERE id = :sessionId")
+    suspend fun updateSessionAmperage(sessionId: String, amperes: Int)
+
+    @Query("SELECT * FROM charge_sessions ORDER BY startedAt DESC")
+    fun getAllSessions(): Flow<List<ChargeSessionEntity>>
+
+    @Insert
+    suspend fun insertSlice(slice: ChargeSliceEntity): Long
+
+    @Update
+    suspend fun updateSlice(slice: ChargeSliceEntity)
+
+    @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex ASC")
+    suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity>
+
+    @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex ASC")
+    fun observeSlicesForSession(sessionId: String): Flow<List<ChargeSliceEntity>>
+
+    @Query("SELECT * FROM charge_slices WHERE sessionId = :sessionId ORDER BY sliceIndex DESC LIMIT 1")
+    suspend fun getLatestSliceForSession(sessionId: String): ChargeSliceEntity?
+
+    @Query("""
+        UPDATE charge_slices
+        SET stationCounterLastKwh = CASE
+            WHEN :counterKwh > stationCounterLastKwh THEN :counterKwh
+            ELSE stationCounterLastKwh
+        END
+        WHERE sessionId = :sessionId AND endedAt IS NULL
+    """)
+    suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double)
+
+    @Transaction
+    suspend fun finalizeActiveSliceAndCommit(
+        sessionId: String,
+        lastSampledKwh: Double,
+        reason: SliceEndReason,
+        endTime: Long = System.currentTimeMillis()
+    ) {
+        val latestSlice = getLatestSliceForSession(sessionId) ?: return
+        if (latestSlice.endedAt == null) {
+            val effectiveLast = maxOf(lastSampledKwh, latestSlice.stationCounterLastKwh)
+            val delivered = (effectiveLast - latestSlice.stationCounterStartKwh).coerceAtLeast(0.0)
+            val updated = latestSlice.copy(
+                stationCounterLastKwh = effectiveLast,
+                finalizedKwh = delivered,
+                endedAt = endTime,
+                terminationReason = reason
+            )
+            updateSlice(updated)
+        }
+
+        // Update session total delivered
+        val slices = getSlicesForSession(sessionId)
+        val sumKwh = slices.sumOf { it.finalizedKwh }
+        val session = getSessionById(sessionId)
+        if (session != null) {
+            updateSession(session.copy(totalKwhDelivered = sumKwh))
+        }
+    }
+
+    @Transaction
+    suspend fun startNewSlice(
+        sessionId: String,
+        stationCounterCurrentKwh: Double,
+        startTime: Long = System.currentTimeMillis()
+    ) {
+        val latestSlice = getLatestSliceForSession(sessionId)
+        val nextIndex = (latestSlice?.sliceIndex ?: -1) + 1
+        val newSlice = ChargeSliceEntity(
+            sessionId = sessionId,
+            sliceIndex = nextIndex,
+            stationCounterStartKwh = stationCounterCurrentKwh,
+            stationCounterLastKwh = stationCounterCurrentKwh,
+            finalizedKwh = 0.0,
+            startedAt = startTime
+        )
+        insertSlice(newSlice)
+    }
+
+    @Transaction
+    suspend fun restoreActiveSliceForCharging(
+        sessionId: String,
+        currentCounterKwh: Double,
+        now: Long = System.currentTimeMillis()
+    ) {
+        val latestSlice = getLatestSliceForSession(sessionId)
+        if (latestSlice == null) {
+            startNewSlice(sessionId, currentCounterKwh, now)
+        } else if (latestSlice.endedAt != null) {
+            val rolledBack = EnergyAccumulator.isCounterRegression(
+                currentReadingKwh = currentCounterKwh,
+                lastSampledReadingKwh = latestSlice.stationCounterLastKwh
+            ) || currentCounterKwh < latestSlice.stationCounterStartKwh
+            val anchorCounter = if (rolledBack) currentCounterKwh else latestSlice.stationCounterLastKwh
+            startNewSlice(sessionId, anchorCounter, now)
+        }
+
+        val session = getSessionById(sessionId) ?: return
+        updateSession(
+            session.copy(
+                status = SessionStatus.CHARGING,
+                lastTickAt = now
+            )
+        )
+    }
+}
+
