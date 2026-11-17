@@ -3,6 +3,7 @@ package ua.org.electros.app.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import ua.org.electros.app.diag.DiagLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,12 +17,14 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
         if (!shouldHandleAction(action)) return
 
+        DiagLog.i("Boot", "Received $action")
         val pendingResult = goAsync()
         val appContext = context.applicationContext
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val dao = AppDatabase.getInstance(appContext).chargeDao()
                 val activeSession = dao.getActiveSession()
+                DiagLog.i("Boot", "Active session: ${activeSession?.let { "${it.id.take(8)} ${it.status}" } ?: "none"}")
                 if (activeSession != null) {
                     if (shouldResumeOnBoot(activeSession)) {
                         // The system may still refuse the start; the service then shows the
@@ -33,6 +36,7 @@ class BootReceiver : BroadcastReceiver() {
                             activeSession.targetDurationMinutes
                         )
                     } else {
+                        DiagLog.i("Boot", "Session had not started charging, cancelled")
                         dao.cancelActiveSessionsPreservingEnergy()
                     }
                 }

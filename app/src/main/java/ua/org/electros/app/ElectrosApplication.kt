@@ -1,6 +1,9 @@
 package ua.org.electros.app
 
 import android.app.Application
+import android.os.Build
+import ua.org.electros.app.diag.DiagLog
+import ua.org.electros.app.diag.ExitReasonLogger
 import ua.org.electros.app.ui.AppLanguage
 import ua.org.electros.app.data.local.AppDatabase
 import ua.org.electros.app.data.local.AuthPreferences
@@ -31,6 +34,7 @@ class ElectrosApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DiagLog.init(this)
         AppLanguage.ensureChosen(this)
         database = AppDatabase.getInstance(this)
         authPreferences = AuthPreferences(this)
@@ -38,6 +42,16 @@ class ElectrosApplication : Application() {
         cookieStorage = CookieStorage()
         scraper = ElectrosWebScraper(cookieStorage, authPreferences)
         repository = ChargeRepository(scraper, database.chargeDao(), authPreferences, settingsStore)
+        Thread({
+            // Credentials are decrypted off the main thread; until then nothing sensitive is logged yet.
+            runCatching { DiagLog.setSecrets(authPreferences.deviceSerial, authPreferences.internetPassword) }
+            DiagLog.i(
+                "App",
+                "Process started: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}), " +
+                    "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ${Build.MANUFACTURER} ${Build.MODEL}"
+            )
+            ExitReasonLogger.recordPreviousExits(this)
+        }, "electros-diag-start").start()
     }
 }
 

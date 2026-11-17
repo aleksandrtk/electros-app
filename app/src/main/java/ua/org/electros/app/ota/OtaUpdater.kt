@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.util.Log
+import ua.org.electros.app.diag.DiagLog
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,21 @@ import java.util.concurrent.TimeUnit
 
 object OtaUpdater {
     private const val TAG = "OtaUpdater"
+
+    private fun logE(message: String, error: Throwable? = null) {
+        Log.e(TAG, message, error)
+        DiagLog.e("Update", message, error)
+    }
+
+    private fun logW(message: String) {
+        Log.w(TAG, message)
+        DiagLog.w("Update", message)
+    }
+
+    private fun logI(message: String) {
+        Log.i(TAG, message)
+        DiagLog.i("Update", message)
+    }
     const val REPO_OWNER = "aleksandrtk"
     const val REPO_NAME = "electros-app"
 
@@ -149,7 +165,7 @@ object OtaUpdater {
                 archiveHistoryDigests = archiveHistoryDigests
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to verify APK signing certificate: ${e.message}")
+            logE("Failed to verify APK signing certificate: ${e.message}")
             false
         }
     }
@@ -249,7 +265,7 @@ object OtaUpdater {
                 val hasUpdate = isNewerVersion(currentVersion, rawTagName)
                 val parsedVersion = parseVersionNumbers(rawTagName).joinToString(".")
 
-                Log.i(TAG, "Update check result: current=$currentVersion, latest=$rawTagName, hasUpdate=$hasUpdate, apkUrl=$downloadUrl")
+                logI("Update check result: current=$currentVersion, latest=$rawTagName, hasUpdate=$hasUpdate, apkUrl=$downloadUrl")
                 return@withContext UpdateInfo(
                     hasUpdate = hasUpdate,
                     rawTagName = rawTagName,
@@ -263,7 +279,7 @@ object OtaUpdater {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception during OTA update check: ${e.message}", e)
+            logE("Exception during OTA update check: ${e.message}", e)
         }
 
         return@withContext UpdateInfo(
@@ -295,12 +311,12 @@ object OtaUpdater {
                 if (response.isSuccessful) {
                     response.body?.string()
                 } else {
-                    Log.w(TAG, "HTTP GET $urlString failed with code: ${response.code}")
+                    logW("HTTP GET $urlString failed with code: ${response.code}")
                     null
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to fetch JSON from $urlString: ${e.message}")
+            logW("Failed to fetch JSON from $urlString: ${e.message}")
             null
         }
     }
@@ -316,7 +332,7 @@ object OtaUpdater {
         expectedSizeBytes: Long = 0L
     ): File? = withContext(Dispatchers.IO) {
         if (!isValidDownloadUrl(downloadUrl)) {
-            Log.e(TAG, "Refusing to download APK from untrusted URL: $downloadUrl")
+            logE("Refusing to download APK from untrusted URL: $downloadUrl")
             return@withContext null
         }
 
@@ -345,14 +361,14 @@ object OtaUpdater {
                             response.request.url.resolve(location)?.toString()
                         } else null
                         if (resolved == null || !isValidDownloadUrl(resolved)) {
-                            Log.e(TAG, "Blocked redirect to untrusted or invalid URL: $location")
+                            logE("Blocked redirect to untrusted or invalid URL: $location")
                             return@withContext null
                         }
                         return@use resolved
                     }
 
                     if (!response.isSuccessful) {
-                        Log.e(TAG, "Download failed with HTTP status: $code")
+                        logE("Download failed with HTTP status: $code")
                         return@withContext null
                     }
 
@@ -378,14 +394,14 @@ object OtaUpdater {
 
                     val actualLength = if (tempFile.exists()) tempFile.length() else 0L
                     if (actualLength <= 0L) {
-                        Log.e(TAG, "Downloaded APK is empty")
+                        logE("Downloaded APK is empty")
                         tempFile.delete()
                         return@withContext null
                     }
 
                     val expectedLen = if (expectedSizeBytes > 0L) expectedSizeBytes else fileLength
                     if (expectedLen > 0L && actualLength != expectedLen) {
-                        Log.e(TAG, "APK size mismatch: expected $expectedLen bytes, got $actualLength. Aborting.")
+                        logE("APK size mismatch: expected $expectedLen bytes, got $actualLength. Aborting.")
                         tempFile.delete()
                         return@withContext null
                     }
@@ -393,16 +409,16 @@ object OtaUpdater {
                     if (expectedSha256 != null) {
                         val actualSha256 = computeSha256(tempFile)
                         if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                            Log.e(TAG, "APK SHA-256 mismatch: expected $expectedSha256, got $actualSha256. Aborting.")
+                            logE("APK SHA-256 mismatch: expected $expectedSha256, got $actualSha256. Aborting.")
                             tempFile.delete()
                             return@withContext null
                         }
                     } else {
-                        Log.w(TAG, "Release asset has no SHA-256 digest; relying on signing certificate verification")
+                        logW("Release asset has no SHA-256 digest; relying on signing certificate verification")
                     }
 
                     if (!hasMatchingSigningCertificate(appContext, tempFile)) {
-                        Log.e(TAG, "APK signing certificate does not match installed app. Aborting.")
+                        logE("APK signing certificate does not match installed app. Aborting.")
                         tempFile.delete()
                         return@withContext null
                     }
@@ -422,7 +438,7 @@ object OtaUpdater {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception downloading APK: ${e.message}", e)
+            logE("Exception downloading APK: ${e.message}", e)
             runCatching { tempFile.delete() }
         }
         return@withContext null
@@ -434,11 +450,11 @@ object OtaUpdater {
     fun installApk(context: Context, apkFile: File): InstallOutcome {
         val appContext = context.applicationContext
         if (!apkFile.exists() || apkFile.length() == 0L) {
-            Log.e(TAG, "Cannot install update. APK file does not exist or is empty.")
+            logE("Cannot install update. APK file does not exist or is empty.")
             return InstallOutcome.FAILED
         }
         if (!hasMatchingSigningCertificate(appContext, apkFile)) {
-            Log.e(TAG, "Refusing to install APK with unverified or mismatched signing certificate.")
+            logE("Refusing to install APK with unverified or mismatched signing certificate.")
             apkFile.delete()
             return InstallOutcome.FAILED
         }
@@ -452,7 +468,7 @@ object OtaUpdater {
                 appContext.startActivity(settingsIntent)
                 InstallOutcome.NEEDS_UNKNOWN_SOURCES_PERMISSION
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to launch unknown sources settings: ${e.message}")
+                logW("Failed to launch unknown sources settings: ${e.message}")
                 InstallOutcome.FAILED
             }
         }
@@ -470,10 +486,10 @@ object OtaUpdater {
 
         return try {
             appContext.startActivity(intent)
-            Log.i(TAG, "Package Installer launched for $apkUri")
+            logI("Package Installer launched for $apkUri")
             InstallOutcome.LAUNCHED_INSTALLER
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch package installer: ${e.message}", e)
+            logE("Failed to launch package installer: ${e.message}", e)
             InstallOutcome.FAILED
         }
     }

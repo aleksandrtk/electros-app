@@ -1,5 +1,7 @@
 package ua.org.electros.app.ui.dashboard
 
+import ua.org.electros.app.diag.DiagLog
+import ua.org.electros.app.diag.reason
 import androidx.annotation.StringRes
 import ua.org.electros.app.R
 import ua.org.electros.app.ui.UiText
@@ -276,6 +278,7 @@ class DashboardViewModel(
     }
 
     fun onAmperageSelected(amperes: Int) {
+        DiagLog.i("Dashboard", "Current selected: ${amperes}A")
         settingsStore.setPreferredAmperage(amperes)
         _errorMessage.value = null
         val currentState = uiState.value
@@ -399,6 +402,7 @@ class DashboardViewModel(
             if (uiState.value.telemetry?.isOnline == false) {
                 val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
                 if (fresh.getOrNull()?.isOnline != true) {
+                    DiagLog.w("Dashboard", "Start refused: station offline on a fresh read")
                     _errorMessage.value = OFFLINE_START_MESSAGE
                     _isBusy.value = false
                     return@launch
@@ -425,6 +429,7 @@ class DashboardViewModel(
             _isBusy.value = true
             _errorMessage.value = null
             val session = uiState.value.activeSession
+            DiagLog.i("Dashboard", "Stop pressed, session ${session?.id?.take(8) ?: "none"}")
             val res = if (session != null) {
                 repository.stopActiveSession(session.id)
             } else {
@@ -446,6 +451,7 @@ class DashboardViewModel(
      * the generic message for the action, because raw exception text is not meant for the user.
      */
     private fun formatDashboardError(err: Throwable?, @StringRes fallback: Int): UiText {
+        DiagLog.w("Dashboard", "Error shown to the user: ${err.reason()}", err)
         val raw = err?.message?.trim().orEmpty()
         val id = when {
             raw.contains("OFFLINE", ignoreCase = true) || raw.contains("вимкнена", ignoreCase = true) -> R.string.err_offline_start

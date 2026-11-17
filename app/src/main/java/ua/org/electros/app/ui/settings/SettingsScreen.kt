@@ -44,6 +44,13 @@ import ua.org.electros.app.BuildConfig
 import ua.org.electros.app.ota.OtaViewModel
 import ua.org.electros.app.service.ChargeMonitorService
 import ua.org.electros.app.ui.theme.*
+import android.text.format.Formatter
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import ua.org.electros.app.diag.DiagExport
+import ua.org.electros.app.diag.DiagLog
 
 @Composable
 fun SettingsScreen(
@@ -313,6 +320,8 @@ fun SettingsScreen(
             }
         }
 
+        DiagnosticLogCard()
+
         // App Updates Card
         Card(
             shape = RoundedCornerShape(24.dp),
@@ -413,5 +422,125 @@ private fun LanguageCard() {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DiagnosticLogCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var enabled by remember { mutableStateOf(DiagLog.isEnabled) }
+    var sizeBytes by remember { mutableLongStateOf(0L) }
+    var isExporting by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    suspend fun refreshSize() {
+        sizeBytes = withContext(Dispatchers.IO) { DiagLog.sizeBytes() }
+    }
+    LaunchedEffect(enabled) {
+        while (true) {
+            refreshSize()
+            kotlinx.coroutines.delay(5_000L)
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(text = stringResource(R.string.settings_log), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_log_switch),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimaryDark,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = {
+                        DiagLog.setEnabled(it)
+                        enabled = it
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = OnPrimaryDark,
+                        checkedTrackColor = PrimaryNeonGreen
+                    )
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.settings_log_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondaryDark,
+                lineHeight = 17.sp
+            )
+
+            SettingRow(
+                label = stringResource(R.string.settings_log_size),
+                value = Formatter.formatShortFileSize(context, sizeBytes)
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = {
+                        isExporting = true
+                        scope.launch {
+                            val intent = runCatching { DiagExport.buildShareIntent(context) }
+                                .onFailure { DiagLog.e("Journal", "Export failed", it) }
+                                .getOrNull()
+                            isExporting = false
+                            refreshSize()
+                            if (intent == null) {
+                                Toast.makeText(context, R.string.settings_log_empty, Toast.LENGTH_SHORT).show()
+                            } else {
+                                runCatching { context.startActivity(intent) }
+                            }
+                        }
+                    },
+                    enabled = !isExporting && sizeBytes > 0L,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.settings_log_export), fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = { showClearConfirm = true },
+                    enabled = sizeBytes > 0L,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondaryDark)
+                ) {
+                    Text(stringResource(R.string.settings_log_clear))
+                }
+            }
+        }
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text(stringResource(R.string.settings_log_clear_title)) },
+            text = { Text(stringResource(R.string.settings_log_clear_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearConfirm = false
+                    scope.launch {
+                        withContext(Dispatchers.IO) { DiagLog.clear() }
+                        refreshSize()
+                    }
+                }) { Text(stringResource(R.string.settings_log_clear), color = ErrorRed) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 }

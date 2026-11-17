@@ -262,4 +262,14 @@
     <string name="notif_stop_failed_text">The stop command wasn\'t confirmed. Still retrying to stop charging.</string>
     <string name="notif_restart_title">Monitoring needs a manual start</string>
     <string name="notif_restart_text">Open the app to continue monitoring</string>
+    <string name="settings_log">DIAGNOSTIC LOG</string>
+    <string name="settings_log_switch">Record the log</string>
+    <string name="settings_log_hint">Records charging, the connection to the station, errors and crashes, so a problem can be investigated. Your device number and password are never written. Turn it off when you no longer need it.</string>
+    <string name="settings_log_size">Log size</string>
+    <string name="settings_log_export">Share the log</string>
+    <string name="settings_log_clear">Clear</string>
+    <string name="settings_log_clear_title">Clear the log?</string>
+    <string name="settings_log_clear_body">All recorded entries will be deleted.</string>
+    <string name="settings_log_empty">The log is empty</string>
+    <string name="settings_log_share_title">Send the log</string>
 </resources>

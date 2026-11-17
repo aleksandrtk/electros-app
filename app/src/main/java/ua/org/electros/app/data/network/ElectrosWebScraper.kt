@@ -20,6 +20,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.model.TelemetryData
+import ua.org.electros.app.diag.DiagLog
+import ua.org.electros.app.diag.reason
 import java.io.IOException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -80,14 +82,23 @@ class ElectrosWebScraper(
         if (serial.isNotBlank()) {
             val wsResult = queryWebSocket("site $serial")
             if (wsResult.isSuccess) {
-                parseWebSocketTelemetryOrNull(wsResult.getOrThrow())?.let { telemetry ->
+                val packet = wsResult.getOrThrow()
+                parseWebSocketTelemetryOrNull(packet)?.let { telemetry ->
+                    DiagLog.d(TAG) { "WS packet fields 7-12: ${safePacketFields(packet)}" }
                     return@withContext Result.success(telemetry)
                 }
+                DiagLog.w(TAG, "WS reply is not telemetry (${packet.split("\n").size} lines), using HTTP")
+            } else {
+                DiagLog.w(TAG, "WS telemetry failed (${wsResult.exceptionOrNull().reason()}), using HTTP")
             }
+        } else {
+            DiagLog.w(TAG, "No device number stored, using HTTP")
         }
 
         // Fallback to HTTP protected_page.php if WebSocket query fails or returns invalid telemetry
-        fetchTelemetryHttp()
+        fetchTelemetryHttp().also { res ->
+            if (res.isFailure) DiagLog.w(TAG, "HTTP telemetry failed: ${res.exceptionOrNull().reason()}")
+        }
     }
 
     private suspend fun queryWebSocket(command: String): Result<String> = withContext(Dispatchers.IO) {
@@ -255,6 +266,7 @@ class ElectrosWebScraper(
                 if (!allowRelogin) {
                     return@withContext Result.failure(SecurityException("Session not established after login"))
                 }
+                DiagLog.i(TAG, "HTTP session expired, signing in again")
                 val reloginResult = reloginWithBackoff()
                 if (reloginResult.isFailure) {
                     return@withContext Result.failure(
@@ -286,11 +298,13 @@ class ElectrosWebScraper(
 
     private suspend fun reloginWithBackoff(): Result<Unit> = authMutex.withLock {
         if (clockMs() < authBlockedUntilMs) {
+            DiagLog.w(TAG, "Sign-in blocked for ${(authBlockedUntilMs - clockMs()) / 1000}s after repeated failures")
             return@withLock Result.failure(
                 SecurityException("Authentication temporarily blocked after repeated failures")
             )
         }
         loginUnlocked().also { res ->
+            DiagLog.i(TAG, "Re-sign-in: " + if (res.isSuccess) "ok" else "failed, ${res.exceptionOrNull().reason()}")
             if (res.exceptionOrNull() is IllegalArgumentException) {
                 if (authFailures.incrementAndGet() >= 2) {
                     authBlockedUntilMs = clockMs() + authBackoffMs
@@ -366,6 +380,7 @@ class ElectrosWebScraper(
             val idx = amperageToIndex(amperes)
             val wsResult = sendAndVerify("site $serial\nstart\n$idx\n0\n") { it.isChargingActive }
             if (wsResult.isSuccess) return@withContext wsResult
+            DiagLog.w(TAG, "WS start (${amperes}A) not confirmed: ${wsResult.exceptionOrNull().reason()}, trying HTTP")
         }
         // Apply amperage via HTTP only on the HTTP fallback path to avoid duplicate WS connections.
         setAmperageHttp(amperes)
@@ -385,8 +400,11 @@ class ElectrosWebScraper(
                 sendCommandWebSocket(wsCmd)
             }
             if (wsResult.isSuccess) return@withContext wsResult
+            DiagLog.w(TAG, "WS stop failed: ${wsResult.exceptionOrNull().reason()}, trying HTTP")
         }
-        executeAction("stop")
+        executeAction("stop").also {
+            DiagLog.i(TAG, "HTTP stop: " + if (it.isSuccess) "sent" else "failed, ${it.exceptionOrNull().reason()}")
+        }
     }
 
     suspend fun setAmperage(amperes: Int): Result<Unit> = withContext(Dispatchers.IO) {
@@ -398,6 +416,7 @@ class ElectrosWebScraper(
                 it.selectedCurrentAmperes == targetAmperes
             }
             if (wsResult.isSuccess) return@withContext wsResult
+            DiagLog.w(TAG, "WS set current ${targetAmperes}A not confirmed: ${wsResult.exceptionOrNull().reason()}, trying HTTP")
         }
         setAmperageHttp(targetAmperes)
     }
@@ -420,6 +439,7 @@ class ElectrosWebScraper(
             val wsCmd = "site $serial\ndatetime\n$nowFormatted\n$startTime\n$stopTime\n"
             val wsResult = sendCommandWebSocket(wsCmd)
             if (wsResult.isSuccess) return@withContext wsResult
+            DiagLog.w(TAG, "WS schedule $startTime-$stopTime failed: ${wsResult.exceptionOrNull().reason()}, trying HTTP")
         }
 
         postForm(
@@ -493,6 +513,10 @@ class ElectrosWebScraper(
             lastCsrfToken = token
         }
     }
+
+    /** Lines 7-12 of a station packet (current, status code, amps, volts, energy, power); lines 0-6 identify the station and are never logged. */
+    private fun safePacketFields(packet: String): String =
+        packet.split("\n").drop(7).take(6).joinToString(" | ") { it.trim() }
 
     fun parseWebSocketTelemetryOrNull(data: String): TelemetryData? {
         val lines = data.split("\n")
@@ -721,6 +745,7 @@ class ElectrosWebScraper(
     private fun parseDecimal(raw: String): Double? = raw.replace(',', '.').toDoubleOrNull()
 
     companion object {
+        private const val TAG = "Network"
         private const val MIN_WS_LINES = 14
         /** 3 charge error, 4 charging forbidden, 5 low voltage, 6 comm error, 16 leakage, 32 overcurrent. */
         private val WS_FAULT_STATUS_CODES = setOf(3, 4, 5, 6, 16, 32)

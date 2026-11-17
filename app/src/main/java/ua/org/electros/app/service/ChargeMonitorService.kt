@@ -31,6 +31,7 @@ import ua.org.electros.app.domain.balancing.VoltageLoadBalancer
 import ua.org.electros.app.domain.monitor.SessionMonitorGateway
 import ua.org.electros.app.domain.monitor.SessionSupervisor
 import ua.org.electros.app.domain.monitor.SupervisorEvent
+import ua.org.electros.app.diag.DiagLog
 
 class ChargeMonitorService : Service() {
 
@@ -51,6 +52,7 @@ class ChargeMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        DiagLog.i(TAG, "Service created")
         val app = application as ElectrosApplication
         repository = app.repository
         settingsStore = app.settingsStore
@@ -97,7 +99,8 @@ class ChargeMonitorService : Service() {
             )
             foregroundStarted = true
             true
-        } catch (_: ForegroundServiceStartNotAllowedException) {
+        } catch (e: ForegroundServiceStartNotAllowedException) {
+            DiagLog.e(TAG, "Android refused to start the foreground service", e)
             isRunning = false
             notificationHelper.showMonitorRestartRequiredAlert()
             stopSelf()
@@ -119,6 +122,11 @@ class ChargeMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isRunning = true
+        DiagLog.i(
+            TAG,
+            "Start command: action=${intent?.action ?: "monitor"} session=${intent?.getStringExtra(EXTRA_SESSION_ID)?.take(8)} " +
+                "redelivered=${flags and START_FLAG_REDELIVERY != 0} restartedBySystem=${intent == null}"
+        )
         when (intent?.action) {
             NotificationHelper.ACTION_STOP_CHARGE -> {
                 if (!ensureForegroundStarted()) return START_NOT_STICKY
@@ -158,6 +166,7 @@ class ChargeMonitorService : Service() {
                 acquireSessionWakeLock()
 
                 if (supervisor.currentStatus().isTerminal) {
+                    DiagLog.i(TAG, "Session already ${supervisor.currentStatus()}, service stops")
                     stopSelf()
                     break
                 }
@@ -167,6 +176,7 @@ class ChargeMonitorService : Service() {
                 dispatchSupervisorEvents(outcome.events)
 
                 if (outcome.shouldStopService) {
+                    DiagLog.i(TAG, "Monitoring finished with status ${outcome.status}, service stops")
                     stopSelf()
                     break
                 }
@@ -180,6 +190,7 @@ class ChargeMonitorService : Service() {
 
     private fun dispatchSupervisorEvents(events: List<SupervisorEvent>) {
         for (event in events) {
+            if (event !is SupervisorEvent.UpdateOngoingNotification) DiagLog.i(TAG, "Notification: $event")
             when (event) {
                 is SupervisorEvent.ShowOutageAlert ->
                     notificationHelper.showOutageAlert(event.deliveredKwh, event.autoResumeEnabled)
@@ -243,6 +254,7 @@ class ChargeMonitorService : Service() {
     }
 
     override fun onDestroy() {
+        DiagLog.i(TAG, "Service destroyed")
         isRunning = false
         foregroundStarted = false
         monitoringJob?.cancel()
@@ -323,6 +335,7 @@ class ChargeMonitorService : Service() {
     }
 
     companion object {
+        private const val TAG = "Service"
         const val EXTRA_SESSION_ID = "EXTRA_SESSION_ID"
         const val EXTRA_TARGET_KWH = "EXTRA_TARGET_KWH"
         const val EXTRA_TARGET_DURATION_MIN = "EXTRA_TARGET_DURATION_MIN"
@@ -345,7 +358,8 @@ class ChargeMonitorService : Service() {
             }
             try {
                 context.startForegroundService(intent)
-            } catch (_: ForegroundServiceStartNotAllowedException) {
+            } catch (e: ForegroundServiceStartNotAllowedException) {
+                DiagLog.e(TAG, "Android refused to start monitoring for session ${sessionId.take(8)}", e)
                 NotificationHelper(context.applicationContext).showMonitorRestartRequiredAlert()
             }
         }

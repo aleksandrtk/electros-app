@@ -262,4 +262,14 @@
     <string name="notif_stop_failed_text">Команда зупинки не підтвердилась. Продовжуємо повторні спроби зупинити зарядку.</string>
     <string name="notif_restart_title">Потрібен ручний запуск моніторингу</string>
     <string name="notif_restart_text">Відкрийте застосунок, щоб продовжити моніторинг</string>
+    <string name="settings_log">ЖУРНАЛ ДІАГНОСТИКИ</string>
+    <string name="settings_log_switch">Записувати журнал</string>
+    <string name="settings_log_hint">Записує заряджання, зв\'язок зі станцією, помилки та збої додатка, щоб можна було розібратися з проблемою. Номер пристрою і пароль не записуються. Вимкніть, коли журнал більше не потрібен.</string>
+    <string name="settings_log_size">Розмір журналу</string>
+    <string name="settings_log_export">Поділитися журналом</string>
+    <string name="settings_log_clear">Очистити</string>
+    <string name="settings_log_clear_title">Очистити журнал?</string>
+    <string name="settings_log_clear_body">Усі записи буде видалено.</string>
+    <string name="settings_log_empty">Журнал порожній</string>
+    <string name="settings_log_share_title">Надіслати журнал</string>
 </resources>

@@ -15,6 +15,10 @@ import ua.org.electros.app.data.local.entity.SliceEndReason
 import ua.org.electros.app.data.model.TelemetryData
 import ua.org.electros.app.data.network.ElectrosWebScraper
 import ua.org.electros.app.domain.accumulator.EnergyAccumulator
+import ua.org.electros.app.diag.DiagLog
+import ua.org.electros.app.diag.kwh
+import ua.org.electros.app.diag.reason
+import ua.org.electros.app.diag.toLogString
 import java.io.IOException
 import java.time.LocalTime
 import java.util.UUID
@@ -67,7 +71,9 @@ class ChargeRepository(
         if (previousSerial.isNotBlank() && previousSerial != serial.trim()) {
             scraper.clearSession()
         }
+        DiagLog.setSecrets(serial, password, previousSerial)
         val result = scraper.login(serial, password)
+        DiagLog.i(TAG, "Login: " + if (result.isSuccess) "ok" else "failed, ${result.exceptionOrNull().reason()}")
         if (result.isSuccess) {
             authPreferences?.deviceSerial = serial
             authPreferences?.internetPassword = password
@@ -83,9 +89,13 @@ class ChargeRepository(
      */
     suspend fun logout(): Result<Unit> {
         val active = chargeDao.getActiveSession()
+        DiagLog.i(TAG, "Logout requested, active session: ${active?.id?.take(8) ?: "none"}")
         if (active != null) {
             val stopped = stopActiveSession(active.id)
-            if (stopped.isFailure) return stopped
+            if (stopped.isFailure) {
+                DiagLog.w(TAG, "Logout aborted: the running session could not be stopped")
+                return stopped
+            }
         }
         authPreferences?.clearCredentials()
         scraper.clearSession()
@@ -170,6 +180,11 @@ class ChargeRepository(
         finalCounter: Double,
         preserveAsVehicleStopped: Boolean
     ) {
+        DiagLog.i(
+            TAG,
+            "Session ${sessionId.take(8)} closed while the monitor was not running " +
+                "(counter ${finalCounter.kwh()}, keptAsFinished=$preserveAsVehicleStopped)"
+        )
         if (preserveAsVehicleStopped) {
             markSessionVehicleStopped(sessionId, finalCounter)
         } else {
@@ -208,8 +223,16 @@ class ChargeRepository(
             isScheduleEnabled = schedEnabled,
             scheduleStartTime = schedStart,
             scheduleStopTime = schedStop
-        ) ?: return
-        runCatching { scraper.setTimer(window.first, window.second) }
+        ) ?: run {
+            DiagLog.d(TAG) { "Dead-man timer not needed for session ${session.id.take(8)}" }
+            return
+        }
+        val res = runCatching { scraper.setTimer(window.first, window.second) }.getOrElse { Result.failure(it) }
+        DiagLog.i(
+            TAG,
+            "Dead-man timer ${window.first}-${window.second} (${voltageVolts}V, ${session.amperageSetting}A, " +
+                "delivered ${deliveredKwh.kwh()}): " + if (res.isSuccess) "sent" else "failed, ${res.exceptionOrNull().reason()}"
+        )
     }
 
     suspend fun refreshDeadManTimer(sessionId: String, voltageVolts: Int, deliveredKwh: Double) {
@@ -223,7 +246,12 @@ class ChargeRepository(
         val (schedEnabled, schedStart, schedStop) = readScheduleConfig()
         val targetStart = if (schedEnabled) schedStart else "00:00"
         val targetStop = if (schedEnabled) schedStop else "00:00"
-        runCatching { scraper.setTimer(targetStart, targetStop) }
+        val res = runCatching { scraper.setTimer(targetStart, targetStop) }.getOrElse { Result.failure(it) }
+        DiagLog.i(
+            TAG,
+            "Station schedule restored to $targetStart-$targetStop: " +
+                if (res.isSuccess) "sent" else "failed, ${res.exceptionOrNull().reason()}"
+        )
     }
 
     suspend fun startNewSession(
@@ -231,7 +259,9 @@ class ChargeRepository(
         amperage: Int,
         targetDurationMinutes: Int = 0
     ): Result<String> {
+        DiagLog.i(TAG, "Start requested: target=${targetKwh}kWh/${targetDurationMinutes}min amps=$amperage")
         val preStartTelemetry = fetchFreshTelemetryForAnchor()
+        DiagLog.i(TAG, "Before start: ${preStartTelemetry?.toLogString() ?: "no telemetry"}")
         if (preStartTelemetry != null && !preStartTelemetry.isOnline) {
             return Result.failure(IllegalStateException("Станція вимкнена з розетки (OFFLINE). Підключіть живлення до станції."))
         }
@@ -260,8 +290,10 @@ class ChargeRepository(
         chargeDao.insertSession(session)
 
         val startResult = scraper.startCharge(amperage)
+        DiagLog.i(TAG, "Start command for ${sessionId.take(8)}: " + if (startResult.isSuccess) "confirmed" else "failed, ${startResult.exceptionOrNull().reason()}")
         if (startResult.isSuccess) {
             val anchorTelemetry = fetchFreshTelemetryForAnchor()
+            DiagLog.i(TAG, "After start: ${anchorTelemetry?.toLogString() ?: "no telemetry"}")
             if (anchorTelemetry == null) {
                 chargeDao.updateSession(session.copy(status = SessionStatus.CANCELLED, completedAt = clockMs()))
                 return Result.failure(IOException("No telemetry to anchor slice"))
@@ -300,6 +332,7 @@ class ChargeRepository(
     ): Result<String> {
         val anchorTelemetry = fetchFreshTelemetryForAnchor()
             ?: return Result.failure(IOException("No telemetry to anchor slice"))
+        DiagLog.i(TAG, "Attaching to a charge already running: target=${targetKwh}kWh/${targetDurationMinutes}min, ${anchorTelemetry.toLogString()}")
         chargeDao.cancelActiveSessionsPreservingEnergy(clockMs())
         val sessionId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
@@ -365,12 +398,19 @@ class ChargeRepository(
     ): Boolean {
         var previousWsLeftCharging = false
         repeat(maxAttempts) { attempt ->
-            scraper.stopCharge(
+            val httpOnly = attempt > 0 && previousWsLeftCharging
+            val sent = scraper.stopCharge(
                 verifyWithTelemetry = false,
-                useHttpFallbackOnly = attempt > 0 && previousWsLeftCharging
+                useHttpFallbackOnly = httpOnly
             )
             if (confirmDelayMs > 0L) delay(confirmDelayMs)
             val t = scraper.fetchTelemetry().getOrNull()
+            DiagLog.i(
+                TAG,
+                "Stop attempt ${attempt + 1}/$maxAttempts (${if (httpOnly) "HTTP" else "WS"}): " +
+                    "send ${if (sent.isSuccess) "ok" else "failed, ${sent.exceptionOrNull().reason()}"}; " +
+                    "then ${t?.toLogString() ?: "no telemetry"}"
+            )
             if (t != null) {
                 _telemetryState.value = t
                 if (!t.isChargingActive && (t.isOnline || allowOfflineConfirmation)) {
@@ -382,6 +422,7 @@ class ChargeRepository(
             }
             if (attempt < maxAttempts - 1 && retryDelayMs > 0L) delay(retryDelayMs)
         }
+        DiagLog.w(TAG, "Station did not confirm the stop after $maxAttempts attempts")
         return false
     }
 
@@ -392,6 +433,7 @@ class ChargeRepository(
         finalStatus: SessionStatus
     ) {
         val sessionBefore = chargeDao.getSessionById(sessionId)
+        DiagLog.i(TAG, "Session ${sessionId.take(8)} finished: $finalStatus (slice $sliceReason, counter ${lastCounter.kwh()})")
         chargeDao.finalizeActiveSliceAndCommit(
             sessionId = sessionId,
             lastSampledKwh = lastCounter,
@@ -454,14 +496,19 @@ class ChargeRepository(
     }
 
     suspend fun setAmperage(amperes: Int): Result<Unit> {
-        return scraper.setAmperage(amperes)
+        return scraper.setAmperage(amperes).also {
+            DiagLog.i(TAG, "Set current ${amperes}A: " + if (it.isSuccess) "confirmed" else "failed, ${it.exceptionOrNull().reason()}")
+        }
     }
 
     suspend fun setScheduleTimer(start: String, stop: String): Result<Unit> {
-        return scraper.setTimer(start, stop)
+        return scraper.setTimer(start, stop).also {
+            DiagLog.i(TAG, "Station schedule $start-$stop: " + if (it.isSuccess) "sent" else "failed, ${it.exceptionOrNull().reason()}")
+        }
     }
 
     suspend fun handleOutageDetected(sessionId: String, lastCounter: Double) {
+        DiagLog.i(TAG, "Outage: slice of ${sessionId.take(8)} closed at counter ${lastCounter.kwh()}")
         chargeDao.finalizeActiveSliceAndCommit(
             sessionId = sessionId,
             lastSampledKwh = lastCounter,
@@ -505,6 +552,7 @@ class ChargeRepository(
         if (session.targetKwh > 0.0) {
             val remainingKwh = EnergyAccumulator.calculateRemainingKwh(session.targetKwh, sumDelivered)
             if (remainingKwh <= 0.1) {
+                DiagLog.i(TAG, "Resume skipped: energy limit already reached (${sumDelivered.kwh()} of ${session.targetKwh})")
                 chargeDao.updateSession(session.copy(status = SessionStatus.TARGET_REACHED, completedAt = System.currentTimeMillis(), lastTickAt = 0L))
                 restoreScheduleTimer(session = session)
                 return Result.success(Unit)
@@ -514,6 +562,7 @@ class ChargeRepository(
         if (session.targetDurationMinutes > 0) {
             val targetDurationMs = session.targetDurationMinutes * 60_000L
             if (session.accumulatedChargingMs >= targetDurationMs) {
+                DiagLog.i(TAG, "Resume skipped: charge timer already reached")
                 chargeDao.updateSession(session.copy(status = SessionStatus.TARGET_REACHED, completedAt = System.currentTimeMillis(), lastTickAt = 0L))
                 restoreScheduleTimer(session = session)
                 return Result.success(Unit)
@@ -521,9 +570,15 @@ class ChargeRepository(
         }
 
         val startResult = scraper.startCharge(session.amperageSetting)
+        DiagLog.i(
+            TAG,
+            "Resume start command (${session.amperageSetting}A, manual=$isManual): " +
+                if (startResult.isSuccess) "confirmed" else "failed, ${startResult.exceptionOrNull().reason()}"
+        )
         if (startResult.isSuccess) {
             val anchorTelemetry = fetchFreshTelemetryForAnchor()
                 ?: return Result.failure(IOException("No telemetry to anchor slice"))
+            DiagLog.i(TAG, "New slice after resume at counter ${anchorTelemetry.consumedEnergyKwh.kwh()}")
             chargeDao.startNewSlice(sessionId, anchorTelemetry.consumedEnergyKwh)
             val resumed = session.copy(
                 status = SessionStatus.CHARGING,
@@ -567,6 +622,7 @@ class ChargeRepository(
     }
 
     suspend fun markSessionVehicleStopped(sessionId: String, lastCounter: Double) {
+        DiagLog.i(TAG, "Session ${sessionId.take(8)} finished: car stopped charging (counter ${lastCounter.kwh()})")
         chargeDao.finalizeActiveSliceAndCommit(
             sessionId = sessionId,
             lastSampledKwh = lastCounter,
@@ -584,6 +640,7 @@ class ChargeRepository(
     }
 
     companion object {
+        private const val TAG = "Repository"
         private const val STARTUP_GRACE_MS = 30_000L
         private const val STALE_OFFLINE_CHARGING_MS = 2 * 3_600_000L
         private const val STALE_OUTAGE_MS = 24 * 3_600_000L

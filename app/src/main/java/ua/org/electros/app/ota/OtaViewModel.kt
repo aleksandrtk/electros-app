@@ -5,6 +5,7 @@ import ua.org.electros.app.ui.UiText
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import ua.org.electros.app.diag.DiagLog
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -55,6 +56,7 @@ class OtaViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Check for updates error: ${e.message}", e)
+                DiagLog.e("Update", "Check for updates error", e)
                 _updateError.value = e.message?.let { UiText.Res(R.string.update_error, listOf(it)) } ?: UiText.Res(R.string.update_err_check)
                 if (manual) {
                     _showUpdateDialog.value = true

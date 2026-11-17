@@ -11,6 +11,10 @@ import ua.org.electros.app.domain.accumulator.EnergyAccumulator
 import ua.org.electros.app.domain.balancing.VoltageLoadBalancer
 import ua.org.electros.app.domain.statemachine.ChargingStateMachine
 import ua.org.electros.app.domain.statemachine.StateEvent
+import ua.org.electros.app.diag.DiagLog
+import ua.org.electros.app.diag.kwh
+import ua.org.electros.app.diag.reason
+import ua.org.electros.app.diag.toLogString
 
 interface SessionMonitorGateway {
     suspend fun fetchTelemetry(): Result<TelemetryData>
@@ -137,10 +141,26 @@ class SessionSupervisor(
             if (dbSession.accumulatedChargingMs > 0L || dbSession.totalKwhDelivered > 0.0 || dbSession.lastTickAt > 0L) {
                 hasObservedActiveCharging = true
             }
-        }
+            DiagLog.i(
+                TAG,
+                "Session ${id.take(8)} loaded: status=${dbSession.status} target=${dbSession.targetKwh}kWh/" +
+                    "${dbSession.targetDurationMinutes}min amps=${dbSession.amperageSetting} " +
+                    "delivered=${dbSession.totalKwhDelivered.kwh()} chargingMs=${dbSession.accumulatedChargingMs} " +
+                    "lastCounter=${lastSampledCounterKwh.kwh()}"
+            )
+        } ?: DiagLog.w(TAG, "Session ${id.take(8)} not found in the database")
     }
 
     fun currentStatus(): SessionStatus = stateMachine.getState()
+
+    private fun transition(event: StateEvent): SessionStatus {
+        val before = stateMachine.getState()
+        val after = stateMachine.transition(event)
+        if (after != before) {
+            DiagLog.i(TAG, "State $before -> $after (${event.javaClass.simpleName})")
+        }
+        return after
+    }
 
     suspend fun tick(): TickOutcome = operationMutex.withLock {
         val events = mutableListOf<SupervisorEvent>()
@@ -150,15 +170,22 @@ class SessionSupervisor(
         val sessionId = activeSessionId
             ?: return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = false)
         val result = gateway.fetchTelemetry()
+        DiagLog.d(TAG) {
+            "Tick ${sessionId.take(8)} [${stateMachine.getState()}] " + result.fold(
+                onSuccess = { it.toLogString() },
+                onFailure = { "telemetry failed #${consecutiveFailureTicks + 1}: ${it.reason()}" }
+            )
+        }
 
         val dbSession = gateway.getSessionById(sessionId)
         if (dbSession == null || dbSession.status.isTerminal) {
-            stateMachine.transition(StateEvent.CancelRequested)
+            DiagLog.i(TAG, "Session ${sessionId.take(8)} is ${dbSession?.status ?: "gone"} in the database, monitor stops")
+            transition(StateEvent.CancelRequested)
             return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
         }
 
         if (dbSession.status == SessionStatus.STOP_PENDING && stateMachine.getState() != SessionStatus.STOP_PENDING) {
-            stateMachine.transition(StateEvent.StopPending)
+            transition(StateEvent.StopPending)
         }
 
         activeTargetKwh = dbSession.targetKwh
@@ -192,7 +219,7 @@ class SessionSupervisor(
         hasEvidence: Boolean
     ) {
         if (hasEvidence) {
-            stateMachine.transition(StateEvent.VehicleStoppedCharging)
+            transition(StateEvent.VehicleStoppedCharging)
             gateway.markSessionVehicleStopped(sessionId, counterKwh)
         } else {
             gateway.finalizeSessionStopped(
@@ -201,7 +228,7 @@ class SessionSupervisor(
                 sliceReason = SliceEndReason.MANUAL_STOP,
                 finalStatus = SessionStatus.CANCELLED
             )
-            stateMachine.transition(StateEvent.CancelRequested)
+            transition(StateEvent.CancelRequested)
         }
     }
 
@@ -217,6 +244,9 @@ class SessionSupervisor(
             rawData.consumedEnergyKwh < lastSampledCounterKwh &&
             lastSampledCounterKwh - rawData.consumedEnergyKwh <= HTTP_COUNTER_ROUNDING_KWH
         ) {
+            DiagLog.d(TAG) {
+                "HTTP counter ${rawData.consumedEnergyKwh.kwh()} is rounding below ${lastSampledCounterKwh.kwh()}, kept the precise value"
+            }
             rawData.copy(consumedEnergyKwh = lastSampledCounterKwh)
         } else {
             rawData
@@ -236,6 +266,11 @@ class SessionSupervisor(
             activeSlice != null &&
             EnergyAccumulator.isCounterRegression(data.consumedEnergyKwh, priorSliceCounter)
         ) {
+            DiagLog.w(
+                TAG,
+                "Station counter went back from ${priorSliceCounter.kwh()} to ${data.consumedEnergyKwh.kwh()} kWh " +
+                    "(station restarted), closing the slice"
+            )
             handleCounterRegression(
                 sessionId = sessionId,
                 dbSession = dbSession,
@@ -260,7 +295,7 @@ class SessionSupervisor(
                 stateMachine.getState() == SessionStatus.OUTAGE_STABILIZING ||
                 stateMachine.getState() == SessionStatus.AUTO_RESUMING)
         ) {
-            stateMachine.transition(StateEvent.ResumeCommandSent)
+            transition(StateEvent.ResumeCommandSent)
             inactiveOnlineConsecutiveTicks = 0
             hasAlertedManualResume = false
             events += SupervisorEvent.CancelManualResumeAlert
@@ -287,11 +322,17 @@ class SessionSupervisor(
             currentStationCounterKwh = effectiveCounter
         )
         val hasEvidence = hasChargingEvidence(totalDelivered, dbSession.lastTickAt)
+        DiagLog.d(TAG) {
+            "Progress delivered=${totalDelivered.kwh()} target=${activeTargetKwh}kWh/${activeTargetDurationMinutes}min " +
+                "chargingMs=$accumulatedChargingMs slices=${slices.size} open=${activeSlice != null} " +
+                "idleTicks=$inactiveOnlineConsecutiveTicks zeroTicks=$zeroCurrentConsecutiveTicks evidence=$hasEvidence"
+        }
 
         if (!data.isOnline) {
             lastActiveChargingSampleAt = 0L
             gateway.updateDurationProgress(sessionId, accumulatedChargingMs, 0L)
             if (stateMachine.getState() == SessionStatus.CHARGING && !hasEvidence) {
+                DiagLog.i(TAG, "Station offline before charging ever started, session cancelled")
                 closeStoppedOrUnstartedSession(sessionId, effectiveCounter, hasEvidence = false)
                 return true
             }
@@ -299,7 +340,8 @@ class SessionSupervisor(
                 stateMachine.getState() == SessionStatus.OUTAGE_STABILIZING ||
                 stateMachine.getState() == SessionStatus.AUTO_RESUMING
             ) {
-                stateMachine.transition(StateEvent.OutageDetected)
+                DiagLog.w(TAG, "Station offline: power outage, delivered so far ${totalDelivered.kwh()} kWh")
+                transition(StateEvent.OutageDetected)
                 hasAlertedManualResume = false
                 gateway.handleOutageDetected(sessionId, effectiveCounter)
                 events += SupervisorEvent.ShowOutageAlert(totalDelivered, gateway.isAutoResumeEnabled())
@@ -311,6 +353,7 @@ class SessionSupervisor(
                     state == SessionStatus.AUTO_RESUMING) &&
                 isVehicleUnplugged(data.statusText)
             ) {
+                DiagLog.i(TAG, "Car unplugged during the outage, session closed")
                 hasAlertedManualResume = false
                 events += SupervisorEvent.CancelManualResumeAlert
                 closeStoppedOrUnstartedSession(sessionId, data.consumedEnergyKwh, hasEvidence)
@@ -357,7 +400,7 @@ class SessionSupervisor(
         events: MutableList<SupervisorEvent>
     ) {
         lastActiveChargingSampleAt = 0L
-        stateMachine.transition(StateEvent.OutageDetected)
+        transition(StateEvent.OutageDetected)
         gateway.handleOutageDetected(sessionId, preRebootCounter)
         val outageDelivered = EnergyAccumulator.calculateTotalDeliveredKwh(
             finalizedSlices = slices.filter { it.endedAt != null },
@@ -367,7 +410,7 @@ class SessionSupervisor(
         if (gateway.isAutoResumeEnabled()) {
             val resumeRes = gateway.resumeAfterOutage(sessionId)
             if (resumeRes.isSuccess) {
-                stateMachine.transition(StateEvent.ResumeCommandSent)
+                transition(StateEvent.ResumeCommandSent)
                 inactiveOnlineConsecutiveTicks = 0
                 hasAlertedManualResume = false
                 events += SupervisorEvent.CancelManualResumeAlert
@@ -394,7 +437,7 @@ class SessionSupervisor(
             return
         }
         val voltage = data.voltageCurrent ?: return
-        val nextState = stateMachine.transition(StateEvent.GridRestored(voltage))
+        val nextState = transition(StateEvent.GridRestored(voltage))
         if (nextState == SessionStatus.OUTAGE_STABILIZING) {
             gateway.handleOutageStabilizing(sessionId)
         }
@@ -408,7 +451,7 @@ class SessionSupervisor(
         events: MutableList<SupervisorEvent>
     ) {
         if (!gateway.isAutoResumeEnabled()) {
-            stateMachine.transition(StateEvent.OutageDetected)
+            transition(StateEvent.OutageDetected)
             gateway.handleOutageDetected(sessionId, data.consumedEnergyKwh)
             if (!hasAlertedManualResume) {
                 hasAlertedManualResume = true
@@ -418,12 +461,12 @@ class SessionSupervisor(
         }
         val voltage = data.voltageCurrent ?: return
         if (voltage in 180..250) {
-            val nextState = stateMachine.transition(StateEvent.VoltageStable)
+            val nextState = transition(StateEvent.VoltageStable)
             if (nextState == SessionStatus.AUTO_RESUMING) {
                 tryAutoResume(sessionId, dbSession, events)
             }
         } else {
-            stateMachine.transition(StateEvent.VoltageUnstable)
+            transition(StateEvent.VoltageUnstable)
             gateway.handleOutageDetected(sessionId, data.consumedEnergyKwh)
         }
     }
@@ -436,7 +479,7 @@ class SessionSupervisor(
         events: MutableList<SupervisorEvent>
     ) {
         if (!gateway.isAutoResumeEnabled()) {
-            stateMachine.transition(StateEvent.OutageDetected)
+            transition(StateEvent.OutageDetected)
             gateway.handleOutageDetected(sessionId, data.consumedEnergyKwh)
             if (!hasAlertedManualResume) {
                 hasAlertedManualResume = true
@@ -456,8 +499,9 @@ class SessionSupervisor(
             return
         }
         val resumeRes = gateway.resumeAfterOutage(sessionId)
+        DiagLog.i(TAG, "Auto-resume after outage: " + if (resumeRes.isSuccess) "ok" else "failed, ${resumeRes.exceptionOrNull().reason()}")
         if (resumeRes.isSuccess) {
-            stateMachine.transition(StateEvent.ResumeCommandSent)
+            transition(StateEvent.ResumeCommandSent)
             inactiveOnlineConsecutiveTicks = 0
             lastActiveChargingSampleAt = 0L
             hasAlertedManualResume = false
@@ -518,11 +562,19 @@ class SessionSupervisor(
                 else -> INACTIVE_ONLINE_STOP_TICKS
             }
             if (inactiveOnlineConsecutiveTicks >= threshold) {
+                DiagLog.i(
+                    TAG,
+                    "Not charging for $inactiveOnlineConsecutiveTicks ticks (limit $threshold, evidence=$hasEvidence, " +
+                        "limited=$isLimited, status='${data.statusText}'), closing the session"
+                )
                 // A limited session whose car is still plugged in only pauses (undervoltage, car-side
                 // pause), so the station stays armed. When finally giving up, the station is stopped
                 // first, otherwise it would keep charging with no limit and no dead-man timer.
                 val stopped = if (hasEvidence && !keepWatching) true else gateway.stopAndConfirm(allowOfflineConfirmation = false)
-                if (!stopped && keepWatching) return false
+                if (!stopped && keepWatching) {
+                    DiagLog.w(TAG, "Station did not confirm the stop, the session stays open")
+                    return false
+                }
                 closeStoppedOrUnstartedSession(
                     sessionId = sessionId,
                     counterKwh = data.consumedEnergyKwh,
@@ -536,7 +588,8 @@ class SessionSupervisor(
         ) {
             zeroCurrentConsecutiveTicks++
             if (zeroCurrentConsecutiveTicks >= 30) {
-                stateMachine.transition(StateEvent.VehicleStoppedCharging)
+                DiagLog.i(TAG, "Station reports charging but the car draws no current for 30 ticks, session closed")
+                transition(StateEvent.VehicleStoppedCharging)
                 gateway.markSessionVehicleStopped(sessionId, data.consumedEnergyKwh)
                 return true
             }
@@ -557,6 +610,11 @@ class SessionSupervisor(
             if (recommendedA != null && recommendedA != data.selectedCurrentAmperes) {
                 val prevA = data.selectedCurrentAmperes
                 val updateRes = gateway.setAmperage(recommendedA)
+                DiagLog.i(
+                    TAG,
+                    "Auto-current at ${currentVoltage}V: ${prevA}A -> ${recommendedA}A " +
+                        if (updateRes.isSuccess) "ok" else "failed, ${updateRes.exceptionOrNull().reason()}"
+                )
                 if (updateRes.isSuccess) {
                     lastKnownAmperes = recommendedA
                     lastDeadManRefreshAtMs = now
@@ -574,6 +632,7 @@ class SessionSupervisor(
             (lastDeadManRefreshAtMs == 0L || now - lastDeadManRefreshAtMs >= DEAD_MAN_REFRESH_INTERVAL_MS)
         ) {
             lastDeadManRefreshAtMs = now
+            DiagLog.d(TAG) { "Refreshing the dead-man timer at ${currentVoltage ?: 230}V, delivered ${totalDelivered.kwh()}" }
             gateway.refreshDeadManTimer(sessionId, currentVoltage ?: 230, totalDelivered)
         }
         return false
@@ -590,6 +649,11 @@ class SessionSupervisor(
         val isManualStop = pendingStopIsManual || (!reachedKwh && !reachedDur)
 
         val stopped = if (!data.isChargingActive) true else gateway.stopAndConfirm(allowOfflineConfirmation = isManualStop)
+        DiagLog.i(
+            TAG,
+            "Waiting for stop (manual=$isManualStop, reachedKwh=$reachedKwh, reachedTime=$reachedDur): " +
+                if (stopped) "station stopped" else "station still charging"
+        )
         return if (stopped) {
             val finalKwh = gateway.latestCounterOr(data.consumedEnergyKwh)
             finalizeStopConfirmed(
@@ -616,6 +680,9 @@ class SessionSupervisor(
         events: MutableList<SupervisorEvent>
     ): Boolean {
         consecutiveFailureTicks++
+        if (consecutiveFailureTicks == 3) {
+            DiagLog.w(TAG, "No telemetry for 3 ticks in a row: connection to the station lost")
+        }
         if (consecutiveFailureTicks >= 3) {
             lastActiveChargingSampleAt = 0L
             gateway.updateDurationProgress(sessionId, accumulatedChargingMs, 0L)
@@ -637,7 +704,7 @@ class SessionSupervisor(
                 events += SupervisorEvent.ShowConnectionLost(lastKnownAmperes)
             }
             if (stateMachine.getState() == SessionStatus.CHARGING) {
-                stateMachine.transition(StateEvent.OutageDetected)
+                transition(StateEvent.OutageDetected)
                 hasAlertedManualResume = false
                 gateway.handleOutageDetected(sessionId, lastSampledCounterKwh)
             }
@@ -653,9 +720,15 @@ class SessionSupervisor(
         events: MutableList<SupervisorEvent>
     ): Boolean {
         pendingStopIsManual = false
+        DiagLog.i(
+            TAG,
+            (if (isDurationTarget) "Charge timer reached (${accumulatedChargingMs / 60_000} min)" else "Energy limit reached") +
+                ": delivered ${totalDelivered.kwh()} of ${activeTargetKwh} kWh, stopping the station"
+        )
         val stopped = gateway.markSessionTargetReached(sessionId, consumedKwh)
+        if (!stopped) DiagLog.w(TAG, "Station did not confirm the stop after the limit")
         return if (stopped) {
-            stateMachine.transition(StateEvent.TargetQuotaReached)
+            transition(StateEvent.TargetQuotaReached)
             events += if (isDurationTarget) {
                 SupervisorEvent.ShowDurationTargetReached(activeTargetDurationMinutes, totalDelivered)
             } else {
@@ -663,7 +736,7 @@ class SessionSupervisor(
             }
             true
         } else {
-            stateMachine.transition(StateEvent.StopPending)
+            transition(StateEvent.StopPending)
             if (!hasAlertedStopFailed) {
                 hasAlertedStopFailed = true
                 events += SupervisorEvent.ShowStopFailed
@@ -687,7 +760,7 @@ class SessionSupervisor(
                 sliceReason = SliceEndReason.MANUAL_STOP,
                 finalStatus = SessionStatus.CANCELLED
             )
-            stateMachine.transition(StateEvent.CancelRequested)
+            transition(StateEvent.CancelRequested)
         } else {
             gateway.finalizeSessionStopped(
                 sessionId = sessionId,
@@ -695,7 +768,7 @@ class SessionSupervisor(
                 sliceReason = SliceEndReason.TARGET_REACHED,
                 finalStatus = SessionStatus.TARGET_REACHED
             )
-            stateMachine.transition(StateEvent.TargetQuotaReached)
+            transition(StateEvent.TargetQuotaReached)
             events += if (isDurationTarget) {
                 SupervisorEvent.ShowDurationTargetReached(activeTargetDurationMinutes, totalDelivered)
             } else {
@@ -713,7 +786,7 @@ class SessionSupervisor(
         if (id == null) {
             val stopped = gateway.stopAndConfirm(allowOfflineConfirmation = true)
             return@withLock if (stopped) {
-                stateMachine.transition(StateEvent.CancelRequested)
+                transition(StateEvent.CancelRequested)
                 TickOutcome(stateMachine.getState(), events, shouldStopService = true)
             } else {
                 if (!hasAlertedStopFailed) {
@@ -725,18 +798,19 @@ class SessionSupervisor(
         }
         activeSessionId = id
         if (gateway.getSessionById(id)?.status?.isTerminal == true) {
-            stateMachine.transition(StateEvent.CancelRequested)
+            transition(StateEvent.CancelRequested)
             return@withLock TickOutcome(stateMachine.getState(), events, shouldStopService = true)
         }
 
         val res = gateway.stopActiveSession(id)
+        DiagLog.i(TAG, "Manual stop of ${id.take(8)}: " + if (res.isSuccess) "ok" else "failed, ${res.exceptionOrNull().reason()}")
         if (res.isSuccess) {
             pendingStopIsManual = false
-            stateMachine.transition(StateEvent.CancelRequested)
+            transition(StateEvent.CancelRequested)
             TickOutcome(stateMachine.getState(), events, shouldStopService = true)
         } else {
             pendingStopIsManual = true
-            stateMachine.transition(StateEvent.StopPending)
+            transition(StateEvent.StopPending)
             if (!hasAlertedStopFailed) {
                 hasAlertedStopFailed = true
                 events += SupervisorEvent.ShowStopFailed
@@ -756,7 +830,7 @@ class SessionSupervisor(
         activeSessionId = id
         val dbSession = gateway.getSessionById(id)
         if (dbSession?.status?.isTerminal == true) {
-            stateMachine.transition(StateEvent.CancelRequested)
+            transition(StateEvent.CancelRequested)
             return@withLock events to false
         }
         if (stateMachine.getState() == SessionStatus.CHARGING || dbSession?.status == SessionStatus.CHARGING) {
@@ -766,8 +840,9 @@ class SessionSupervisor(
         }
 
         val res = gateway.resumeAfterOutage(id, isManual = true)
+        DiagLog.i(TAG, "Manual resume of ${id.take(8)}: " + if (res.isSuccess) "ok" else "failed, ${res.exceptionOrNull().reason()}")
         if (res.isSuccess) {
-            stateMachine.transition(StateEvent.ResumeCommandSent)
+            transition(StateEvent.ResumeCommandSent)
             inactiveOnlineConsecutiveTicks = 0
             lastActiveChargingSampleAt = 0L
             hasAlertedManualResume = false
@@ -784,6 +859,7 @@ class SessionSupervisor(
     }
 
     companion object {
+        private const val TAG = "Supervisor"
         private const val HTTP_COUNTER_ROUNDING_KWH = 0.1
         private const val INACTIVE_ONLINE_STOP_TICKS = 3
         /** About 2.5 minutes for the car to start drawing current after a start command. */
