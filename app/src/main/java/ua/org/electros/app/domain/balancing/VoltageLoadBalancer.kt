@@ -1,9 +1,11 @@
 package ua.org.electros.app.domain.balancing
 
+import ua.org.electros.app.data.local.AppSettings
+
 class VoltageLoadBalancer(
     var isEnabled: Boolean = true,
-    var lowThresholdV: Int = 185,
-    var highThresholdV: Int = 205,
+    var lowThresholdV: Int = AppSettings.DEFAULT_VOLTAGE_LOW_THRESHOLD,
+    var highThresholdV: Int = AppSettings.DEFAULT_VOLTAGE_HIGH_THRESHOLD,
     var minAmperage: Int = 6,
     var maxAmperage: Int = 12,
     private val lowVoltageTriggerTicks: Int = 2,
@@ -30,7 +32,7 @@ class VoltageLoadBalancer(
             return minAmperage
         }
 
-        // Low voltage trigger (< 185V): step down after 2 consecutive ticks
+        // Low voltage trigger (below lowThresholdV, 190V by default): step down after 2 consecutive ticks
         if (currentVoltage < lowThresholdV) {
             consecutiveLowTicks++
             consecutiveHighTicks = 0
@@ -43,7 +45,7 @@ class VoltageLoadBalancer(
             return null
         }
 
-        // High voltage recovery (> 205V): step up after 5 consecutive ticks of stable voltage
+        // High voltage recovery (above highThresholdV, 205V by default): step up after 5 consecutive ticks of stable voltage
         if (currentVoltage > highThresholdV) {
             consecutiveHighTicks++
             consecutiveLowTicks = 0

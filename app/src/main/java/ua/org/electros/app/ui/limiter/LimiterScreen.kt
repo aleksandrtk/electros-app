@@ -506,7 +506,7 @@ fun LimiterScreen(
                             )
                         }
 
-                        // Low Voltage Slider (< 185V default)
+                        // Low Voltage Slider (< 190V default)
                         Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

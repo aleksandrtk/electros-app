@@ -52,7 +52,7 @@ data class AppSettings(
         const val DEFAULT_TARGET_DURATION_HOURS = 2
         const val DEFAULT_SCHEDULE_START = "23:00"
         const val DEFAULT_SCHEDULE_STOP = "07:00"
-        const val DEFAULT_VOLTAGE_LOW_THRESHOLD = 185
+        const val DEFAULT_VOLTAGE_LOW_THRESHOLD = 190
         const val DEFAULT_VOLTAGE_HIGH_THRESHOLD = 205
         const val DEFAULT_VOLTAGE_MAX_AMPERAGE = 12
         const val DEFAULT_VOLTAGE_MIN_AMPERAGE = 6

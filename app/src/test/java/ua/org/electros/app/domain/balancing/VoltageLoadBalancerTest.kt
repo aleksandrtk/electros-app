@@ -36,6 +36,19 @@ class VoltageLoadBalancerTest {
     }
 
     @Test
+    fun defaults_startLoweringBelow190V() {
+        assertThat(ua.org.electros.app.data.local.AppSettings().voltageLowThreshold).isEqualTo(190)
+
+        val balancer = VoltageLoadBalancer()
+        // 190 V itself is still fine.
+        assertThat(balancer.evaluate(190, 12)).isNull()
+        assertThat(balancer.evaluate(190, 12)).isNull()
+        // 189 V for two polls lowers the current by one step.
+        assertThat(balancer.evaluate(189, 12)).isNull()
+        assertThat(balancer.evaluate(189, 12)).isEqualTo(10)
+    }
+
+    @Test
     fun evaluate_criticalVoltageDrop_immediatelyDropsToMinAmperage() {
         val balancer = VoltageLoadBalancer(lowThresholdV = 185, minAmperage = 6)
         // Voltage critically low (< 175V)

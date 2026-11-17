@@ -27,7 +27,7 @@ data class LimiterUiState(
     val isApplyingSchedule: Boolean = false,
     val scheduleError: UiText? = null,
     val isVoltageBalancingEnabled: Boolean = true,
-    val voltageLowThreshold: Int = 185,
+    val voltageLowThreshold: Int = AppSettings.DEFAULT_VOLTAGE_LOW_THRESHOLD,
     val voltageHighThreshold: Int = 205,
     val voltageMaxAmperage: Int = 12
 )

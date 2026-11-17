@@ -44,7 +44,7 @@ data class DashboardUiState(
     val isStartingOrStopping: Boolean = false,
     val isRefreshing: Boolean = false,
     val isVoltageBalancingEnabled: Boolean = true,
-    val voltageLowThreshold: Int = 185,
+    val voltageLowThreshold: Int = AppSettings.DEFAULT_VOLTAGE_LOW_THRESHOLD,
     val voltageMaxAmperage: Int = 12,
     val isDurationTimerEnabled: Boolean = false,
     val targetDurationHours: Int = 2,
