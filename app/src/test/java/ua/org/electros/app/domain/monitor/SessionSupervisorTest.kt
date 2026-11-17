@@ -467,7 +467,7 @@ class SessionSupervisorTest {
     }
 
     @Test
-    fun onlineIdleWithoutCharging_afterThreeTicks_cancelsSessionInsteadOfWaitingForever() = runTest {
+    fun onlineIdleWithoutCharging_afterGraceWindow_cancelsSessionInsteadOfWaitingForever() = runTest {
         val gateway = FakeGateway(
             session = session(id = "s-idle"),
             slices = mutableListOf(slice("s-idle", startKwh = 50.0)),
@@ -477,12 +477,11 @@ class SessionSupervisorTest {
         supervisor.onSessionStarted("s-idle", targetKwh = 0.0, targetDurationMinutes = 0)
         gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 50.0, voltage = 225))
 
-        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
-        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
-        val tick3 = supervisor.tick()
+        repeat(14) { assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING) }
+        val tick15 = supervisor.tick()
 
-        assertThat(tick3.status).isEqualTo(SessionStatus.CANCELLED)
-        assertThat(tick3.shouldStopService).isTrue()
+        assertThat(tick15.status).isEqualTo(SessionStatus.CANCELLED)
+        assertThat(tick15.shouldStopService).isTrue()
         assertThat(gateway.finalizedStatus).isEqualTo(SessionStatus.CANCELLED)
     }
 
@@ -507,6 +506,29 @@ class SessionSupervisorTest {
         assertThat(tick4.status).isEqualTo(SessionStatus.VEHICLE_STOPPED)
         assertThat(tick4.shouldStopService).isTrue()
         assertThat(gateway.session.status).isEqualTo(SessionStatus.VEHICLE_STOPPED)
+    }
+
+    @Test
+    fun limitedSessionPausedWhileCarPluggedIn_staysAliveAndResumes() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-limited", targetKwh = 10.0),
+            slices = mutableListOf(slice("s-limited", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-limited", targetKwh = 10.0, targetDurationMinutes = 0)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 51.0, voltage = 225))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = false, counterKwh = 51.0, voltage = 225))
+        repeat(40) { assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING) }
+        assertThat(gateway.session.status).isNotEqualTo(SessionStatus.VEHICLE_STOPPED)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 52.0, voltage = 225))
+        val resumed = supervisor.tick()
+        assertThat(resumed.status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(resumed.shouldStopService).isFalse()
     }
 
     @Test

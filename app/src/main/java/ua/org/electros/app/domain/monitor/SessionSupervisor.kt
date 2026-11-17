@@ -499,11 +499,24 @@ class SessionSupervisor(
         if (stateMachine.getState() == SessionStatus.CHARGING && !data.isChargingActive) {
             zeroCurrentConsecutiveTicks = 0
             inactiveOnlineConsecutiveTicks++
-            if (inactiveOnlineConsecutiveTicks >= INACTIVE_ONLINE_STOP_TICKS) {
+            val hasEvidence = hasChargingEvidence(totalDelivered, dbSession.lastTickAt)
+            val isLimited = activeTargetKwh > 0.0 || activeTargetDurationMinutes > 0
+            val keepWatching = isLimited && hasEvidence && !isVehicleUnplugged(data.statusText)
+            val threshold = when {
+                !hasEvidence -> UNSTARTED_STOP_TICKS
+                keepWatching -> LIMITED_IDLE_STOP_TICKS
+                else -> INACTIVE_ONLINE_STOP_TICKS
+            }
+            if (inactiveOnlineConsecutiveTicks >= threshold) {
+                // A limited session whose car is still plugged in only pauses (undervoltage, car-side
+                // pause), so the station stays armed. When finally giving up, the station is stopped
+                // first, otherwise it would keep charging with no limit and no dead-man timer.
+                val stopped = if (hasEvidence && !keepWatching) true else gateway.stopAndConfirm(allowOfflineConfirmation = false)
+                if (!stopped && keepWatching) return false
                 closeStoppedOrUnstartedSession(
                     sessionId = sessionId,
                     counterKwh = data.consumedEnergyKwh,
-                    hasEvidence = hasChargingEvidence(totalDelivered, dbSession.lastTickAt)
+                    hasEvidence = hasEvidence
                 )
                 return true
             }
@@ -762,6 +775,10 @@ class SessionSupervisor(
 
     companion object {
         private const val INACTIVE_ONLINE_STOP_TICKS = 3
+        /** About 2.5 minutes for the car to start drawing current after a start command. */
+        private const val UNSTARTED_STOP_TICKS = 15
+        /** About 12 hours of pause before a limited session with a plugged-in car is given up. */
+        private const val LIMITED_IDLE_STOP_TICKS = 4_320
         private const val DEAD_MAN_REFRESH_INTERVAL_MS = 15 * 60_000L
     }
 }
