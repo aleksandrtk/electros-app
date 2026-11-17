@@ -65,8 +65,8 @@ New versions are fetched from GitHub Releases. Before installing, the app checks
 
 ```mermaid
 flowchart LR
-    A["📱 Electros EV app<br/>foreground service"] -- "WebSocket, HTTP fallback" --> B["☁️ electros.org.ua"]
-    B --> C["🔌 Your Electros station"]
+    A["Electros EV app<br/>foreground service"] -- "WebSocket, HTTP fallback" --> B["electros.org.ua"]
+    B --> C["Your Electros station"]
     A -. "arms the hardware timer<br/>as a backup" .-> C
     A --> D[("Room database<br/>sessions and slices")]
 ```
