@@ -260,9 +260,56 @@ class ChargeRepositoryStopTest {
         )
 
         assertThat(stopped).isTrue()
-        // Attempt 0: 1 WS stop + 1 WS telemetry poll; Attempt 1: HTTP stop fallback + 1 WS telemetry poll
-        assertThat(wsMessages).containsExactly("site 12345\nstop", "site 12345", "site 12345").inOrder()
+        // Timer off first; attempt 0: WS stop + poll; attempt 1: HTTP stop fallback + poll; then the hold check poll.
+        assertThat(wsMessages.first()).startsWith("site 12345\ndatetime\n")
+        assertThat(wsMessages.first()).endsWith("\n00:00\n00:00\n")
+        assertThat(wsMessages.drop(1)).containsExactly("site 12345\nstop", "site 12345", "site 12345", "site 12345").inOrder()
         assertThat(httpStopCount).hasSize(1)
+    }
+
+    @Test
+    fun stopAndConfirm_clearsTheTimerFirstAndRetriesWhenTheStationResumesCharging() = runTest {
+        val posts = CopyOnWriteArrayList<String>()
+        // After the first stop: idle at the first look, charging again at the hold check.
+        // After the second stop: idle for good.
+        var stops = 0
+        var readsAfterFirstStop = 0
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val req = chain.request()
+                if (req.method == "POST") {
+                    val buffer = okio.Buffer()
+                    req.body?.writeTo(buffer)
+                    val form = buffer.readUtf8()
+                    posts += form
+                    if (form == "action=stop") stops++
+                }
+                val body = if (req.method == "GET" && req.url.toString().contains("protected_page.php")) {
+                    when (stops) {
+                        0 -> CHARGING_HTML
+                        1 -> if (readsAfterFirstStop++ == 0) CONNECTED_IDLE_HTML else CHARGING_HTML
+                        else -> CONNECTED_IDLE_HTML
+                    }
+                } else "OK"
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body.toResponseBody("text/html".toMediaType()))
+                    .build()
+            })
+            .build()
+        val repo = ChargeRepository(scraper = ElectrosWebScraper(client = client), chargeDao = FakeChargeDao())
+
+        val stopped = repo.stopAndConfirm(maxAttempts = 3, confirmDelayMs = 0L, retryDelayMs = 0L)
+
+        assertThat(stopped).isTrue()
+        assertThat(posts.first()).contains("action=set_timer")
+        assertThat(posts.first()).contains("time_start=00%3A00")
+        assertThat(posts.count { it == "action=stop" }).isEqualTo(2)
+        // The timer was already off, so it is not sent again after the stop.
+        assertThat(posts.count { it.contains("set_timer") }).isEqualTo(1)
     }
 
     private suspend fun seedActiveSession(

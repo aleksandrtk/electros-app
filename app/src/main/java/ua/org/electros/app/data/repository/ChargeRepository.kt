@@ -53,6 +53,16 @@ class ChargeRepository(
     private val _telemetryState = MutableStateFlow<TelemetryData?>(null)
     val telemetryState: StateFlow<TelemetryData?> = _telemetryState.asStateFlow()
 
+    /** Last station timer window the station accepted; null until one is sent in this process. */
+    @Volatile
+    private var lastTimerSent: Pair<String, String>? = null
+
+    private suspend fun sendTimer(start: String, stop: String): Result<Unit> {
+        val res = runCatching { scraper.setTimer(start, stop) }.getOrElse { Result.failure(it) }
+        lastTimerSent = if (res.isSuccess) start to stop else null
+        return res
+    }
+
     fun observeActiveSession(): Flow<ChargeSessionEntity?> = chargeDao.observeActiveSession()
 
     fun observeSlicesForSession(sessionId: String): Flow<List<ChargeSliceEntity>> =
@@ -227,7 +237,7 @@ class ChargeRepository(
             DiagLog.d(TAG) { "Dead-man timer not needed for session ${session.id.take(8)}" }
             return
         }
-        val res = runCatching { scraper.setTimer(window.first, window.second) }.getOrElse { Result.failure(it) }
+        val res = sendTimer(window.first, window.second)
         DiagLog.i(
             TAG,
             "Dead-man timer ${window.first}-${window.second} (${voltageVolts}V, ${session.amperageSetting}A, " +
@@ -241,12 +251,19 @@ class ChargeRepository(
     }
 
     private suspend fun restoreScheduleTimer(forceRestore: Boolean = false, session: ChargeSessionEntity? = null) {
-        val shouldRestore = forceRestore || (session != null && (session.targetKwh > 0.0 || session.targetDurationMinutes > 0))
-        if (!shouldRestore) return
         val (schedEnabled, schedStart, schedStop) = readScheduleConfig()
-        val targetStart = if (schedEnabled) schedStart else "00:00"
-        val targetStop = if (schedEnabled) schedStop else "00:00"
-        val res = runCatching { scraper.setTimer(targetStart, targetStop) }.getOrElse { Result.failure(it) }
+        val wasLimited = session != null && (session.targetKwh > 0.0 || session.targetDurationMinutes > 0)
+        // A stop clears the station timer first, so the user's own schedule is put back after every stop.
+        val shouldRestore = forceRestore || wasLimited || schedEnabled
+        if (!shouldRestore) return
+        val targetStart = if (schedEnabled) schedStart else TIMER_OFF
+        val targetStop = if (schedEnabled) schedStop else TIMER_OFF
+        // Each timer command can make the station pick charging up again, so never repeat one it already has.
+        if (lastTimerSent == targetStart to targetStop) {
+            DiagLog.d(TAG) { "Station schedule already $targetStart-$targetStop" }
+            return
+        }
+        val res = sendTimer(targetStart, targetStop)
         DiagLog.i(
             TAG,
             "Station schedule restored to $targetStart-$targetStop: " +
@@ -394,8 +411,12 @@ class ChargeRepository(
         maxAttempts: Int = 3,
         allowOfflineConfirmation: Boolean = false,
         confirmDelayMs: Long = 4_000L,
-        retryDelayMs: Long = 2_000L
+        retryDelayMs: Long = 2_000L,
+        holdCheckDelayMs: Long = STOP_HOLD_CHECK_MS
     ): Boolean {
+        // While the dead-man window is armed the station treats a stop as a pause and starts charging
+        // again a few seconds later (seen in a field log). Turn the window off before stopping.
+        clearTimerBeforeStop(settleMs = if (confirmDelayMs > 0L) TIMER_CLEAR_SETTLE_MS else 0L)
         var previousWsLeftCharging = false
         repeat(maxAttempts) { attempt ->
             val httpOnly = attempt > 0 && previousWsLeftCharging
@@ -414,7 +435,15 @@ class ChargeRepository(
             if (t != null) {
                 _telemetryState.value = t
                 if (!t.isChargingActive && (t.isOnline || allowOfflineConfirmation)) {
-                    return true
+                    if (!t.isOnline || holdsStopped(holdCheckDelayMs)) {
+                        restoreScheduleTimer()
+                        return true
+                    }
+                    DiagLog.w(TAG, "Station started charging again a few seconds after the stop")
+                    // The stop itself worked, so the next attempt uses the same channel again.
+                    previousWsLeftCharging = false
+                    if (attempt < maxAttempts - 1 && retryDelayMs > 0L) delay(retryDelayMs)
+                    return@repeat
                 }
                 previousWsLeftCharging = t.isChargingActive
             } else {
@@ -424,6 +453,22 @@ class ChargeRepository(
         }
         DiagLog.w(TAG, "Station did not confirm the stop after $maxAttempts attempts")
         return false
+    }
+
+    private suspend fun clearTimerBeforeStop(settleMs: Long) {
+        if (lastTimerSent == TIMER_OFF to TIMER_OFF) return
+        val res = sendTimer(TIMER_OFF, TIMER_OFF)
+        DiagLog.i(TAG, "Station timer cleared before the stop: " + if (res.isSuccess) "sent" else "failed, ${res.exceptionOrNull().reason()}")
+        if (res.isSuccess && settleMs > 0L) delay(settleMs)
+    }
+
+    /** Looks again after [delayMs]: true when the station is still not charging. */
+    private suspend fun holdsStopped(delayMs: Long): Boolean {
+        if (delayMs > 0L) delay(delayMs)
+        val again = scraper.fetchTelemetry().getOrNull() ?: return true
+        _telemetryState.value = again
+        DiagLog.i(TAG, "Stop check after ${delayMs / 1000} s: ${again.toLogString()}")
+        return !again.isChargingActive
     }
 
     suspend fun finalizeSessionStopped(
@@ -502,7 +547,7 @@ class ChargeRepository(
     }
 
     suspend fun setScheduleTimer(start: String, stop: String): Result<Unit> {
-        return scraper.setTimer(start, stop).also {
+        return sendTimer(start, stop).also {
             DiagLog.i(TAG, "Station schedule $start-$stop: " + if (it.isSuccess) "sent" else "failed, ${it.exceptionOrNull().reason()}")
         }
     }
@@ -641,6 +686,9 @@ class ChargeRepository(
 
     companion object {
         private const val TAG = "Repository"
+        private const val TIMER_OFF = "00:00"
+        private const val TIMER_CLEAR_SETTLE_MS = 2_000L
+        private const val STOP_HOLD_CHECK_MS = 8_000L
         private const val STARTUP_GRACE_MS = 30_000L
         private const val STALE_OFFLINE_CHARGING_MS = 2 * 3_600_000L
         private const val STALE_OUTAGE_MS = 24 * 3_600_000L

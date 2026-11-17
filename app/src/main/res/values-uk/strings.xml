@@ -120,11 +120,11 @@
     <string name="limits_dlb_label">БАЛАНСУВАННЯ НАВАНТАЖЕННЯ (DLB)</string>
     <string name="limits_dlb_title">Адаптація за напругою мережі</string>
     <string name="limits_dlb_off">Вимкнено: станція працює на фіксованому струмі без контролю просадки напруги.</string>
-    <string name="limits_dlb_explain">⚡ Якщо напруга падає нижче %1$d В — струм поступово знижується до 6 А. Якщо піднімається вище %2$d В — підвищується до максимум %3$d А.</string>
+    <string name="limits_dlb_explain">⚡ Якщо напруга падає нижче %1$d В — струм поступово знижується до 6 А. Від %2$d В струм підвищується до %3$d А, від %4$d В — до максимум %5$d А.</string>
     <string name="limits_dlb_low">Поріг зниження струму</string>
     <string name="limits_dlb_high">Поріг повернення струму</string>
     <string name="limits_below_v">&lt; %1$d В</string>
-    <string name="limits_above_v">&gt; %1$d В</string>
+    <string name="limits_above_v">≥ %1$d В</string>
     <string name="limits_dlb_gap">Мінімальний розрив між порогами — 10 В</string>
     <string name="limits_dlb_max">Максимальний струм розгону</string>
     <string name="limits_amps">%1$d А</string>

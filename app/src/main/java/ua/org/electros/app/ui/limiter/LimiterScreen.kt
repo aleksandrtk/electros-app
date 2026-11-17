@@ -3,6 +3,7 @@ package ua.org.electros.app.ui.limiter
 import ua.org.electros.app.ui.asString
 import androidx.compose.ui.res.stringResource
 import ua.org.electros.app.R
+import ua.org.electros.app.domain.balancing.VoltageLoadBalancer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -499,7 +500,14 @@ fun LimiterScreen(
                                 .padding(14.dp)
                         ) {
                             Text(
-                                text = stringResource(R.string.limits_dlb_explain, state.voltageLowThreshold, state.voltageHighThreshold, state.voltageMaxAmperage),
+                                text = stringResource(
+                                    R.string.limits_dlb_explain,
+                                    state.voltageLowThreshold,
+                                    state.voltageHighThreshold - VoltageLoadBalancer.PARTIAL_RECOVERY_MARGIN_V,
+                                    minOf(VoltageLoadBalancer.PARTIAL_RECOVERY_AMPERAGE, state.voltageMaxAmperage),
+                                    state.voltageHighThreshold,
+                                    state.voltageMaxAmperage
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextPrimaryDark,
                                 lineHeight = 18.sp
@@ -538,7 +546,7 @@ fun LimiterScreen(
                             )
                         }
 
-                        // High Voltage Slider (> 205V default)
+                        // High Voltage Slider (205V default; the first recovery stage starts 5V lower)
                         Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

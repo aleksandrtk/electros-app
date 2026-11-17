@@ -122,11 +122,11 @@
     <string name="limits_dlb_label">LOAD BALANCING (DLB)</string>
     <string name="limits_dlb_title">Adapt to grid voltage</string>
     <string name="limits_dlb_off">Off: the station runs at a fixed current without voltage-sag control.</string>
-    <string name="limits_dlb_explain">⚡ If the voltage drops below %1$d V, the current is lowered step by step to 6 A. If it rises above %2$d V, it goes back up to at most %3$d A.</string>
+    <string name="limits_dlb_explain">⚡ If the voltage drops below %1$d V, the current is lowered step by step to 6 A. From %2$d V it goes back up to %3$d A, from %4$d V up to at most %5$d A.</string>
     <string name="limits_dlb_low">Lower current below</string>
     <string name="limits_dlb_high">Restore current above</string>
     <string name="limits_below_v">&lt; %1$d V</string>
-    <string name="limits_above_v">&gt; %1$d V</string>
+    <string name="limits_above_v">≥ %1$d V</string>
     <string name="limits_dlb_gap">Minimum gap between thresholds is 10 V</string>
     <string name="limits_dlb_max">Maximum ramp-up current</string>
     <string name="limits_amps">%1$d A</string>

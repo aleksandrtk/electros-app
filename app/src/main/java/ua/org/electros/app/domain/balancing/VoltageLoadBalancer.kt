@@ -13,6 +13,7 @@ class VoltageLoadBalancer(
 ) {
     private var consecutiveLowTicks = 0
     private var consecutiveHighTicks = 0
+    private var streakMinVoltage = Int.MAX_VALUE
 
     /**
      * Evaluates the current grid voltage and current station amperage.
@@ -20,15 +21,13 @@ class VoltageLoadBalancer(
      */
     fun evaluate(currentVoltage: Int, currentAmperage: Int): Int? {
         if (!isEnabled || currentVoltage <= 0 || highThresholdV <= lowThresholdV) {
-            consecutiveLowTicks = 0
-            consecutiveHighTicks = 0
+            reset()
             return null
         }
 
         // Emergency protection: drop immediately to minimum if voltage falls critically below 175V
         if (currentVoltage < 175 && currentAmperage > minAmperage) {
-            consecutiveLowTicks = 0
-            consecutiveHighTicks = 0
+            reset()
             return minAmperage
         }
 
@@ -36,6 +35,7 @@ class VoltageLoadBalancer(
         if (currentVoltage < lowThresholdV) {
             consecutiveLowTicks++
             consecutiveHighTicks = 0
+            streakMinVoltage = Int.MAX_VALUE
             if (consecutiveLowTicks >= lowVoltageTriggerTicks) {
                 consecutiveLowTicks = 0
                 if (currentAmperage > minAmperage) {
@@ -45,28 +45,46 @@ class VoltageLoadBalancer(
             return null
         }
 
-        // High voltage recovery (above highThresholdV, 205V by default): step up after 5 consecutive ticks of stable voltage
-        if (currentVoltage > highThresholdV) {
+        // Recovery in two stages, one 2 A step after 5 consecutive good ticks:
+        // from partialThreshold (200 V by default) up to PARTIAL_RECOVERY_AMPERAGE (10 A),
+        // from highThresholdV (205 V by default) up to maxAmperage.
+        val partialThreshold = highThresholdV - PARTIAL_RECOVERY_MARGIN_V
+        val recoveryFloor = if (partialThreshold > lowThresholdV) partialThreshold else highThresholdV
+        if (currentVoltage >= recoveryFloor) {
             consecutiveHighTicks++
             consecutiveLowTicks = 0
+            streakMinVoltage = minOf(streakMinVoltage, currentVoltage)
             if (consecutiveHighTicks >= highVoltageRecoveryTicks) {
+                val ceiling = if (streakMinVoltage >= highThresholdV) {
+                    maxAmperage
+                } else {
+                    minOf(PARTIAL_RECOVERY_AMPERAGE, maxAmperage)
+                }
                 consecutiveHighTicks = 0
-                if (currentAmperage < maxAmperage) {
-                    return (currentAmperage + 2).coerceAtMost(maxAmperage)
+                streakMinVoltage = Int.MAX_VALUE
+                if (currentAmperage < ceiling) {
+                    return (currentAmperage + 2).coerceAtMost(ceiling)
                 }
             }
             return null
         }
 
-        // Deadband [lowThresholdV..highThresholdV]: maintain current amperage, reset counters
-        consecutiveLowTicks = 0
-        consecutiveHighTicks = 0
+        // Deadband [lowThresholdV, recoveryFloor): maintain current amperage, reset counters
+        reset()
         return null
     }
 
     fun reset() {
         consecutiveLowTicks = 0
         consecutiveHighTicks = 0
+        streakMinVoltage = Int.MAX_VALUE
+    }
+
+    companion object {
+        /** The first recovery stage starts this many volts below [highThresholdV]. */
+        const val PARTIAL_RECOVERY_MARGIN_V = 5
+        /** Current the first recovery stage may raise to. */
+        const val PARTIAL_RECOVERY_AMPERAGE = 10
     }
 }
 

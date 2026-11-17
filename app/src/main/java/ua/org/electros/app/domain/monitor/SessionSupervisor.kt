@@ -648,7 +648,10 @@ class SessionSupervisor(
         val reachedDur = activeTargetDurationMinutes > 0 && accumulatedChargingMs >= activeTargetDurationMinutes * 60_000L
         val isManualStop = pendingStopIsManual || (!reachedKwh && !reachedDur)
 
-        val stopped = if (!data.isChargingActive) true else gateway.stopAndConfirm(allowOfflineConfirmation = isManualStop)
+        // One idle reading is not enough: the station may pick charging up again seconds later,
+        // so even then the stop is repeated and held for a while before the session is closed.
+        val stopped = if (!data.isOnline && !data.isChargingActive && isManualStop) true
+        else gateway.stopAndConfirm(allowOfflineConfirmation = isManualStop)
         DiagLog.i(
             TAG,
             "Waiting for stop (manual=$isManualStop, reachedKwh=$reachedKwh, reachedTime=$reachedDur): " +

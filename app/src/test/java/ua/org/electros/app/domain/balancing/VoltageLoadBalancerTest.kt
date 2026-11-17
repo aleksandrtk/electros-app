@@ -59,9 +59,36 @@ class VoltageLoadBalancerTest {
     @Test
     fun evaluate_deadband_maintainsCurrentAmperage() {
         val balancer = VoltageLoadBalancer(lowThresholdV = 185, highThresholdV = 205)
-        for (v in 185..205) {
+        for (v in 185..199) {
             assertThat(balancer.evaluate(v, 8)).isNull()
         }
+    }
+
+    @Test
+    fun recovery_from200VStopsAt10A_from205VGoesTo12A() {
+        val balancer = VoltageLoadBalancer(lowThresholdV = 190, highThresholdV = 205, maxAmperage = 12)
+
+        // 200..204 V: up to 10 A only.
+        repeat(4) { assertThat(balancer.evaluate(201, 6)).isNull() }
+        assertThat(balancer.evaluate(200, 6)).isEqualTo(8)
+        repeat(4) { assertThat(balancer.evaluate(202, 8)).isNull() }
+        assertThat(balancer.evaluate(202, 8)).isEqualTo(10)
+        repeat(10) { assertThat(balancer.evaluate(204, 10)).isNull() }
+
+        // 205 V and above: on to 12 A.
+        repeat(4) { assertThat(balancer.evaluate(205, 10)).isNull() }
+        assertThat(balancer.evaluate(206, 10)).isEqualTo(12)
+    }
+
+    @Test
+    fun recovery_streakDippingBelow205_onlyAllowsThePartialCeiling() {
+        val balancer = VoltageLoadBalancer(lowThresholdV = 190, highThresholdV = 205, maxAmperage = 12)
+        listOf(207, 207, 203, 207).forEach { assertThat(balancer.evaluate(it, 10)).isNull() }
+        // The streak saw 203 V, so 10 A stays.
+        assertThat(balancer.evaluate(207, 10)).isNull()
+        // A clean streak at 205+ raises it.
+        repeat(4) { assertThat(balancer.evaluate(207, 10)).isNull() }
+        assertThat(balancer.evaluate(207, 10)).isEqualTo(12)
     }
 
     @Test

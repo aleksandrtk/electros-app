@@ -40,7 +40,7 @@ Charge to an exact kWh limit, ride through blackouts without losing progress, an
 
 ### 🔌 Built for unstable power
 - **Blackout-proof sessions.** Energy delivered before an outage is kept, and the session continues after power returns, automatically or with one tap.
-- **Auto-current (DLB).** When the grid voltage sags below a threshold (190 V by default), the current is lowered step by step. When the voltage recovers, it is raised back up to the maximum you set.
+- **Auto-current (DLB).** When the grid voltage sags below a threshold (190 V by default), the current is lowered step by step. When the voltage recovers, it is raised back in two stages: up to 10 A from 200 V, and up to the maximum you set from 205 V.
 - **Dead-man safeguard.** While a limited session runs, the station's own hardware timer is armed as a backup, so charging still stops if the phone loses its connection.
 
 ### 📊 History and costs
