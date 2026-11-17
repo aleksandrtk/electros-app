@@ -56,6 +56,8 @@ class ChargeRepository(
 
     fun getAllSessions(): Flow<List<ChargeSessionEntity>> = chargeDao.getAllSessions()
 
+    fun observeAllSlices(): Flow<List<ChargeSliceEntity>> = chargeDao.observeAllSlices()
+
     suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> {
         return chargeDao.getSlicesForSession(sessionId)
     }

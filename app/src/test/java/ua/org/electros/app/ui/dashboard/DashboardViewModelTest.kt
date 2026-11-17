@@ -554,6 +554,8 @@ class DashboardViewModelTest {
 
         override fun getAllSessions(): Flow<List<ChargeSessionEntity>> = sessionsFlow
 
+        override fun observeAllSlices(): Flow<List<ChargeSliceEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
         override suspend fun insertSlice(slice: ChargeSliceEntity): Long {
             val id = nextSliceId++
             slices.add(slice.copy(id = id))

@@ -42,7 +42,9 @@ data class AppSettings(
     val voltageLowThreshold: Int = DEFAULT_VOLTAGE_LOW_THRESHOLD,
     val voltageHighThreshold: Int = DEFAULT_VOLTAGE_HIGH_THRESHOLD,
     val voltageMaxAmperage: Int = DEFAULT_VOLTAGE_MAX_AMPERAGE,
-    val voltageMinAmperage: Int = DEFAULT_VOLTAGE_MIN_AMPERAGE
+    val voltageMinAmperage: Int = DEFAULT_VOLTAGE_MIN_AMPERAGE,
+    /** Electricity price in UAH per kWh entered by the user; 0 means unknown (costs are hidden). */
+    val electricityTariffUah: Double = 0.0
 ) {
     companion object {
         const val DEFAULT_PREFERRED_AMPERAGE = 16
@@ -242,6 +244,14 @@ class SettingsStore internal constructor(
         )
     }
 
+    fun setElectricityTariff(uahPerKwh: Double) {
+        val clamped = uahPerKwh.coerceIn(0.0, MAX_TARIFF_UAH)
+        update(
+            optimistic = { it.copy(electricityTariffUah = clamped) },
+            persist = { it[KEY_ELECTRICITY_TARIFF] = clamped }
+        )
+    }
+
     fun setAutoResumeAfterOutage(enabled: Boolean) {
         update(
             optimistic = { it.copy(autoResumeAfterOutage = enabled) },
@@ -389,6 +399,8 @@ class SettingsStore internal constructor(
         internal val KEY_VOLTAGE_HIGH_THRESHOLD = intPreferencesKey("voltage_high_threshold")
         internal val KEY_VOLTAGE_MAX_AMPERAGE = intPreferencesKey("voltage_max_amperage")
         internal val KEY_VOLTAGE_MIN_AMPERAGE = intPreferencesKey("voltage_min_amperage")
+        internal val KEY_ELECTRICITY_TARIFF = doublePreferencesKey("electricity_tariff_uah")
+        const val MAX_TARIFF_UAH = 100.0
 
         @Volatile
         private var instance: SettingsStore? = null
@@ -434,7 +446,8 @@ class SettingsStore internal constructor(
                 voltageMaxAmperage = (prefs[KEY_VOLTAGE_MAX_AMPERAGE]
                     ?: AppSettings.DEFAULT_VOLTAGE_MAX_AMPERAGE).coerceIn(6, 16),
                 voltageMinAmperage = (prefs[KEY_VOLTAGE_MIN_AMPERAGE]
-                    ?: AppSettings.DEFAULT_VOLTAGE_MIN_AMPERAGE).coerceIn(6, 16)
+                    ?: AppSettings.DEFAULT_VOLTAGE_MIN_AMPERAGE).coerceIn(6, 16),
+                electricityTariffUah = (prefs[KEY_ELECTRICITY_TARIFF] ?: 0.0).coerceIn(0.0, MAX_TARIFF_UAH)
             )
         }
     }

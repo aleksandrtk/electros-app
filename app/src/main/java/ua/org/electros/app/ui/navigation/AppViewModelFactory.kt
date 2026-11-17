@@ -18,7 +18,7 @@ class AppViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
         DashboardViewModel::class.java -> DashboardViewModel(app.repository, app.settingsStore)
         LimiterViewModel::class.java -> LimiterViewModel(app.repository, app.settingsStore)
-        HistoryViewModel::class.java -> HistoryViewModel(app.repository)
+        HistoryViewModel::class.java -> HistoryViewModel(app.repository, app.settingsStore)
         SettingsViewModel::class.java -> SettingsViewModel(app.authPreferences, app.repository)
         LoginViewModel::class.java -> LoginViewModel(app.repository, app.authPreferences)
         OtaViewModel::class.java -> OtaViewModel()

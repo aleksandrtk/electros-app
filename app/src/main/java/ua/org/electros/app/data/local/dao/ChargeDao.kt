@@ -78,6 +78,9 @@ interface ChargeDao {
     @Query("SELECT * FROM charge_sessions ORDER BY startedAt DESC")
     fun getAllSessions(): Flow<List<ChargeSessionEntity>>
 
+    @Query("SELECT * FROM charge_slices ORDER BY sessionId, sliceIndex ASC")
+    fun observeAllSlices(): Flow<List<ChargeSliceEntity>>
+
     @Insert
     suspend fun insertSlice(slice: ChargeSliceEntity): Long
 

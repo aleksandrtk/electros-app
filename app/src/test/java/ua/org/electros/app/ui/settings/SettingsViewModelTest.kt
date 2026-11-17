@@ -171,6 +171,7 @@ class SettingsViewModelTest {
         override suspend fun updateSessionAmperage(sessionId: String, amperes: Int) = Unit
         override suspend fun updateActiveSliceCounter(sessionId: String, counterKwh: Double) = Unit
         override fun getAllSessions(): Flow<List<ChargeSessionEntity>> = emptySessions
+        override fun observeAllSlices(): Flow<List<ChargeSliceEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun insertSlice(slice: ChargeSliceEntity): Long = 1L
         override suspend fun updateSlice(slice: ChargeSliceEntity) = Unit
         override suspend fun getSlicesForSession(sessionId: String): List<ChargeSliceEntity> = emptyList()
