@@ -194,7 +194,6 @@
     <string name="settings_version">Поточна версія</string>
     <string name="settings_check_updates">Перевірити оновлення</string>
     <string name="settings_language">МОВА</string>
-    <string name="settings_language_system">Системна</string>
     <string name="settings_err_empty">Введіть номер пристрою та пароль для збереження</string>
     <string name="settings_err_check">Помилка перевірки даних на electros.org.ua</string>
     <string name="settings_err_logout">Не вдалося зупинити заряджання. Вихід скасовано.</string>

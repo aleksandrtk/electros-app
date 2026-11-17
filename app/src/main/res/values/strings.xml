@@ -194,7 +194,6 @@
     <string name="settings_version">Current version</string>
     <string name="settings_check_updates">Check for updates</string>
     <string name="settings_language">LANGUAGE</string>
-    <string name="settings_language_system">System</string>
     <string name="settings_err_empty">Enter the device number and password to save</string>
     <string name="settings_err_check">Couldn\'t verify the details on electros.org.ua</string>
     <string name="settings_err_logout">Couldn\'t stop charging. Sign-out cancelled.</string>

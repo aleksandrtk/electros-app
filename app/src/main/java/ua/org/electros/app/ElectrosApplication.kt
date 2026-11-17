@@ -1,6 +1,7 @@
 package ua.org.electros.app
 
 import android.app.Application
+import ua.org.electros.app.ui.AppLanguage
 import ua.org.electros.app.data.local.AppDatabase
 import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.local.SettingsStore
@@ -30,6 +31,7 @@ class ElectrosApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppLanguage.ensureChosen(this)
         database = AppDatabase.getInstance(this)
         authPreferences = AuthPreferences(this)
         settingsStore = SettingsStore.getInstance(this)

@@ -53,7 +53,7 @@ Charge to an exact kWh limit, ride through blackouts without losing progress, an
 Power lost or restored, limit or timer reached, current lowered or raised by auto-current, lost connection, and a warning if the station did not confirm a stop.
 
 ### 🌐 Two languages
-Ukrainian and English, switchable in **Settings → Language** or in Android's per-app language settings.
+Ukrainian and English, switchable in **Settings → Language**. On first launch the app picks Ukrainian if the phone is set to Ukrainian or Russian, and English otherwise.
 
 <img src="docs/screenshots/dashboard-uk.png" width="200" alt="Dashboard in Ukrainian">&nbsp;
 <img src="docs/screenshots/settings.png" width="200" alt="Settings with the language switch">

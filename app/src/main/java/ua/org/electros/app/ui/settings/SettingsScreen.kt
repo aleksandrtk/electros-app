@@ -385,7 +385,6 @@ private fun LanguageCard() {
                     .padding(3.dp)
             ) {
                 listOf(
-                    AppLanguage.SYSTEM to stringResource(R.string.settings_language_system),
                     AppLanguage.UKRAINIAN to "Українська",
                     AppLanguage.ENGLISH to "English"
                 ).forEach { (language, label) ->
