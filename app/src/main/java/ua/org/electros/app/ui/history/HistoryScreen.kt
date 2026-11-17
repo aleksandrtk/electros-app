@@ -225,7 +225,7 @@ private fun SummaryCard(
                 Spacer(Modifier.weight(1f))
                 state.changeVsPreviousPct?.let { pct ->
                     Text(
-                        text = "${if (pct > 0) "+" else ""}$pct% до минулого ${if (isMonthView) "місяця" else "року"}",
+                        text = "${if (pct > 0) "+" else if (pct < 0) "−" else ""}${kotlin.math.abs(pct)}% до минулого ${if (isMonthView) "місяця" else "року"}",
                         fontSize = 11.sp,
                         color = TextSecondaryDark,
                         modifier = Modifier.padding(bottom = 6.dp)
