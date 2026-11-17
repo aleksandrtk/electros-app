@@ -321,8 +321,12 @@ object OtaUpdater {
         }
 
         val appContext = context.applicationContext
-        val tempFile = File(appContext.cacheDir, "electros_update.apk.part")
-        val finalFile = File(appContext.cacheDir, "electros_update.apk")
+        // Only this subdirectory is exposed through the FileProvider (see file_paths.xml).
+        val otaDir = File(appContext.cacheDir, "ota").apply { mkdirs() }
+        File(appContext.cacheDir, "electros_update.apk").delete()
+        File(appContext.cacheDir, "electros_update.apk.part").delete()
+        val tempFile = File(otaDir, "electros_update.apk.part")
+        val finalFile = File(otaDir, "electros_update.apk")
         var currentUrl = downloadUrl
         val maxRedirects = 5
 
