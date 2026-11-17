@@ -87,7 +87,10 @@ class DashboardViewModel(
         settingsStore.settingsFlow,
         _operationState
     ) { telemetry, activeSession, slices, settings, opState ->
-        val (busy, refreshing, error) = opState
+        val (busy, refreshing, rawError) = opState
+        // An "offline" banner describes the station at the moment of the failed action; drop it as
+        // soon as fresh telemetry shows the station online again instead of leaving it up for good.
+        val error = rawError?.takeUnless { telemetry?.isOnline == true && isOfflineError(it) }
         buildUiState(
             telemetry = telemetry,
             activeSession = activeSession,
@@ -384,16 +387,20 @@ class DashboardViewModel(
         }
     }
 
-    fun onStartClicked(context: Context) {
-        val telemetry = uiState.value.telemetry
-        if (telemetry != null && !telemetry.isOnline) {
-            _errorMessage.value = "Station is offline. Connect power to start charging."
-            return
-        }
-
+    fun onStartClicked(context: Context?) {
         viewModelScope.launch {
             _isBusy.value = true
             _errorMessage.value = null
+
+            // The cached telemetry may be one stale poll old; only refuse if a fresh read is offline too.
+            if (uiState.value.telemetry?.isOnline == false) {
+                val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
+                if (fresh.getOrNull()?.isOnline != true) {
+                    _errorMessage.value = OFFLINE_START_MESSAGE
+                    _isBusy.value = false
+                    return@launch
+                }
+            }
 
             val settings = settingsStore.awaitSettings()
             val quota = if (settings.isKwhLimitEnabled) settings.targetKwhLimit else 0.0
@@ -402,7 +409,7 @@ class DashboardViewModel(
 
             val result = repository.startNewSession(quota, amps, durationMin)
             result.onSuccess { sessionId ->
-                ChargeMonitorService.start(context, sessionId, quota, durationMin)
+                if (context != null) ChargeMonitorService.start(context, sessionId, quota, durationMin)
             }.onFailure { err ->
                 _errorMessage.value = formatDashboardError(err, "Failed to start charging")
             }
@@ -436,7 +443,7 @@ class DashboardViewModel(
         return when {
             raw.isEmpty() -> fallback
             raw.contains("OFFLINE", ignoreCase = true) || raw.contains("вимкнена", ignoreCase = true) ->
-                "Station is offline. Connect 220V grid power to start charging."
+                OFFLINE_START_MESSAGE
             raw.contains("Авто не підключено", ignoreCase = true) ->
                 "Vehicle is not plugged into the station."
             raw.contains("Не вдалося зупинити", ignoreCase = true) ->
@@ -447,7 +454,10 @@ class DashboardViewModel(
         }
     }
 
+    private fun isOfflineError(message: String): Boolean = message == OFFLINE_START_MESSAGE
+
     companion object {
         private const val STALE_IDLE_SESSION_GRACE_MS = 30_000L
+        internal const val OFFLINE_START_MESSAGE = "Station is offline. Connect 220V grid power to start charging."
     }
 }

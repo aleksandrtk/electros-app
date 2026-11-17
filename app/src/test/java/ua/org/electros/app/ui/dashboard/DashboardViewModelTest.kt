@@ -144,6 +144,44 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun offlineStartBanner_clearsOnceStationIsOnlineAgain() = runViewModelTest { vmStore, dsScope ->
+        val store = createSettingsStore("offline_banner.preferences_pb", dsScope)
+        val dao = FakeChargeDao()
+        val statusCode = AtomicReference(7)
+        val scraper = buildScraper(CopyOnWriteArrayList()) {
+            wsPayload(statusCode = statusCode.get(), selectedA = 10, energyKwh = 10.0, voltageV = 199)
+        }
+        val repo = ChargeRepository(
+            scraper = scraper,
+            chargeDao = dao,
+            settingsStore = store,
+            localTimeProvider = { LocalTime.of(12, 0) },
+            clockMs = { 5_000L }
+        )
+        val viewModel = createViewModel(vmStore) {
+            DashboardViewModel(
+                repository = repo,
+                settingsStore = store,
+                isMonitorServiceRunning = { true },
+                clockMs = { 5_000L }
+            )
+        }
+        val collectJob = launch { viewModel.uiState.collect {} }
+
+        viewModel.refreshTelemetry()
+        awaitCondition { viewModel.uiState.value.telemetry?.isOnline == false }
+        viewModel.onStartClicked(context = null)
+        awaitCondition { viewModel.uiState.value.errorMessage == DashboardViewModel.OFFLINE_START_MESSAGE }
+
+        statusCode.set(2)
+        viewModel.refreshTelemetry()
+        awaitCondition { viewModel.uiState.value.telemetry?.isChargingActive == true }
+
+        assertThat(viewModel.uiState.value.errorMessage).isNull()
+        collectJob.cancelAndJoin()
+    }
+
+    @Test
     fun toggleVoltageBalancing_updatesUiStateDirectly() = runViewModelTest { vmStore, dsScope ->
         val store = createSettingsStore("dlb_toggle.preferences_pb", dsScope)
         val dao = FakeChargeDao()
