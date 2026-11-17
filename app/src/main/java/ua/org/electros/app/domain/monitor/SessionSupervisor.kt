@@ -208,9 +208,19 @@ class SessionSupervisor(
     private suspend fun evaluateTelemetrySuccess(
         sessionId: String,
         dbSession: ChargeSessionEntity,
-        data: TelemetryData,
+        rawData: TelemetryData,
         events: MutableList<SupervisorEvent>
     ): Boolean {
+        // The HTTP page rounds the counter to 0.1 kWh; a reading slightly below the last precise one is
+        // rounding, not a station reboot.
+        val data = if (rawData.isOnline && !rawData.isPreciseCounter &&
+            rawData.consumedEnergyKwh < lastSampledCounterKwh &&
+            lastSampledCounterKwh - rawData.consumedEnergyKwh <= HTTP_COUNTER_ROUNDING_KWH
+        ) {
+            rawData.copy(consumedEnergyKwh = lastSampledCounterKwh)
+        } else {
+            rawData
+        }
         consecutiveFailureTicks = 0
         hasAlertedConnectionLost = false
         lastKnownAmperes = data.selectedCurrentAmperes
@@ -774,6 +784,7 @@ class SessionSupervisor(
     }
 
     companion object {
+        private const val HTTP_COUNTER_ROUNDING_KWH = 0.1
         private const val INACTIVE_ONLINE_STOP_TICKS = 3
         /** About 2.5 minutes for the car to start drawing current after a start command. */
         private const val UNSTARTED_STOP_TICKS = 15

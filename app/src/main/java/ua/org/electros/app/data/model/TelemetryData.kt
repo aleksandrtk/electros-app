@@ -8,6 +8,8 @@ data class TelemetryData(
     val measuredCurrentAmperes: Double,
     val consumedEnergyKwh: Double,
     val powerKw: Double,
-    val isChargingActive: Boolean
+    val isChargingActive: Boolean,
+    /** False for the HTTP fallback, whose energy counter is rounded to 0.1 kWh (WebSocket reports mWh). */
+    val isPreciseCounter: Boolean = true
 )
 

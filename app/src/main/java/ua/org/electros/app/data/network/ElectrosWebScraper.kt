@@ -713,7 +713,8 @@ class ElectrosWebScraper(
             measuredCurrentAmperes = measuredA,
             consumedEnergyKwh = energyKwh,
             powerKw = powerKw,
-            isChargingActive = isChargingActive
+            isChargingActive = isChargingActive,
+            isPreciseCounter = false
         )
     }
 

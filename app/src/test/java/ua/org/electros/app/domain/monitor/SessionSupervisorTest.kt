@@ -532,6 +532,28 @@ class SessionSupervisorTest {
     }
 
     @Test
+    fun roundedHttpCounterBelowLastPreciseReading_isNotTreatedAsStationReboot() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "s-http"),
+            slices = mutableListOf(slice("s-http", startKwh = 50.0)),
+            autoResume = true
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 1_000L }
+        supervisor.onSessionStarted("s-http", targetKwh = 0.0, targetDurationMinutes = 0)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 52.29, voltage = 225))
+        supervisor.tick()
+        gateway.nextTelemetry = Result.success(
+            telemetry(isOnline = true, isCharging = true, counterKwh = 52.2, voltage = 225).copy(isPreciseCounter = false)
+        )
+        val outcome = supervisor.tick()
+
+        assertThat(outcome.status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(outcome.events.filterIsInstance<SupervisorEvent.ShowOutageAlert>()).isEmpty()
+        assertThat(gateway.session.totalKwhDelivered).isAtMost(2.31)
+    }
+
+    @Test
     fun offlineBeforeAnyCharging_cancelsSessionWithoutOutageAlert() = runTest {
         val gateway = FakeGateway(
             session = session(id = "s-unstarted-offline"),
