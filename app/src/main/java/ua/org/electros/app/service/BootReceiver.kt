@@ -3,7 +3,6 @@ package ua.org.electros.app.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.PowerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,18 +24,14 @@ class BootReceiver : BroadcastReceiver() {
                 val activeSession = dao.getActiveSession()
                 if (activeSession != null) {
                     if (shouldResumeOnBoot(activeSession)) {
-                        val pm = appContext.getSystemService(PowerManager::class.java)
-                        val batteryExempt = pm?.isIgnoringBatteryOptimizations(appContext.packageName) == true
-                        if (canStartSpecialUseFgsFromReceiver(action, batteryExempt)) {
-                            ChargeMonitorService.start(
-                                appContext,
-                                activeSession.id,
-                                activeSession.targetKwh,
-                                activeSession.targetDurationMinutes
-                            )
-                        } else {
-                            NotificationHelper(appContext).showMonitorRestartRequiredAlert()
-                        }
+                        // The system may still refuse the start; the service then shows the
+                        // "manual restart required" alert itself.
+                        ChargeMonitorService.start(
+                            appContext,
+                            activeSession.id,
+                            activeSession.targetKwh,
+                            activeSession.targetDurationMinutes
+                        )
                     } else {
                         dao.cancelActiveSessionsPreservingEnergy()
                     }
@@ -50,15 +45,6 @@ class BootReceiver : BroadcastReceiver() {
     companion object {
         internal fun shouldHandleAction(action: String?): Boolean =
             action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED
-
-        internal fun canStartSpecialUseFgsFromReceiver(
-            action: String?,
-            isIgnoringBatteryOptimizations: Boolean
-        ): Boolean = when (action) {
-            Intent.ACTION_BOOT_COMPLETED -> isIgnoringBatteryOptimizations
-            Intent.ACTION_MY_PACKAGE_REPLACED -> true
-            else -> false
-        }
 
         internal fun shouldResumeOnBoot(session: ChargeSessionEntity): Boolean = when (session.status) {
             SessionStatus.STOP_PENDING -> true
