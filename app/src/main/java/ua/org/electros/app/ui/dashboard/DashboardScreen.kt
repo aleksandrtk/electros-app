@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -1076,11 +1077,12 @@ private fun StudioClassicDlbCard(
     onToggleDlb: () -> Unit
 ) {
     val view = LocalView.current
+    // The switch alone shows on/off; the pill shows what auto-current is doing right now.
     val (statusText, statusColor) = when {
-        !isDlbEnabled -> Pair("OFF", TextTertiaryDark)
-        !isOnline || voltage == null || voltage <= 0 -> Pair("ON • STANDBY", TextSecondaryDark)
-        voltage < lowThreshold -> Pair("ON • STABILIZING (<${lowThreshold}V)", StudioAmberWarn)
-        else -> Pair("ON • ENGAGED (>${lowThreshold}V)", StudioGreen)
+        !isDlbEnabled -> Pair(null, TextTertiaryDark)
+        !isOnline || voltage == null || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
+        voltage < lowThreshold -> Pair("DERATING • ${voltage}V", StudioAmberWarn)
+        else -> Pair("NORMAL • UP TO ${voltageMaxAmperage}A", StudioGreen)
     }
     val borderColor = if (isDlbEnabled) statusColor.copy(alpha = 0.45f) else StudioPanelBorder
 
@@ -1130,40 +1132,23 @@ private fun StudioClassicDlbCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(StudioScreenDark)
-                            .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = statusText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = statusColor
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isDlbEnabled) Color(0xFF15281F) else StudioScreenDark)
-                            .border(
-                                width = 1.dp,
-                                color = if (isDlbEnabled) StudioGreen.copy(alpha = 0.6f) else StudioScreenBorder,
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = if (isDlbEnabled) "ON" else "OFF",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (isDlbEnabled) StudioGreen else AmberNixie
-                        )
-                    }
+                    if (statusText != null) StudioStatusPill(statusText, statusColor)
+                    Switch(
+                        checked = isDlbEnabled,
+                        onCheckedChange = {
+                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            onToggleDlb()
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = StudioGreen,
+                            checkedTrackColor = Color(0xFF15281F),
+                            checkedBorderColor = StudioGreen.copy(alpha = 0.6f),
+                            uncheckedThumbColor = TextTertiaryDark,
+                            uncheckedTrackColor = StudioScreenDark,
+                            uncheckedBorderColor = StudioScreenBorder
+                        ),
+                        modifier = Modifier.scale(0.75f)
+                    )
                 }
             }
 
@@ -1176,9 +1161,9 @@ private fun StudioClassicDlbCard(
             } else {
                 Text(
                     text = if (isDlbEnabled) {
-                        "Tap to disable • Derate <${lowThreshold}V, ramp to ${voltageMaxAmperage}A"
+                        "Lowers current below ${lowThreshold}V, raises it back up to ${voltageMaxAmperage}A"
                     } else {
-                        "Tap to enable voltage-sag protection"
+                        "Fixed current ${selectedAmperes}A • voltage-sag protection is off"
                     },
                     fontSize = 10.sp,
                     color = TextTertiaryDark
@@ -1202,7 +1187,7 @@ private fun StudioClassicKwhLimitCard(
     val isLimitOn = isKwhLimitEnabled || hasActiveQuota
     val displayKwh = if (hasActiveQuota) activeTargetKwh else targetQuotaKwh
 
-    val statusText = if (isLimitOn) "ON • ${displayKwh.toInt()} kWh" else "OFF"
+    val statusText = if (isLimitOn) "${displayKwh.toInt()} kWh" else null
     val statusColor = if (isLimitOn) StudioGreen else TextTertiaryDark
     val borderColor = if (isLimitOn) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
 
@@ -1250,21 +1235,7 @@ private fun StudioClassicKwhLimitCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(StudioScreenDark)
-                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = statusText,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Black,
-                        color = statusColor
-                    )
-                }
+                if (statusText != null) StudioStatusPill(statusText, statusColor)
             }
 
             if (expanded.value) {
@@ -1450,12 +1421,9 @@ private fun StudioClassicTimerCard(
     val statusText = when {
         isCountingDown && (isOutageActive || (hasActiveSession && !isChargingActive)) ->
             "PAUSED • ${formatCountdownHms(remainingMs)}"
-        isCountingDown ->
-            "ON • ${formatCountdownHms(remainingMs)}"
-        isDurationTimerEnabled ->
-            "ON • ${targetDurationHours}H"
-        else ->
-            "OFF"
+        isCountingDown -> formatCountdownHms(remainingMs)
+        isDurationTimerEnabled -> "${targetDurationHours}H"
+        else -> null
     }
 
     val statusColor = when {
@@ -1511,21 +1479,7 @@ private fun StudioClassicTimerCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(StudioScreenDark)
-                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = statusText,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Black,
-                        color = statusColor
-                    )
-                }
+                if (statusText != null) StudioStatusPill(statusText, statusColor)
             }
 
             if (isCountingDown && targetMs > 0L) {
@@ -1653,7 +1607,7 @@ private fun StudioClassicScheduleCard(
         mutableStateOf(scheduleStopTime)
     }
 
-    val statusText = if (isScheduleEnabled) "ON • $scheduleStartTime–$scheduleStopTime" else "OFF"
+    val statusText = if (isScheduleEnabled) "$scheduleStartTime–$scheduleStopTime" else null
     val statusColor = if (isScheduleEnabled) StudioGreen else TextTertiaryDark
     val borderColor = if (isScheduleEnabled) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
 
@@ -1701,21 +1655,7 @@ private fun StudioClassicScheduleCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(StudioScreenDark)
-                        .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = statusText,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Black,
-                        color = statusColor
-                    )
-                }
+                if (statusText != null) StudioStatusPill(statusText, statusColor)
             }
 
             if (expanded.value) {
@@ -2081,5 +2021,25 @@ private fun OfflineWarningCard() {
                 )
             }
         }
+    }
+}
+
+/** Live state of a dashboard card. Shown only while the feature is on; the card's own control shows on/off. */
+@Composable
+private fun StudioStatusPill(text: String, color: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(StudioScreenDark)
+            .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Black,
+            color = color
+        )
     }
 }
