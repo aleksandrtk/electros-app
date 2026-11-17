@@ -43,27 +43,27 @@ class NotificationHelper(private val context: Context) {
     private fun createNotificationChannels() {
         val statusChannel = NotificationChannel(
             CHANNEL_ID_CHARGING,
-            "Статус заряджання",
+            context.getString(R.string.channel_status),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Постійне сповіщення про поточний процес зарядки"
+            description = context.getString(R.string.channel_status_desc)
             setShowBadge(false)
         }
 
         val alertsChannel = NotificationChannel(
             CHANNEL_ID_ALERTS,
-            "Важливі сповіщення",
+            context.getString(R.string.channel_alerts),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Сповіщення про відключення світла та завершення ліміту"
+            description = context.getString(R.string.channel_alerts_desc)
         }
 
         val balancingInfoChannel = NotificationChannel(
             CHANNEL_ID_BALANCING_INFO,
-            "Балансування напруги",
+            context.getString(R.string.channel_dlb),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Інформаційні сповіщення про відновлення струму після стабілізації напруги"
+            description = context.getString(R.string.channel_dlb_desc)
         }
 
         notificationManager.createNotificationChannel(statusChannel)
@@ -96,7 +96,7 @@ class NotificationHelper(private val context: Context) {
             val remSec = ((targetMs - accumulatedChargingMs).coerceAtLeast(0L) / 1000L)
             val h = remSec / 3600
             val m = (remSec % 3600) / 60
-            " • Таймер %02d:%02d".format(h, m)
+            context.getString(R.string.notif_timer_part, h.toInt(), m.toInt())
         } else ""
 
         val progress = when {
@@ -106,18 +106,18 @@ class NotificationHelper(private val context: Context) {
         }
 
         val contentText = when {
-            targetKwh > 0.0 -> "Заряджено %.1f з %.0f кВт⋅год (%d%%)$timerPart".format(deliveredKwh, targetKwh, progress)
-            targetDurationMinutes > 0 -> "Залито %.1f кВт⋅год$timerPart".format(deliveredKwh)
-            else -> "Заряджено %.1f кВт⋅год (без ліміту)".format(deliveredKwh)
+            targetKwh > 0.0 -> context.getString(R.string.notif_progress_target, "%.1f".format(deliveredKwh), "%.0f".format(targetKwh), progress, timerPart)
+            targetDurationMinutes > 0 -> context.getString(R.string.notif_progress_timer, "%.1f".format(deliveredKwh), timerPart)
+            else -> context.getString(R.string.notif_progress_unlimited, "%.1f".format(deliveredKwh))
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CHARGING)
-            .setContentTitle("Electros: %.1f кВт • %s".format(powerKw, statusText))
+            .setContentTitle(context.getString(R.string.notif_title, "%.1f".format(powerKw), statusText))
             .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_nav_bolt)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
-            .addAction(R.drawable.ic_notif_stop, "Зупинити", stopPendingIntent)
+            .addAction(R.drawable.ic_notif_stop, context.getString(R.string.notif_action_stop), stopPendingIntent)
 
         if (targetKwh > 0.0 || targetDurationMinutes > 0) {
             builder.setProgress(100, progress, false)
@@ -128,12 +128,12 @@ class NotificationHelper(private val context: Context) {
 
     fun showOutageAlert(retainedKwh: Double, autoResumeEnabled: Boolean = true) {
         val text = if (autoResumeEnabled) {
-            "Станція OFFLINE. Збережено %.1f кВт⋅год. Зарядка продовжиться автоматично.".format(retainedKwh)
+            context.getString(R.string.notif_outage_auto, "%.1f".format(retainedKwh))
         } else {
-            "Станція OFFLINE. Збережено %.1f кВт⋅год. Автоматичне відновлення вимкнено.".format(retainedKwh)
+            context.getString(R.string.notif_outage_manual, "%.1f".format(retainedKwh))
         }
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚠️ Світло в гаражі зникло!")
+            .setContentTitle(context.getString(R.string.notif_outage_title))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notif_warning)
             .setContentIntent(createOpenAppPendingIntent(7))
@@ -155,11 +155,11 @@ class NotificationHelper(private val context: Context) {
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚡ Світло з'явилось — станція в мережі")
-            .setContentText("Збережено %.1f кВт⋅год. Натисніть «Відновити заряд» для запуску на %d А.".format(retainedKwh, amperes))
+            .setContentTitle(context.getString(R.string.notif_power_back_title))
+            .setContentText(context.getString(R.string.notif_power_back_text, "%.1f".format(retainedKwh), amperes))
             .setSmallIcon(R.drawable.ic_nav_bolt)
             .setContentIntent(openAppPendingIntent)
-            .addAction(R.drawable.ic_notif_play, "Відновити заряд", resumePendingIntent)
+            .addAction(R.drawable.ic_notif_play, context.getString(R.string.notif_action_resume), resumePendingIntent)
             .setAutoCancel(true)
 
         notificationManager.notify(NOTIFICATION_ID_RESUME_ALERT, builder.build())
@@ -171,8 +171,8 @@ class NotificationHelper(private val context: Context) {
 
     fun showTargetReachedAlert(deliveredKwh: Double) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚡ Зарядка завершена!")
-            .setContentText("Цільовий ліміт досягнуто: залито %.1f кВт⋅год.".format(deliveredKwh))
+            .setContentTitle(context.getString(R.string.notif_done_title))
+            .setContentText(context.getString(R.string.notif_done_text, "%.1f".format(deliveredKwh)))
             .setSmallIcon(R.drawable.ic_nav_bolt)
             .setContentIntent(createOpenAppPendingIntent(8))
             .setAutoCancel(true)
@@ -183,14 +183,14 @@ class NotificationHelper(private val context: Context) {
     fun showBalancingAlert(oldAmperes: Int, newAmperes: Int, voltage: Int) {
         val isLowered = newAmperes < oldAmperes
         val title = if (isLowered) {
-            "⚡ Струм заряджання знижено!"
+            context.getString(R.string.notif_dlb_down_title)
         } else {
-            "⚡ Струм заряджання підвищено"
+            context.getString(R.string.notif_dlb_up_title)
         }
         val text = if (isLowered) {
-            "Просадка напруги ($voltage В). Струм зменшено: $oldAmperes А → $newAmperes А для захисту мережі."
+            context.getString(R.string.notif_dlb_down_text, voltage, oldAmperes, newAmperes)
         } else {
-            "Напруга стабілізувалась ($voltage В). Струм підвищено: $oldAmperes А → $newAmperes А."
+            context.getString(R.string.notif_dlb_up_text, voltage, oldAmperes, newAmperes)
         }
         val icon = if (isLowered) R.drawable.ic_notif_warning else R.drawable.ic_nav_bolt
         val channelId = if (isLowered) CHANNEL_ID_ALERTS else CHANNEL_ID_BALANCING_INFO
@@ -217,8 +217,8 @@ class NotificationHelper(private val context: Context) {
 
     fun showConnectionLostAlert(currentAmperes: Int) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚠️ Зв'язок зі станцією втрачено!")
-            .setContentText("Станція утримує струм $currentAmperes А. За відсутності інтернету балансування тимчасово призупинено.")
+            .setContentTitle(context.getString(R.string.notif_conn_lost_title))
+            .setContentText(context.getString(R.string.notif_conn_lost_text, currentAmperes))
             .setSmallIcon(R.drawable.ic_notif_warning)
             .setContentIntent(createOpenAppPendingIntent(9))
             .setAutoCancel(true)
@@ -229,10 +229,10 @@ class NotificationHelper(private val context: Context) {
     fun showDurationTargetReachedAlert(targetDurationMinutes: Int, deliveredKwh: Double) {
         val hours = targetDurationMinutes / 60
         val mins = targetDurationMinutes % 60
-        val durLabel = if (mins == 0) "$hours год" else "${hours}г ${mins}хв"
+        val durLabel = if (mins == 0) context.getString(R.string.duration_h, hours) else context.getString(R.string.duration_h_min, hours, mins)
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⏱️ Таймер зарядки завершено!")
-            .setContentText("Відпрацьовано %s. Залито %.1f кВт⋅год. Станцію зупинено.".format(durLabel, deliveredKwh))
+            .setContentTitle(context.getString(R.string.notif_timer_done_title))
+            .setContentText(context.getString(R.string.notif_timer_done_text, durLabel, "%.1f".format(deliveredKwh)))
             .setSmallIcon(R.drawable.ic_nav_bolt)
             .setContentIntent(createOpenAppPendingIntent(10))
             .setAutoCancel(true)
@@ -242,8 +242,8 @@ class NotificationHelper(private val context: Context) {
 
     fun showOutageResumedAlert(amperes: Int) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚡ Світло повернулось — зарядку відновлено")
-            .setContentText("Станцію знову запущено на $amperes А. Таймер і лічильник продовжено.")
+            .setContentTitle(context.getString(R.string.notif_resumed_title))
+            .setContentText(context.getString(R.string.notif_resumed_text, amperes))
             .setSmallIcon(R.drawable.ic_nav_bolt)
             .setContentIntent(createOpenAppPendingIntent(11))
             .setAutoCancel(true)
@@ -267,8 +267,8 @@ class NotificationHelper(private val context: Context) {
         val pendingIntent = createOpenAppPendingIntent(4)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("⚠️ Не вдалося зупинити станцію")
-            .setContentText("Команда зупинки не підтвердилась. Продовжуємо повторні спроби зупинити зарядку.")
+            .setContentTitle(context.getString(R.string.notif_stop_failed_title))
+            .setContentText(context.getString(R.string.notif_stop_failed_text))
             .setSmallIcon(R.drawable.ic_notif_warning)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -280,8 +280,8 @@ class NotificationHelper(private val context: Context) {
         val pendingIntent = createOpenAppPendingIntent(5)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setContentTitle("Потрібен ручний запуск моніторингу")
-            .setContentText("Відкрийте застосунок, щоб продовжити моніторинг")
+            .setContentTitle(context.getString(R.string.notif_restart_title))
+            .setContentText(context.getString(R.string.notif_restart_text))
             .setSmallIcon(R.drawable.ic_notif_warning)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

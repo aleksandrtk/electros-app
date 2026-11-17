@@ -1,5 +1,8 @@
 package ua.org.electros.app.ui.settings
 
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.UiText
+import ua.org.electros.app.ui.credentialsErrorText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +19,7 @@ data class SettingsUiState(
     val areNotificationsEnabled: Boolean = true,
     val isSavingCredentials: Boolean = false,
     val credentialsSaved: Boolean = false,
-    val credentialsError: String? = null
+    val credentialsError: UiText? = null
 )
 
 class SettingsViewModel(
@@ -45,7 +48,7 @@ class SettingsViewModel(
         if (trimmedSerial.isBlank() || trimmedPass.isBlank()) {
             _uiState.value = _uiState.value.copy(
                 credentialsSaved = false,
-                credentialsError = "Введіть номер пристрою та пароль для збереження"
+                credentialsError = UiText.Res(R.string.settings_err_empty)
             )
             return
         }
@@ -84,7 +87,7 @@ class SettingsViewModel(
                 _uiState.value = _uiState.value.copy(
                     isSavingCredentials = false,
                     credentialsSaved = false,
-                    credentialsError = err.message ?: "Помилка перевірки даних на electros.org.ua"
+                    credentialsError = credentialsErrorText(err, R.string.settings_err_check)
                 )
             }
         }
@@ -125,7 +128,7 @@ class SettingsViewModel(
             val result = repo.logout()
             if (result.isFailure) {
                 _uiState.value = _uiState.value.copy(
-                    credentialsError = "Не вдалося зупинити заряджання. Вихід скасовано."
+                    credentialsError = UiText.Res(R.string.settings_err_logout)
                 )
                 return@launch
             }

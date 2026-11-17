@@ -1,5 +1,8 @@
 package ua.org.electros.app.ui.login
 
+import androidx.compose.ui.res.stringResource
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.asString
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -51,14 +54,14 @@ fun LoginScreen(
             )
 
             Text(
-                text = "Вхід до станції Electros",
+                text = stringResource(R.string.login_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimaryDark
             )
 
             Text(
-                text = "Введіть номер та пароль пристрою для підключення до electros.org.ua",
+                text = stringResource(R.string.login_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondaryDark,
                 modifier = Modifier.padding(horizontal = 8.dp)
@@ -76,7 +79,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = state.deviceSerial,
                         onValueChange = { viewModel.onSerialChanged(it) },
-                        label = { Text("Номер пристрою (наприклад, a1234)") },
+                        label = { Text(stringResource(R.string.settings_serial_hint)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Ascii,
@@ -94,7 +97,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = state.password,
                         onValueChange = { viewModel.onPasswordChanged(it) },
-                        label = { Text("Пароль пристрою") },
+                        label = { Text(stringResource(R.string.login_password)) },
                         singleLine = true,
                         visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(
@@ -104,7 +107,7 @@ fun LoginScreen(
                         trailingIcon = {
                             TextButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
                                 Text(
-                                    text = if (isPasswordVisible) "Приховати" else "Показати",
+                                    text = stringResource(if (isPasswordVisible) R.string.hide else R.string.show),
                                     color = TextSecondaryDark,
                                     fontSize = 12.sp
                                 )
@@ -119,9 +122,9 @@ fun LoginScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    if (!state.errorMessage.isNullOrBlank()) {
+                    if (state.errorMessage != null) {
                         Text(
-                            text = state.errorMessage ?: "",
+                            text = state.errorMessage?.asString().orEmpty(),
                             color = ErrorRed,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -146,7 +149,7 @@ fun LoginScreen(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Text("Увійти", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(stringResource(R.string.login_button), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
                     }
                 }

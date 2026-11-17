@@ -1,5 +1,6 @@
 package ua.org.electros.app.ui.navigation
 
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,11 +28,11 @@ import ua.org.electros.app.ui.settings.SettingsScreen
 import ua.org.electros.app.ui.settings.SettingsViewModel
 import ua.org.electros.app.ui.theme.*
 
-enum class NavTab(val title: String, val iconRes: Int) {
-    CHARGING("Заряд", R.drawable.ic_nav_bolt),
-    LIMITER("Ліміт", R.drawable.ic_nav_tune),
-    HISTORY("Історія", R.drawable.ic_nav_bar_chart),
-    SETTINGS("Налаштування", R.drawable.ic_nav_settings)
+enum class NavTab(@androidx.annotation.StringRes val titleRes: Int, val iconRes: Int) {
+    CHARGING(R.string.tab_charge, R.drawable.ic_nav_bolt),
+    LIMITER(R.string.tab_limits, R.drawable.ic_nav_tune),
+    HISTORY(R.string.tab_history, R.drawable.ic_nav_bar_chart),
+    SETTINGS(R.string.tab_settings, R.drawable.ic_nav_settings)
 }
 
 @Composable
@@ -87,11 +88,11 @@ fun AppNavigation(application: ElectrosApplication) {
                             icon = {
                                 Icon(
                                     painter = painterResource(id = tab.iconRes),
-                                    contentDescription = tab.title,
+                                    contentDescription = stringResource(tab.titleRes),
                                     modifier = Modifier.size(24.dp)
                                 )
                             },
-                            label = { Text(text = tab.title, style = MaterialTheme.typography.labelSmall) },
+                            label = { Text(text = stringResource(tab.titleRes), style = MaterialTheme.typography.labelSmall) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = Color.Black,
                                 selectedTextColor = AmberNixie,

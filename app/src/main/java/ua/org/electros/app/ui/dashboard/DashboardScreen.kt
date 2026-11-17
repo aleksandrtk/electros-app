@@ -57,6 +57,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ua.org.electros.app.ui.theme.*
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.asString
 import kotlin.math.atan2
 import kotlin.math.hypot
 
@@ -116,7 +119,7 @@ fun DashboardScreen(
             // 1. Clean Connection Status Plate + Live Actual Amperage Pill (zero extra vertical space)
             StudioTopHeader(
                 isOnline = telemetry?.isOnline ?: false,
-                statusText = telemetry?.statusText ?: if (telemetry?.isOnline == true) "ONLINE" else "OFFLINE",
+                statusText = telemetry?.statusText.orEmpty(),
                 isChargingOrSessionActive = isChargingOrSessionActive && !state.isOutageActive,
                 isChargingActive = telemetry?.isChargingActive == true,
                 actualAmperes = actualAmperes,
@@ -127,10 +130,11 @@ fun DashboardScreen(
             )
 
             // Error or pending-stop warning banner
-            if (!state.errorMessage.isNullOrBlank()) {
-                ErrorMessageCard(message = state.errorMessage ?: "")
+            val errorMessage = state.errorMessage
+            if (errorMessage != null) {
+                ErrorMessageCard(message = errorMessage.asString())
             } else if (state.isStopPending) {
-                ErrorMessageCard(message = "Failed to confirm station stop — retrying stop command.")
+                ErrorMessageCard(message = stringResource(R.string.dash_stop_pending))
             }
 
             // Outage / Offline Warning
@@ -306,7 +310,7 @@ private fun StudioTopHeader(
                     .background(if (isOnline) StudioGreen else IndustrialRed)
             )
             Text(
-                text = "GARAGE • ${formatHeaderStatus(statusText, isOnline)}",
+                text = formatHeaderStatus(statusText, isOnline).asString(),
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
@@ -379,7 +383,7 @@ private fun StudioClassicNixieCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "LINE VOLTAGE (RMS)",
+                    text = stringResource(R.string.dash_line_voltage),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 0.6.sp
@@ -389,7 +393,7 @@ private fun StudioClassicNixieCard(
                 )
                 if (isSessionActive) {
                     Text(
-                        text = if (isOnline) "SESSION ENERGY" else "STORED ENERGY",
+                        text = stringResource(if (isOnline) R.string.dash_session_energy else R.string.dash_stored_energy),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
@@ -443,7 +447,7 @@ private fun StudioClassicNixieCard(
 
                     if (!isSessionActive) {
                         Text(
-                            text = "VOLTS",
+                            text = stringResource(R.string.dash_volts),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -478,7 +482,7 @@ private fun StudioClassicNixieCard(
                                         modifier = Modifier.padding(bottom = 2.dp)
                                     )
                                     Text(
-                                        text = "kWh",
+                                        text = stringResource(R.string.unit_kwh),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace,
@@ -487,7 +491,7 @@ private fun StudioClassicNixieCard(
                                     )
                                 }
                                 Text(
-                                    text = "Remaining %.2f · %d%%".format(Locale.US, remainingKwh, pct),
+                                    text = stringResource(R.string.dash_remaining, "%.2f".format(Locale.US, remainingKwh), pct),
                                     fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace,
                                     color = TextSecondaryDark
@@ -505,7 +509,7 @@ private fun StudioClassicNixieCard(
                                         color = AmberNixie
                                     )
                                     Text(
-                                        text = "kWh",
+                                        text = stringResource(R.string.unit_kwh),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace,
@@ -614,7 +618,7 @@ private fun StudioClassicRotaryKnobCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "CHARGE CURRENT",
+                    text = stringResource(R.string.dash_charge_current),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 0.6.sp
@@ -630,7 +634,7 @@ private fun StudioClassicRotaryKnobCard(
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "%.2f kW".format(powerKw),
+                        text = stringResource(R.string.kw_value, "%.2f".format(Locale.US, powerKw)),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
@@ -1080,9 +1084,9 @@ private fun StudioClassicDlbCard(
     // The switch alone shows on/off; the pill shows what auto-current is doing right now.
     val (statusText, statusColor) = when {
         !isDlbEnabled -> Pair(null, TextTertiaryDark)
-        !isOnline || voltage == null || voltage <= 0 -> Pair("STANDBY", TextSecondaryDark)
-        voltage < lowThreshold -> Pair("DERATING • ${voltage}V", StudioAmberWarn)
-        else -> Pair("NORMAL • UP TO ${voltageMaxAmperage}A", StudioGreen)
+        !isOnline || voltage == null || voltage <= 0 -> Pair(stringResource(R.string.dlb_standby), TextSecondaryDark)
+        voltage < lowThreshold -> Pair(stringResource(R.string.dlb_derating, voltage), StudioAmberWarn)
+        else -> Pair(stringResource(R.string.dlb_normal, voltageMaxAmperage), StudioGreen)
     }
     val borderColor = if (isDlbEnabled) statusColor.copy(alpha = 0.45f) else StudioPanelBorder
 
@@ -1118,7 +1122,7 @@ private fun StudioClassicDlbCard(
                             .background(statusColor)
                     )
                     Text(
-                        text = "AUTO-CURRENT",
+                        text = stringResource(R.string.dlb_title),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
@@ -1154,16 +1158,16 @@ private fun StudioClassicDlbCard(
 
             if (isDlbEnabled && selectedAmperes > voltageMaxAmperage) {
                 Text(
-                    text = "Max auto-current: ${voltageMaxAmperage}A (selected ${selectedAmperes}A)",
+                    text = stringResource(R.string.dlb_max_warning, voltageMaxAmperage, selectedAmperes),
                     style = MaterialTheme.typography.labelSmall,
                     color = StudioAmberWarn
                 )
             } else {
                 Text(
                     text = if (isDlbEnabled) {
-                        "Lowers current below ${lowThreshold}V, raises it back up to ${voltageMaxAmperage}A"
+                        stringResource(R.string.dlb_hint_on, lowThreshold, voltageMaxAmperage)
                     } else {
-                        "Fixed current ${selectedAmperes}A • voltage-sag protection is off"
+                        stringResource(R.string.dlb_hint_off, selectedAmperes)
                     },
                     fontSize = 10.sp,
                     color = TextTertiaryDark
@@ -1187,7 +1191,7 @@ private fun StudioClassicKwhLimitCard(
     val isLimitOn = isKwhLimitEnabled || hasActiveQuota
     val displayKwh = if (hasActiveQuota) activeTargetKwh else targetQuotaKwh
 
-    val statusText = if (isLimitOn) "${displayKwh.toInt()} kWh" else null
+    val statusText = if (isLimitOn) stringResource(R.string.kwh_int, displayKwh.toInt()) else null
     val statusColor = if (isLimitOn) StudioGreen else TextTertiaryDark
     val borderColor = if (isLimitOn) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
 
@@ -1219,7 +1223,7 @@ private fun StudioClassicKwhLimitCard(
                             .background(statusColor)
                     )
                     Text(
-                        text = "ENERGY LIMIT (KWH)",
+                        text = stringResource(R.string.energy_limit_title),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
@@ -1246,7 +1250,7 @@ private fun StudioClassicKwhLimitCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "AUTO-STOP QUOTA (NO AUTO-START)",
+                        text = stringResource(R.string.energy_limit_hint),
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
@@ -1268,7 +1272,7 @@ private fun StudioClassicKwhLimitCard(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "OFF",
+                            text = stringResource(R.string.off),
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -1308,7 +1312,7 @@ private fun StudioClassicKwhLimitCard(
                         )
                     }
                     Text(
-                        text = "${targetQuotaKwh.toInt()} kWh",
+                        text = stringResource(R.string.kwh_int, targetQuotaKwh.toInt()),
                         fontSize = 14.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Black,
@@ -1420,9 +1424,9 @@ private fun StudioClassicTimerCard(
 
     val statusText = when {
         isCountingDown && (isOutageActive || (hasActiveSession && !isChargingActive)) ->
-            "PAUSED • ${formatCountdownHms(remainingMs)}"
+            stringResource(R.string.timer_paused, formatCountdownHms(remainingMs))
         isCountingDown -> formatCountdownHms(remainingMs)
-        isDurationTimerEnabled -> "${targetDurationHours}H"
+        isDurationTimerEnabled -> stringResource(R.string.hours_short, targetDurationHours)
         else -> null
     }
 
@@ -1463,7 +1467,7 @@ private fun StudioClassicTimerCard(
                             .background(if (isTimerOn) statusColor else TextTertiaryDark)
                     )
                     Text(
-                        text = "CHARGE TIMER",
+                        text = stringResource(R.string.charge_timer_title),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
@@ -1509,7 +1513,7 @@ private fun StudioClassicTimerCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "LIMIT: 1–12H (AUTO-RESUMES IF OFFLINE)",
+                        text = stringResource(R.string.charge_timer_hint),
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
@@ -1531,7 +1535,7 @@ private fun StudioClassicTimerCard(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "OFF",
+                            text = stringResource(R.string.off),
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -1568,7 +1572,7 @@ private fun StudioClassicTimerCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "${hours}H",
+                                    text = stringResource(R.string.hours_short, hours),
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
@@ -1639,7 +1643,7 @@ private fun StudioClassicScheduleCard(
                             .background(statusColor)
                     )
                     Text(
-                        text = "SCHEDULE TIMER",
+                        text = stringResource(R.string.schedule_title),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
@@ -1666,7 +1670,7 @@ private fun StudioClassicScheduleCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "DAILY WINDOW",
+                        text = stringResource(R.string.schedule_window),
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
@@ -1688,7 +1692,7 @@ private fun StudioClassicScheduleCard(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = if (isScheduleEnabled) "TURN OFF" else "TURN ON",
+                            text = stringResource(if (isScheduleEnabled) R.string.turn_off else R.string.turn_on),
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -1704,10 +1708,10 @@ private fun StudioClassicScheduleCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     listOf(
-                        Triple("FROM", draftStart.value) { delta: Int ->
+                        Triple(stringResource(R.string.schedule_from), draftStart.value) { delta: Int ->
                             draftStart.value = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(draftStart.value, delta)
                         },
-                        Triple("TO", draftStop.value) { delta: Int ->
+                        Triple(stringResource(R.string.schedule_to), draftStop.value) { delta: Int ->
                             draftStop.value = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(draftStop.value, delta)
                         }
                     ).forEach { (label, valueText, onStep) ->
@@ -1782,7 +1786,7 @@ private fun StudioClassicScheduleCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "SET SCHEDULE • ${draftStart.value}–${draftStop.value}",
+                        text = stringResource(R.string.set_schedule, draftStart.value, draftStop.value),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Black,
@@ -1825,7 +1829,7 @@ private fun StudioClassicActionButton(
                 .height(48.dp)
         ) {
             Text(
-                text = if (isBusy) "STOPPING..." else "STOP",
+                text = stringResource(if (isBusy) R.string.stopping else R.string.stop),
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
@@ -1853,13 +1857,13 @@ private fun StudioClassicActionButton(
         ) {
             Text(
                 text = when {
-                    isBusy -> "STARTING..."
+                    isBusy -> stringResource(R.string.starting)
                     isKwhLimitEnabled && isDurationTimerEnabled ->
-                        "START CHARGE (${targetQuotaKwh.toInt()} kWh • ${targetDurationHours}H)"
+                        stringResource(R.string.start_charge_kwh_hours, targetQuotaKwh.toInt(), targetDurationHours)
                     isKwhLimitEnabled ->
-                        "START CHARGE (${targetQuotaKwh.toInt()} kWh)"
-                    isDurationTimerEnabled -> "START CHARGE (${targetDurationHours}H)"
-                    else -> "START CHARGE"
+                        stringResource(R.string.start_charge_kwh, targetQuotaKwh.toInt())
+                    isDurationTimerEnabled -> stringResource(R.string.start_charge_hours, targetDurationHours)
+                    else -> stringResource(R.string.start_charge)
                 },
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
@@ -1900,43 +1904,22 @@ private fun OutageBanner(
     remainingTimerText: String? = null,
     onCancelOutage: () -> Unit
 ) {
-    val timerSuffix = if (remainingTimerText != null) " • Timer remaining: %s".format(remainingTimerText) else ""
+    val timerSuffix = if (remainingTimerText != null) stringResource(R.string.outage_timer_suffix, remainingTimerText) else ""
     val titleText = if (!isAutoResumeEnabled && isStationOnline) {
-        "POWER RESTORED • AWAITING START"
+        stringResource(R.string.outage_title_restored)
     } else {
-        "GRID POWER LOST"
+        stringResource(R.string.outage_title_lost)
     }
+    val delivered = "%.1f".format(deliveredKwh)
+    val target = "%.0f".format(targetKwh)
     val bodyText = when {
-        !isAutoResumeEnabled && isStationOnline ->
-            "Preserved %.1f kWh%s. Auto-resume is off — press START to continue, or cancel session.".format(
-                deliveredKwh,
-                timerSuffix
-            )
-        !isAutoResumeEnabled ->
-            "Preserved %.1f kWh%s. Auto-resume is disabled in settings — charging will not resume automatically.".format(
-                deliveredKwh,
-                timerSuffix
-            )
+        !isAutoResumeEnabled && isStationOnline -> stringResource(R.string.outage_body_manual, delivered, timerSuffix)
+        !isAutoResumeEnabled -> stringResource(R.string.outage_body_disabled, delivered, timerSuffix)
         remainingTimerText != null && isLimitEnabled ->
-            "Preserved %.1f kWh (timer: %s). Charging will resume automatically up to %.0f kWh when power returns.".format(
-                deliveredKwh,
-                remainingTimerText,
-                targetKwh
-            )
-        remainingTimerText != null ->
-            "Preserved %.1f kWh%s. Charging will resume automatically when power returns.".format(
-                deliveredKwh,
-                timerSuffix
-            )
-        isLimitEnabled ->
-            "Preserved %.1f kWh. Charging will resume automatically up to %.0f kWh when power returns.".format(
-                deliveredKwh,
-                targetKwh
-            )
-        else ->
-            "Preserved %.1f kWh. Charging will resume automatically when power returns.".format(
-                deliveredKwh
-            )
+            stringResource(R.string.outage_body_timer_limit, delivered, remainingTimerText, target)
+        remainingTimerText != null -> stringResource(R.string.outage_body_auto, delivered, timerSuffix)
+        isLimitEnabled -> stringResource(R.string.outage_body_limit, delivered, target)
+        else -> stringResource(R.string.outage_body_auto, delivered, "")
     }
 
     Card(
@@ -1979,7 +1962,7 @@ private fun OutageBanner(
                     )
                 ) {
                     Text(
-                        text = if (isBusy) "CANCELLING..." else "CANCEL SESSION",
+                        text = stringResource(if (isBusy) R.string.cancelling else R.string.cancel_session),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
@@ -2008,14 +1991,14 @@ private fun OfflineWarningCard() {
             Text(text = "🔌", fontSize = 20.sp)
             Column {
                 Text(
-                    text = "STATION OFFLINE (NO POWER)",
+                    text = stringResource(R.string.offline_title),
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     color = IndustrialRed
                 )
                 Text(
-                    text = "No 220V grid power or station unplugged.",
+                    text = stringResource(R.string.offline_body),
                     fontSize = 11.sp,
                     color = TextSecondaryDark
                 )

@@ -1,5 +1,8 @@
 package ua.org.electros.app.ui.limiter
 
+import ua.org.electros.app.ui.asString
+import androidx.compose.ui.res.stringResource
+import ua.org.electros.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,7 +37,7 @@ fun LimiterScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Ліміт та розклад",
+            text = stringResource(R.string.limits_title),
             style = MaterialTheme.typography.titleLarge,
             color = TextPrimaryDark
         )
@@ -53,13 +56,13 @@ fun LimiterScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "АВТОВИМКНЕННЯ",
+                            text = stringResource(R.string.limits_auto_off),
                             style = MaterialTheme.typography.labelSmall,
                             color = PrimaryNeonGreen
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Обмеження за об'ємом (кВт⋅год)",
+                            text = stringResource(R.string.limits_kwh_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimaryDark
                         )
@@ -86,7 +89,7 @@ fun LimiterScreen(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = "Вимкнено: станція заряджатиме безперервно, доки електромобіль сам не завершить заряд (наприклад, 80% або 100%).",
+                            text = stringResource(R.string.limits_kwh_off),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondaryDark
                         )
@@ -103,9 +106,9 @@ fun LimiterScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "Цільовий об'єм", fontSize = 12.sp, color = TextSecondaryDark)
+                            Text(text = stringResource(R.string.limits_target_energy), fontSize = 12.sp, color = TextSecondaryDark)
                             Text(
-                                text = "${state.targetKwh.toInt()} кВт⋅год",
+                                text = stringResource(R.string.kwh_int, state.targetKwh.toInt()),
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = TextPrimaryDark
@@ -155,9 +158,9 @@ fun LimiterScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = "1 кВт⋅год", fontSize = 11.sp, color = TextSecondaryDark)
-                        Text(text = "50 кВт⋅год", fontSize = 11.sp, color = TextSecondaryDark)
-                        Text(text = "100 кВт⋅год", fontSize = 11.sp, color = TextSecondaryDark)
+                        Text(text = stringResource(R.string.kwh_int, 1), fontSize = 11.sp, color = TextSecondaryDark)
+                        Text(text = stringResource(R.string.kwh_int, 50), fontSize = 11.sp, color = TextSecondaryDark)
+                        Text(text = stringResource(R.string.kwh_int, 100), fontSize = 11.sp, color = TextSecondaryDark)
                     }
                 }
             }
@@ -177,13 +180,13 @@ fun LimiterScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "ТАЙМЕР ТРИВАЛОСТІ",
+                            text = stringResource(R.string.limits_duration_label),
                             style = MaterialTheme.typography.labelSmall,
                             color = AmberNixie
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Зарядка на заданий час (1–12 год)",
+                            text = stringResource(R.string.limits_duration_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimaryDark
                         )
@@ -210,7 +213,7 @@ fun LimiterScreen(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = "Вимкнено: таймер тривалості заряджання не заданий.",
+                            text = stringResource(R.string.limits_duration_off),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondaryDark
                         )
@@ -229,9 +232,9 @@ fun LimiterScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "Обраний час зарядки", fontSize = 13.sp, color = TextSecondaryDark)
+                                Text(text = stringResource(R.string.limits_selected_time), fontSize = 13.sp, color = TextSecondaryDark)
                                 Text(
-                                    text = "${state.targetDurationHours} год",
+                                    text = stringResource(R.string.limits_hours, state.targetDurationHours),
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = AmberNixie
@@ -274,9 +277,9 @@ fun LimiterScreen(
 
                             Text(
                                 text = if (state.isAutoResumeEnabled) {
-                                    "⚡ Якщо світло зникне (OFFLINE), таймер встане на паузу та автоматично продовжить зарядку після відновлення живлення."
+                                    stringResource(R.string.limits_timer_auto_resume)
                                 } else {
-                                    "⏸ Якщо світло зникне (OFFLINE), таймер встане на паузу. Автоматичне відновлення вимкнено — після появи світла прийде сповіщення з кнопкою «Відновити заряд»."
+                                    stringResource(R.string.limits_timer_manual_resume)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (state.isAutoResumeEnabled) TextSecondaryDark else WarningAmber,
@@ -302,13 +305,13 @@ fun LimiterScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "РОЗКЛАД ТАЙМЕРА",
+                            text = stringResource(R.string.limits_schedule_label),
                             style = MaterialTheme.typography.labelSmall,
                             color = SecondaryCyan
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Зарядка за розкладом",
+                            text = stringResource(R.string.limits_schedule_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimaryDark
                         )
@@ -328,11 +331,11 @@ fun LimiterScreen(
 
                 if (state.isScheduleEnabled) {
                     val endpoints = listOf(
-                        Triple("ЧАС ПОЧАТКУ", state.startTime) { delta: Int ->
+                        Triple(stringResource(R.string.limits_start_time), state.startTime) { delta: Int ->
                             val nextStart = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(state.startTime, delta)
                             viewModel.setScheduleTimes(nextStart, state.stopTime)
                         },
-                        Triple("ЧАС ЗАВЕРШЕННЯ", state.stopTime) { delta: Int ->
+                        Triple(stringResource(R.string.limits_stop_time), state.stopTime) { delta: Int ->
                             val nextStop = ua.org.electros.app.data.local.AppSettings.shiftScheduleHour(state.stopTime, delta)
                             viewModel.setScheduleTimes(state.startTime, nextStop)
                         }
@@ -391,7 +394,7 @@ fun LimiterScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Автоматичне відновлення після зникнення світла",
+                        text = stringResource(R.string.limits_auto_resume),
                         fontSize = 13.sp,
                         color = TextPrimaryDark,
                         modifier = Modifier.weight(1f)
@@ -404,9 +407,9 @@ fun LimiterScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                if (!state.scheduleError.isNullOrBlank()) {
+                if (state.scheduleError != null) {
                     Text(
-                        text = state.scheduleError.orEmpty(),
+                        text = state.scheduleError?.asString().orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = ErrorRed
                     )
@@ -424,9 +427,9 @@ fun LimiterScreen(
                 ) {
                     Text(
                         text = when {
-                            state.isApplyingSchedule -> "Передача на станцію..."
-                            state.isScheduleSaved -> "✓ Налаштування передано на станцію"
-                            else -> "Задати на станцію"
+                            state.isApplyingSchedule -> stringResource(R.string.limits_applying)
+                            state.isScheduleSaved -> stringResource(R.string.limits_applied)
+                            else -> stringResource(R.string.limits_apply)
                         },
                         fontWeight = FontWeight.Bold
                     )
@@ -448,13 +451,13 @@ fun LimiterScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "БАЛАНСУВАННЯ НАВАНТАЖЕННЯ (DLB)",
+                            text = stringResource(R.string.limits_dlb_label),
                             style = MaterialTheme.typography.labelSmall,
                             color = WarningAmber
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Адаптація за напругою мережі",
+                            text = stringResource(R.string.limits_dlb_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimaryDark
                         )
@@ -481,7 +484,7 @@ fun LimiterScreen(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = "Вимкнено: станція працює на фіксованому струмі без контролю просадки напруги.",
+                            text = stringResource(R.string.limits_dlb_off),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondaryDark
                         )
@@ -496,7 +499,7 @@ fun LimiterScreen(
                                 .padding(14.dp)
                         ) {
                             Text(
-                                text = "⚡ Якщо напруга падає < ${state.voltageLowThreshold} В — струм поступово знижується до 6 А. Якщо піднімається > ${state.voltageHighThreshold} В — підвищується до максимум ${state.voltageMaxAmperage} А.",
+                                text = stringResource(R.string.limits_dlb_explain, state.voltageLowThreshold, state.voltageHighThreshold, state.voltageMaxAmperage),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextPrimaryDark,
                                 lineHeight = 18.sp
@@ -510,12 +513,12 @@ fun LimiterScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Поріг зниження струму",
+                                    text = stringResource(R.string.limits_dlb_low),
                                     fontSize = 13.sp,
                                     color = TextSecondaryDark
                                 )
                                 Text(
-                                    text = "< ${state.voltageLowThreshold} В",
+                                    text = stringResource(R.string.limits_below_v, state.voltageLowThreshold),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ErrorRed
@@ -542,12 +545,12 @@ fun LimiterScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Поріг повернення струму",
+                                    text = stringResource(R.string.limits_dlb_high),
                                     fontSize = 13.sp,
                                     color = TextSecondaryDark
                                 )
                                 Text(
-                                    text = "> ${state.voltageHighThreshold} В",
+                                    text = stringResource(R.string.limits_above_v, state.voltageHighThreshold),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = PrimaryNeonGreen
@@ -566,7 +569,7 @@ fun LimiterScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Text(
-                                text = "Мінімальний розрив між порогами — 10 В",
+                                text = stringResource(R.string.limits_dlb_gap),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondaryDark
                             )
@@ -579,12 +582,12 @@ fun LimiterScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Максимальний струм розгону",
+                                    text = stringResource(R.string.limits_dlb_max),
                                     fontSize = 13.sp,
                                     color = TextSecondaryDark
                                 )
                                 Text(
-                                    text = "${state.voltageMaxAmperage} А",
+                                    text = stringResource(R.string.limits_amps, state.voltageMaxAmperage),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = SecondaryCyan
@@ -603,7 +606,7 @@ fun LimiterScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Text(
-                                text = "При відновленні напруги DLB не підніме струм вище ${state.voltageMaxAmperage} А.",
+                                text = stringResource(R.string.limits_dlb_max_hint, state.voltageMaxAmperage),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondaryDark
                             )

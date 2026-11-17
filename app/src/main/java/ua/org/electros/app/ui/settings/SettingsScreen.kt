@@ -1,5 +1,12 @@
 package ua.org.electros.app.ui.settings
 
+import ua.org.electros.app.ui.AppLanguage
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.asString
 import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
@@ -91,7 +98,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Налаштування",
+            text = stringResource(R.string.settings_title),
             style = MaterialTheme.typography.titleLarge,
             color = TextPrimaryDark
         )
@@ -103,7 +110,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(text = "ПІДКЛЮЧЕННЯ ДО СТАНЦІЇ", style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+                Text(text = stringResource(R.string.settings_station), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
 
                 OutlinedTextField(
                     value = serialInput,
@@ -111,7 +118,7 @@ fun SettingsScreen(
                         serialInput = it
                         viewModel.clearCredentialsFeedback()
                     },
-                    label = { Text("Номер пристрою (наприклад, a1234)") },
+                    label = { Text(stringResource(R.string.settings_serial_hint)) },
                     singleLine = true,
                     visualTransformation = if (isSerialVisible) VisualTransformation.None else SerialMaskVisualTransformation,
                     keyboardOptions = KeyboardOptions(
@@ -121,7 +128,7 @@ fun SettingsScreen(
                     trailingIcon = {
                         TextButton(onClick = { isSerialVisible = !isSerialVisible }) {
                             Text(
-                                text = if (isSerialVisible) "Приховати" else "Показати",
+                                text = stringResource(if (isSerialVisible) R.string.hide else R.string.show),
                                 color = TextSecondaryDark,
                                 fontSize = 12.sp
                             )
@@ -142,7 +149,7 @@ fun SettingsScreen(
                         passwordInput = it
                         viewModel.clearCredentialsFeedback()
                     },
-                    label = { Text("Новий пароль пристрою") },
+                    label = { Text(stringResource(R.string.settings_new_password)) },
                     singleLine = true,
                     visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
@@ -152,7 +159,7 @@ fun SettingsScreen(
                     trailingIcon = {
                         TextButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
                             Text(
-                                text = if (isPasswordVisible) "Приховати" else "Показати",
+                                text = stringResource(if (isPasswordVisible) R.string.hide else R.string.show),
                                 color = TextSecondaryDark,
                                 fontSize = 12.sp
                             )
@@ -167,9 +174,9 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                if (!state.credentialsError.isNullOrBlank()) {
+                if (state.credentialsError != null) {
                     Text(
-                        text = state.credentialsError.orEmpty(),
+                        text = state.credentialsError?.asString().orEmpty(),
                         color = ErrorRed,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -190,9 +197,9 @@ fun SettingsScreen(
                 ) {
                     Text(
                         text = when {
-                            state.isSavingCredentials -> "Перевірка..."
-                            state.credentialsSaved -> "✓ Збережено"
-                            else -> "Зберегти нові дані"
+                            state.isSavingCredentials -> stringResource(R.string.settings_checking)
+                            state.credentialsSaved -> stringResource(R.string.settings_saved)
+                            else -> stringResource(R.string.settings_save_credentials)
                         },
                         fontWeight = FontWeight.Bold
                     )
@@ -201,8 +208,8 @@ fun SettingsScreen(
                 if (showLogoutConfirm) {
                     AlertDialog(
                         onDismissRequest = { showLogoutConfirm = false },
-                        title = { Text("Вийти зі станції?") },
-                        text = { Text("Якщо йде заряджання, його буде зупинено перед виходом.") },
+                        title = { Text(stringResource(R.string.settings_logout_title)) },
+                        text = { Text(stringResource(R.string.settings_logout_body)) },
                         confirmButton = {
                             TextButton(onClick = {
                                 showLogoutConfirm = false
@@ -210,10 +217,10 @@ fun SettingsScreen(
                                     ChargeMonitorService.stop(context)
                                     onLogout()
                                 }
-                            }) { Text("Вийти", color = ErrorRed) }
+                            }) { Text(stringResource(R.string.settings_logout_confirm), color = ErrorRed) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showLogoutConfirm = false }) { Text("Скасувати") }
+                            TextButton(onClick = { showLogoutConfirm = false }) { Text(stringResource(R.string.cancel)) }
                         }
                     )
                 }
@@ -224,10 +231,13 @@ fun SettingsScreen(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Вийти зі станції", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.settings_logout), fontWeight = FontWeight.Bold)
                 }
             }
         }
+
+        // Language Card
+        LanguageCard()
 
         // Background Monitoring / Doze Card
         Card(
@@ -236,18 +246,18 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(text = "ФОНОВИЙ МОНІТОРИНГ (DOZE)", style = MaterialTheme.typography.labelSmall, color = WarningAmber)
+                Text(text = stringResource(R.string.settings_background), style = MaterialTheme.typography.labelSmall, color = WarningAmber)
 
                 SettingRow(
-                    label = "Обмеження батареї",
-                    value = if (state.isBatteryOptimizationIgnored) "Вимкнено ✓" else "Активні (Doze) ⚠️"
+                    label = stringResource(R.string.settings_battery),
+                    value = stringResource(if (state.isBatteryOptimizationIgnored) R.string.settings_battery_off else R.string.settings_battery_on)
                 )
 
                 Text(
                     text = if (state.isBatteryOptimizationIgnored) {
-                        "Додаток може стабільно опитувати станцію кожні 10 секунд при вимкненому екрані, щоб вчасно спрацювали ліміт кВт⋅год і таймер."
+                        stringResource(R.string.settings_battery_ok_hint)
                     } else {
-                        "У режимі сну Android затримує фонові опитування. Дозвольте роботу без обмежень батареї для точної зупинки за лімітом."
+                        stringResource(R.string.settings_battery_hint)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondaryDark,
@@ -268,20 +278,20 @@ fun SettingsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = WarningAmber, contentColor = OnPrimaryDark),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Вимкнути оптимізацію батареї", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.settings_battery_button), fontWeight = FontWeight.Bold)
                     }
                 }
 
                 HorizontalDivider(color = OutlineDark)
 
                 SettingRow(
-                    label = "Сповіщення (аварії та ліміт)",
-                    value = if (state.areNotificationsEnabled) "Дозволено ✓" else "Вимкнено ⚠️"
+                    label = stringResource(R.string.settings_notifications),
+                    value = stringResource(if (state.areNotificationsEnabled) R.string.settings_notifications_on else R.string.settings_notifications_off)
                 )
 
                 if (!state.areNotificationsEnabled) {
                     Text(
-                        text = "Без дозволу на сповіщення ви не отримаєте попередження про зникнення світла, завершення квоти або помилку зупинки станції.",
+                        text = stringResource(R.string.settings_notifications_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = ErrorRed,
                         lineHeight = 17.sp
@@ -297,7 +307,7 @@ fun SettingsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = WarningAmber, contentColor = OnPrimaryDark),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Увімкнути сповіщення", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.settings_notifications_button), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -310,9 +320,9 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(text = "ОНОВЛЕННЯ ДОДАТКА", style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+                Text(text = stringResource(R.string.settings_updates), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
 
-                SettingRow(label = "Поточна версія", value = "v${BuildConfig.VERSION_NAME}")
+                SettingRow(label = stringResource(R.string.settings_version), value = "v${BuildConfig.VERSION_NAME}")
 
                 Button(
                     onClick = { otaViewModel?.checkForUpdates(manual = true) },
@@ -320,7 +330,7 @@ fun SettingsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Перевірити оновлення", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.settings_check_updates), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -353,5 +363,56 @@ private object SerialMaskVisualTransformation : VisualTransformation {
             }
         }
         return TransformedText(AnnotatedString(masked), OffsetMapping.Identity)
+    }
+}
+
+@Composable
+private fun LanguageCard() {
+    val context = LocalContext.current
+    var selected by remember { mutableStateOf(AppLanguage.current(context)) }
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(text = stringResource(R.string.settings_language), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SurfaceContainerHighDark)
+                    .padding(3.dp)
+            ) {
+                listOf(
+                    AppLanguage.SYSTEM to stringResource(R.string.settings_language_system),
+                    AppLanguage.UKRAINIAN to "Українська",
+                    AppLanguage.ENGLISH to "English"
+                ).forEach { (language, label) ->
+                    val isSelected = selected == language
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) SurfaceContainerHighestDark else androidx.compose.ui.graphics.Color.Transparent)
+                            .clickable {
+                                if (!isSelected) {
+                                    selected = language
+                                    AppLanguage.apply(context, language)
+                                }
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) TextPrimaryDark else TextSecondaryDark
+                        )
+                    }
+                }
+            }
+        }
     }
 }

@@ -17,6 +17,8 @@ class HistoryViewModelTest {
     private val zone = ZoneId.of("Europe/Kyiv")
     private val clock = Clock.fixed(Instant.parse("2026-11-17T12:00:00Z"), zone)
 
+    private val uk = HistoryLabels(java.util.Locale.of("uk", "UA"), "Сьогодні", "Вчора", "%1${'$'}d рік")
+
     private fun at(iso: String) = Instant.parse(iso).toEpochMilli()
 
     @Test
@@ -24,7 +26,7 @@ class HistoryViewModelTest {
         val active = session("live", at("2026-11-17T09:55:00Z"), status = SessionStatus.CHARGING, targetKwh = 8.0)
         val slices = listOf(slice("live", 0, start = 100.0, last = 103.4, startedAt = active.startedAt))
 
-        val state = HistoryCalculator.build(listOf(active), slices, 0.0, HistoryPeriod.Month(YearMonth.of(2026, 11)), clock)
+        val state = HistoryCalculator.build(listOf(active), slices, 0.0, HistoryPeriod.Month(YearMonth.of(2026, 11)), clock, uk)
 
         val item = state.days.single().sessions.single()
         assertThat(item.isActive).isTrue()
@@ -58,7 +60,7 @@ class HistoryViewModelTest {
             session("oct-20", at("2026-10-20T10:00:00Z"), kwh = 20.0)
         )
 
-        val state = HistoryCalculator.build(sessions, emptyList(), 4.32, HistoryPeriod.Month(YearMonth.of(2026, 11)), clock)
+        val state = HistoryCalculator.build(sessions, emptyList(), 4.32, HistoryPeriod.Month(YearMonth.of(2026, 11)), clock, uk)
 
         assertThat(state.periodLabel).isEqualTo("Листопад 2026")
         assertThat(state.totalKwh).isWithin(0.001).of(24.0)
@@ -94,7 +96,7 @@ class HistoryViewModelTest {
             session("2025", at("2025-12-30T10:00:00Z"), kwh = 44.0)
         )
 
-        val state = HistoryCalculator.build(sessions, emptyList(), 0.0, HistoryPeriod.Year(2026), clock)
+        val state = HistoryCalculator.build(sessions, emptyList(), 0.0, HistoryPeriod.Year(2026), clock, uk)
 
         assertThat(state.periodLabel).isEqualTo("2026 рік")
         assertThat(state.totalKwh).isWithin(0.001).of(22.0)
@@ -108,6 +110,20 @@ class HistoryViewModelTest {
         assertThat(state.days).isEmpty()
         assertThat(state.canGoBack).isTrue()
         assertThat(state.canGoForward).isFalse()
+    }
+
+    @Test
+    fun englishLabels_formatMonthAndYearInEnglish() {
+        val en = HistoryLabels(java.util.Locale.ENGLISH, "Today", "Yesterday", "%1${'$'}d")
+        val sessions = listOf(session("s", at("2026-11-17T09:00:00Z"), kwh = 5.0))
+
+        val month = HistoryCalculator.build(sessions, emptyList(), 0.0, HistoryPeriod.Month(YearMonth.of(2026, 11)), clock, en)
+        val year = HistoryCalculator.build(sessions, emptyList(), 0.0, HistoryPeriod.Year(2026), clock, en)
+
+        assertThat(month.periodLabel).isEqualTo("November 2026")
+        assertThat(month.days.single().label).isEqualTo("Today")
+        assertThat(year.periodLabel).isEqualTo("2026")
+        assertThat(year.bars[10].label).isEqualTo("Nov")
     }
 
     @Test

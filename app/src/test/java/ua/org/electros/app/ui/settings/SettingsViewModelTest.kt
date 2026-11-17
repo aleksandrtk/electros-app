@@ -65,7 +65,7 @@ class SettingsViewModelTest {
             vm.updateCredentials("a1234", "")
 
             assertThat(vm.uiState.value.credentialsSaved).isFalse()
-            assertThat(vm.uiState.value.credentialsError).isNotEmpty()
+            assertThat(vm.uiState.value.credentialsError).isNotNull()
             assertThat(authPrefs.internetPassword).isEqualTo("original-password")
             assertThat(authPrefs.hasValidCredentials()).isTrue()
         } finally {

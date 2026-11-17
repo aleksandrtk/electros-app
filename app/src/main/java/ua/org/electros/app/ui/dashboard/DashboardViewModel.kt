@@ -1,5 +1,8 @@
 package ua.org.electros.app.ui.dashboard
 
+import androidx.annotation.StringRes
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.UiText
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -50,7 +53,7 @@ data class DashboardUiState(
     val scheduleStartTime: String = "23:00",
     val scheduleStopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
-    val errorMessage: String? = null
+    val errorMessage: UiText? = null
 )
 
 class DashboardViewModel(
@@ -62,7 +65,7 @@ class DashboardViewModel(
 
     private val _isBusy = MutableStateFlow(false)
     private val _isRefreshing = MutableStateFlow(false)
-    private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _errorMessage = MutableStateFlow<UiText?>(null)
 
     private val _operationState = combine(
         _isBusy,
@@ -121,7 +124,7 @@ class DashboardViewModel(
         settings: AppSettings,
         busy: Boolean,
         refreshing: Boolean,
-        error: String?
+        error: UiText?
     ): DashboardUiState {
         val isLimitEnabled = settings.isKwhLimitEnabled
         val configuredQuota = settings.targetKwhLimit
@@ -297,7 +300,7 @@ class DashboardViewModel(
                     } else {
                         _errorMessage.value = formatDashboardError(
                             setRes.exceptionOrNull(),
-                            "Failed to update charge current on station"
+                            R.string.err_set_current
                         )
                     }
                     repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
@@ -382,7 +385,7 @@ class DashboardViewModel(
                 repository.setScheduleTimer("00:00", "00:00")
             }
             res.onFailure { err ->
-                _errorMessage.value = formatDashboardError(err, "Failed to update station schedule timer")
+                _errorMessage.value = formatDashboardError(err, R.string.err_schedule)
             }
         }
     }
@@ -411,7 +414,7 @@ class DashboardViewModel(
             result.onSuccess { sessionId ->
                 if (context != null) ChargeMonitorService.start(context, sessionId, quota, durationMin)
             }.onFailure { err ->
-                _errorMessage.value = formatDashboardError(err, "Failed to start charging")
+                _errorMessage.value = formatDashboardError(err, R.string.err_start)
             }
             _isBusy.value = false
         }
@@ -431,33 +434,33 @@ class DashboardViewModel(
                 ChargeMonitorService.stop(context)
             }
             res.onFailure { err ->
-                _errorMessage.value = formatDashboardError(err, "Failed to stop station")
+                _errorMessage.value = formatDashboardError(err, R.string.err_stop)
             }
             repository.fetchLatestTelemetry(isMonitorServiceRunning = isMonitorServiceRunning())
             _isBusy.value = false
         }
     }
 
-    private fun formatDashboardError(err: Throwable?, fallback: String): String {
+    /**
+     * Known station and repository failures get a translated message; anything else falls back to
+     * the generic message for the action, because raw exception text is not meant for the user.
+     */
+    private fun formatDashboardError(err: Throwable?, @StringRes fallback: Int): UiText {
         val raw = err?.message?.trim().orEmpty()
-        return when {
-            raw.isEmpty() -> fallback
-            raw.contains("OFFLINE", ignoreCase = true) || raw.contains("вимкнена", ignoreCase = true) ->
-                OFFLINE_START_MESSAGE
-            raw.contains("Авто не підключено", ignoreCase = true) ->
-                "Vehicle is not plugged into the station."
-            raw.contains("Не вдалося зупинити", ignoreCase = true) ->
-                "Failed to confirm station stop — retrying in background."
-            raw.contains("Невірний номер", ignoreCase = true) ->
-                "Invalid station serial or password."
-            else -> raw
+        val id = when {
+            raw.contains("OFFLINE", ignoreCase = true) || raw.contains("вимкнена", ignoreCase = true) -> R.string.err_offline_start
+            raw.contains("Авто не підключено", ignoreCase = true) -> R.string.err_vehicle
+            raw.contains("Не вдалося зупинити", ignoreCase = true) -> R.string.err_stop_retry
+            raw.contains("Невірний номер", ignoreCase = true) -> R.string.err_credentials
+            else -> fallback
         }
+        return UiText.Res(id)
     }
 
-    private fun isOfflineError(message: String): Boolean = message == OFFLINE_START_MESSAGE
+    private fun isOfflineError(message: UiText): Boolean = message == OFFLINE_START_MESSAGE
 
     companion object {
         private const val STALE_IDLE_SESSION_GRACE_MS = 30_000L
-        internal const val OFFLINE_START_MESSAGE = "Station is offline. Connect 220V grid power to start charging."
+        internal val OFFLINE_START_MESSAGE: UiText = UiText.Res(R.string.err_offline_start)
     }
 }

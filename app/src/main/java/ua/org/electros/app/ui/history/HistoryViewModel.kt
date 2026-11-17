@@ -19,14 +19,16 @@ class HistoryViewModel(
 ) : ViewModel() {
 
     private val period = MutableStateFlow(HistoryCalculator.currentMonth(clock))
+    private val labels = MutableStateFlow(HistoryLabels.DEFAULT)
 
     val uiState: StateFlow<HistoryUiState> = combine(
         repository.getAllSessions(),
         repository.observeAllSlices(),
         settingsStore.settingsFlow,
-        period
-    ) { sessions, slices, settings, selected ->
-        HistoryCalculator.build(sessions, slices, settings.electricityTariffUah, selected, clock)
+        period,
+        labels
+    ) { sessions, slices, settings, selected, texts ->
+        HistoryCalculator.build(sessions, slices, settings.electricityTariffUah, selected, clock, texts)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -60,6 +62,11 @@ class HistoryViewModel(
 
     fun goForward() {
         if (uiState.value.canGoForward) period.value = HistoryCalculator.next(period.value)
+    }
+
+    /** Called by the screen with texts in the current app language. */
+    fun setLabels(value: HistoryLabels) {
+        labels.value = value
     }
 
     fun setTariff(uahPerKwh: Double) = settingsStore.setElectricityTariff(uahPerKwh)

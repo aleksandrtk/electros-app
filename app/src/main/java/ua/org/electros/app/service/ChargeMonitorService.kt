@@ -1,5 +1,8 @@
 package ua.org.electros.app.service
 
+import ua.org.electros.app.ui.dashboard.formatHeaderStatus
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.asString
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.NotificationManager
 import android.app.Service
@@ -82,7 +85,7 @@ class ChargeMonitorService : Service() {
             powerKw = 0.0,
             deliveredKwh = 0.0,
             targetKwh = supervisor.activeTargetKwh,
-            statusText = "Ініціалізація...",
+            statusText = getString(R.string.status_initializing),
             targetDurationMinutes = supervisor.activeTargetDurationMinutes,
             accumulatedChargingMs = supervisor.accumulatedChargingMs
         )
@@ -201,7 +204,8 @@ class ChargeMonitorService : Service() {
                         powerKw = event.powerKw,
                         deliveredKwh = event.deliveredKwh,
                         targetKwh = event.targetKwh,
-                        statusText = event.statusText,
+                        statusText = formatHeaderStatus(event.statusText, isOnline = true).asString(this@ChargeMonitorService)
+                            .lowercase().replaceFirstChar { it.titlecase() },
                         targetDurationMinutes = event.targetDurationMinutes,
                         accumulatedChargingMs = event.accumulatedChargingMs
                     )

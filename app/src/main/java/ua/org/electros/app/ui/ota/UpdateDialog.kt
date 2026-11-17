@@ -1,5 +1,8 @@
 package ua.org.electros.app.ui.ota
 
+import androidx.compose.ui.res.stringResource
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.asString
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -60,11 +63,11 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = if (updateInfo?.hasUpdate == true) {
-                            "Оновлення доступне"
+                            stringResource(R.string.update_available)
                         } else if (isChecking) {
-                            "Перевірка оновлень..."
+                            stringResource(R.string.update_checking)
                         } else {
-                            "Остання версія"
+                            stringResource(R.string.update_latest)
                         },
                         color = TextPrimaryDark,
                         fontWeight = FontWeight.Bold,
@@ -96,14 +99,14 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                         CircularProgressIndicator(color = PrimaryNeonGreen)
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Перевірка GitHub Releases...",
+                            text = stringResource(R.string.update_checking_releases),
                             color = TextSecondaryDark,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 } else if (updateError != null) {
                     Text(
-                        text = "Помилка перевірки оновлень:\n$updateError",
+                        text = updateError?.asString().orEmpty(),
                         color = ErrorRed,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -114,7 +117,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                         modifier = Modifier.padding(bottom = 12.dp)
                     ) {
                         Text(
-                            text = "Поточна: v${BuildConfig.VERSION_NAME}",
+                            text = stringResource(R.string.update_current, BuildConfig.VERSION_NAME),
                             color = TextSecondaryDark,
                             fontSize = 13.sp
                         )
@@ -126,7 +129,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "Нова: ${info.rawTagName}",
+                                text = stringResource(R.string.update_new, info.rawTagName),
                                 color = PrimaryNeonGreen,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
@@ -145,7 +148,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                     }
 
                     Text(
-                        text = "Список змін:",
+                        text = stringResource(R.string.update_changelog),
                         color = TextPrimaryDark,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp
@@ -161,7 +164,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                             .verticalScroll(rememberScrollState())
                     ) {
                         Text(
-                            text = info.changelog.ifEmpty { "Покращення стабільності та оптимізація." },
+                            text = info.changelog.ifEmpty { stringResource(R.string.update_changelog_default) },
                             color = TextSecondaryDark,
                             fontSize = 12.sp,
                             lineHeight = 16.sp
@@ -181,7 +184,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Завантаження оновлення: ${(downloadProgress * 100).roundToInt()}%",
+                            text = stringResource(R.string.update_downloading_progress, (downloadProgress * 100).roundToInt()),
                             color = PrimaryNeonGreen,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -189,7 +192,7 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                     }
                 } else {
                     Text(
-                        text = "У вас встановлена найновіша версія Electros EV (v${BuildConfig.VERSION_NAME}). Нових релізів на GitHub немає.",
+                        text = stringResource(R.string.update_up_to_date_body, BuildConfig.VERSION_NAME),
                         color = TextSecondaryDark,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -214,25 +217,25 @@ fun UpdateDialog(viewModel: OtaViewModel) {
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Завантаження...", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.update_downloading), fontWeight = FontWeight.Bold)
                     } else if (awaitingPermission) {
-                        Text("Встановити завантажений APK", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.update_install), fontWeight = FontWeight.Bold)
                     } else if (updateInfo?.downloadUrl != null) {
-                        Text("Завантажити та встановити", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.update_download_install), fontWeight = FontWeight.Bold)
                     } else {
-                        Text("Відкрити сторінку релізу", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.update_open_release), fontWeight = FontWeight.Bold)
                     }
                 }
             } else if (!isChecking) {
                 TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                    Text("OK", color = PrimaryNeonGreen, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.ok), color = PrimaryNeonGreen, fontWeight = FontWeight.Bold)
                 }
             }
         },
         dismissButton = {
             if (updateInfo?.hasUpdate == true && !isDownloading) {
                 TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                    Text("Пізніше", color = TextSecondaryDark)
+                    Text(stringResource(R.string.update_later), color = TextSecondaryDark)
                 }
             }
         }

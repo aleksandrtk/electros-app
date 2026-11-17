@@ -226,7 +226,7 @@ object OtaUpdater {
             if (releaseJson != null) {
                 val rawTagName = releaseJson.optString("tag_name", "").trim()
                 val releaseName = releaseJson.optString("name", rawTagName).ifEmpty { rawTagName }
-                val changelog = releaseJson.optString("body", "Оновлення стабільності та виправлення помилок.")
+                val changelog = releaseJson.optString("body", "")
                 val releaseHtmlUrl = releaseJson.optString("html_url", "https://github.com/$REPO_OWNER/$REPO_NAME/releases")
 
                 var downloadUrl: String? = null
@@ -270,7 +270,7 @@ object OtaUpdater {
             hasUpdate = false,
             rawTagName = currentVersion,
             parsedVersion = currentVersion,
-            releaseName = "Остання версія",
+            releaseName = "",
             changelog = "",
             downloadUrl = null,
             releaseHtmlUrl = null

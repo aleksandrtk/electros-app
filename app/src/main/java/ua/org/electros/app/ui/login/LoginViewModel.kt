@@ -1,5 +1,8 @@
 package ua.org.electros.app.ui.login
 
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.UiText
+import ua.org.electros.app.ui.credentialsErrorText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,7 +16,7 @@ data class LoginUiState(
     val deviceSerial: String = "",
     val password: String = "",
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: UiText? = null
 )
 
 class LoginViewModel(
@@ -49,7 +52,7 @@ class LoginViewModel(
         val password = _uiState.value.password.trim()
 
         if (serial.isBlank() || password.isBlank()) {
-            _uiState.value = _uiState.value.copy(errorMessage = "Будь ласка, заповніть номер пристрою та пароль")
+            _uiState.value = _uiState.value.copy(errorMessage = UiText.Res(R.string.login_err_empty))
             return
         }
 
@@ -62,7 +65,7 @@ class LoginViewModel(
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    errorMessage = error.message ?: "Помилка авторизації на electros.org.ua"
+                    errorMessage = credentialsErrorText(error, R.string.login_err_auth)
                 )
             }
         }

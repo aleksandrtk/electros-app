@@ -1,5 +1,7 @@
 package ua.org.electros.app.ota
 
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.UiText
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -31,8 +33,8 @@ class OtaViewModel : ViewModel() {
     private val _showUpdateDialog = MutableStateFlow(false)
     val showUpdateDialog: StateFlow<Boolean> = _showUpdateDialog.asStateFlow()
 
-    private val _updateError = MutableStateFlow<String?>(null)
-    val updateError: StateFlow<String?> = _updateError.asStateFlow()
+    private val _updateError = MutableStateFlow<UiText?>(null)
+    val updateError: StateFlow<UiText?> = _updateError.asStateFlow()
 
     private val _awaitingInstallPermission = MutableStateFlow(false)
     val awaitingInstallPermission: StateFlow<Boolean> = _awaitingInstallPermission.asStateFlow()
@@ -53,7 +55,7 @@ class OtaViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Check for updates error: ${e.message}", e)
-                _updateError.value = e.message ?: "Помилка перевірки оновлень"
+                _updateError.value = e.message?.let { UiText.Res(R.string.update_error, listOf(it)) } ?: UiText.Res(R.string.update_err_check)
                 if (manual) {
                     _showUpdateDialog.value = true
                 }
@@ -108,7 +110,7 @@ class OtaViewModel : ViewModel() {
                 pendingApkTag = info.rawTagName
                 handleInstallOutcome(OtaUpdater.installApk(appContext, downloadedFile))
             } else {
-                _updateError.value = "Не вдалося завантажити оновлення або перевірити цілісність файлу"
+                _updateError.value = UiText.Res(R.string.update_err_download)
             }
         }
     }
@@ -137,7 +139,7 @@ class OtaViewModel : ViewModel() {
             }
             OtaUpdater.InstallOutcome.FAILED -> {
                 _awaitingInstallPermission.value = false
-                _updateError.value = "Не вдалося запустити встановлення оновлення"
+                _updateError.value = UiText.Res(R.string.update_err_install)
             }
         }
     }

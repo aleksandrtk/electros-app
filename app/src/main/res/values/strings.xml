@@ -1,4 +1,266 @@
 <resources>
-    <string name="app_name">Electros EV</string>
-</resources>
+    <string name="app_name" translatable="false">Electros EV</string>
 
+    <!-- Common -->
+    <string name="unit_kwh">kWh</string>
+    <string name="kwh_int">%1$d kWh</string>
+    <string name="kwh_dec">%1$s kWh</string>
+    <string name="kwh_of_target">%1$s / %2$s kWh</string>
+    <string name="kw_value">%1$s kW</string>
+    <string name="amps_value">%1$dA</string>
+    <string name="hours_short">%1$dH</string>
+    <string name="duration_h_min">%1$d h %2$d min</string>
+    <string name="duration_h">%1$d h</string>
+    <string name="duration_min">%1$d min</string>
+    <string name="cost_uah">≈ %1$s ₴</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="ok">OK</string>
+
+    <!-- Navigation -->
+    <string name="tab_charge">Charge</string>
+    <string name="tab_limits">Limits</string>
+    <string name="tab_history">History</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Header status -->
+    <string name="status_offline">OFFLINE</string>
+    <string name="status_forbidden">CHARGING FORBIDDEN</string>
+    <string name="status_charge_error">CHARGE ERROR</string>
+    <string name="status_comm_error">COMMUNICATION ERROR</string>
+    <string name="status_low_voltage">LOW VOLTAGE</string>
+    <string name="status_leakage">LEAKAGE DETECTED</string>
+    <string name="status_overcurrent">OVERCURRENT &gt; 40A</string>
+    <string name="status_waiting">WAITING FOR VEHICLE</string>
+    <string name="status_idle">CONNECTED • IDLE</string>
+    <string name="status_charging">CHARGING</string>
+    <string name="status_online">ONLINE</string>
+    <string name="status_stopping">STOPPING…</string>
+    <string name="status_initializing">Starting…</string>
+
+    <!-- Dashboard -->
+    <string name="dash_stop_pending">Station stop not confirmed — retrying the stop command.</string>
+    <string name="dash_line_voltage">LINE VOLTAGE (RMS)</string>
+    <string name="dash_session_energy">SESSION ENERGY</string>
+    <string name="dash_stored_energy">STORED ENERGY</string>
+    <string name="dash_volts">VOLTS</string>
+    <string name="dash_remaining">Remaining %1$s · %2$d%%</string>
+    <string name="dash_charge_current">CHARGE CURRENT</string>
+    <string name="dlb_title">AUTO-CURRENT</string>
+    <string name="dlb_standby">STANDBY</string>
+    <string name="dlb_derating">DERATING • %1$dV</string>
+    <string name="dlb_normal">NORMAL • UP TO %1$dA</string>
+    <string name="dlb_max_warning">Max auto-current: %1$dA (selected %2$dA)</string>
+    <string name="dlb_hint_on">Lowers current below %1$dV, raises it back up to %2$dA</string>
+    <string name="dlb_hint_off">Fixed current %1$dA • voltage-sag protection is off</string>
+    <string name="energy_limit_title">ENERGY LIMIT (KWH)</string>
+    <string name="energy_limit_hint">AUTO-STOP QUOTA (NO AUTO-START)</string>
+    <string name="off">OFF</string>
+    <string name="timer_paused">PAUSED • %1$s</string>
+    <string name="charge_timer_title">CHARGE TIMER</string>
+    <string name="charge_timer_hint">LIMIT: 1–12H (AUTO-RESUMES IF OFFLINE)</string>
+    <string name="schedule_title">SCHEDULE TIMER</string>
+    <string name="schedule_window">DAILY WINDOW</string>
+    <string name="turn_off">TURN OFF</string>
+    <string name="turn_on">TURN ON</string>
+    <string name="schedule_from">FROM</string>
+    <string name="schedule_to">TO</string>
+    <string name="set_schedule">SET SCHEDULE • %1$s–%2$s</string>
+    <string name="stop">STOP</string>
+    <string name="stopping">STOPPING…</string>
+    <string name="starting">STARTING…</string>
+    <string name="start_charge">START CHARGE</string>
+    <string name="start_charge_kwh">START CHARGE (%1$d kWh)</string>
+    <string name="start_charge_hours">START CHARGE (%1$dH)</string>
+    <string name="start_charge_kwh_hours">START CHARGE (%1$d kWh • %2$dH)</string>
+    <string name="outage_timer_suffix"> • Timer remaining: %1$s</string>
+    <string name="outage_title_restored">POWER RESTORED • AWAITING START</string>
+    <string name="outage_title_lost">GRID POWER LOST</string>
+    <string name="outage_body_manual">Preserved %1$s kWh%2$s. Auto-resume is off — press START to continue, or cancel the session.</string>
+    <string name="outage_body_disabled">Preserved %1$s kWh%2$s. Auto-resume is disabled in settings — charging will not resume automatically.</string>
+    <string name="outage_body_timer_limit">Preserved %1$s kWh (timer: %2$s). Charging will resume automatically up to %3$s kWh when power returns.</string>
+    <string name="outage_body_auto">Preserved %1$s kWh%2$s. Charging will resume automatically when power returns.</string>
+    <string name="outage_body_limit">Preserved %1$s kWh. Charging will resume automatically up to %2$s kWh when power returns.</string>
+    <string name="cancel_session">CANCEL SESSION</string>
+    <string name="cancelling">CANCELLING…</string>
+    <string name="offline_title">STATION OFFLINE (NO POWER)</string>
+    <string name="offline_body">No 220V grid power or the station is unplugged.</string>
+
+    <!-- Dashboard errors -->
+    <string name="err_offline_start">Station is offline. Connect 220V grid power to start charging.</string>
+    <string name="err_set_current">Couldn\'t change the charge current on the station.</string>
+    <string name="err_schedule">Couldn\'t update the station schedule.</string>
+    <string name="err_start">Couldn\'t start charging.</string>
+    <string name="err_stop">Couldn\'t stop the station.</string>
+    <string name="err_vehicle">The car isn\'t plugged into the station.</string>
+    <string name="err_stop_retry">Station stop not confirmed — retrying in the background.</string>
+    <string name="err_credentials">Wrong station number or password.</string>
+
+    <!-- Limits screen -->
+    <string name="limits_title">Limits and schedule</string>
+    <string name="limits_auto_off">AUTO-STOP</string>
+    <string name="limits_kwh_title">Energy limit (kWh)</string>
+    <string name="limits_kwh_off">Off: the station charges until the car finishes on its own (for example at 80% or 100%).</string>
+    <string name="limits_target_energy">Target energy</string>
+    <string name="limits_duration_label">DURATION TIMER</string>
+    <string name="limits_duration_title">Charge for a set time (1–12 h)</string>
+    <string name="limits_duration_off">Off: no charging time limit is set.</string>
+    <string name="limits_selected_time">Selected charging time</string>
+    <string name="limits_hours">%1$d h</string>
+    <string name="limits_timer_auto_resume">⚡ If the power goes out (OFFLINE), the timer pauses and charging resumes automatically when power returns.</string>
+    <string name="limits_timer_manual_resume">⏸ If the power goes out (OFFLINE), the timer pauses. Auto-resume is off — when power returns you\'ll get a notification with a “Resume charging” button.</string>
+    <string name="limits_schedule_label">STATION SCHEDULE</string>
+    <string name="limits_schedule_title">Charge on a schedule</string>
+    <string name="limits_start_time">START TIME</string>
+    <string name="limits_stop_time">END TIME</string>
+    <string name="limits_auto_resume">Resume automatically after a power outage</string>
+    <string name="limits_applying">Sending to the station…</string>
+    <string name="limits_applied">✓ Settings sent to the station</string>
+    <string name="limits_apply">Send to station</string>
+    <string name="limits_dlb_label">LOAD BALANCING (DLB)</string>
+    <string name="limits_dlb_title">Adapt to grid voltage</string>
+    <string name="limits_dlb_off">Off: the station runs at a fixed current without voltage-sag control.</string>
+    <string name="limits_dlb_explain">⚡ If the voltage drops below %1$d V, the current is lowered step by step to 6 A. If it rises above %2$d V, it goes back up to at most %3$d A.</string>
+    <string name="limits_dlb_low">Lower current below</string>
+    <string name="limits_dlb_high">Restore current above</string>
+    <string name="limits_below_v">&lt; %1$d V</string>
+    <string name="limits_above_v">&gt; %1$d V</string>
+    <string name="limits_dlb_gap">Minimum gap between thresholds is 10 V</string>
+    <string name="limits_dlb_max">Maximum ramp-up current</string>
+    <string name="limits_amps">%1$d A</string>
+    <string name="limits_dlb_max_hint">When the voltage recovers, DLB won\'t raise the current above %1$d A.</string>
+
+    <!-- History -->
+    <string name="history_title">History</string>
+    <string name="history_month">Month</string>
+    <string name="history_year">Year</string>
+    <string name="history_year_label">%1$d</string>
+    <string name="history_today">Today</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_empty_month">No charging this month</string>
+    <string name="history_empty_year">No charging this year</string>
+    <string name="history_change_month">%1$s%2$d%% vs last month</string>
+    <string name="history_change_year">%1$s%2$d%% vs last year</string>
+    <string name="history_cost">Cost</string>
+    <string name="history_set_tariff">Set tariff</string>
+    <string name="history_sessions">Sessions</string>
+    <string name="history_charging_time">Charging time</string>
+    <string name="history_now">now</string>
+    <string name="history_avg_power">%1$s kW avg</string>
+    <string name="history_outages">Power outages: %1$d</string>
+    <plurals name="history_session_count">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <string name="session_target_reached">Limit reached</string>
+    <string name="session_vehicle_stopped">Car finished</string>
+    <string name="session_cancelled">Stopped manually</string>
+    <string name="session_charging">Charging</string>
+    <string name="session_waiting_power">Waiting for power</string>
+    <string name="session_stopping">Stopping…</string>
+    <string name="session_idle">Waiting</string>
+    <string name="tariff_title">Electricity tariff</string>
+    <string name="tariff_body">Price of 1 kWh from your bill. Used only to estimate cost.</string>
+    <string name="tariff_suffix">₴/kWh</string>
+    <string name="tariff_invalid">Enter a number from 0 to 100</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_station">STATION CONNECTION</string>
+    <string name="settings_serial_hint">Device number (for example, a1234)</string>
+    <string name="settings_new_password">New device password</string>
+    <string name="settings_checking">Checking…</string>
+    <string name="settings_saved">✓ Saved</string>
+    <string name="settings_save_credentials">Save new details</string>
+    <string name="settings_logout_title">Sign out of the station?</string>
+    <string name="settings_logout_body">If charging is running, it will be stopped before signing out.</string>
+    <string name="settings_logout_confirm">Sign out</string>
+    <string name="settings_logout">Sign out of the station</string>
+    <string name="settings_background">BACKGROUND MONITORING (DOZE)</string>
+    <string name="settings_battery">Battery restrictions</string>
+    <string name="settings_battery_off">Off ✓</string>
+    <string name="settings_battery_on">Active (Doze) ⚠️</string>
+    <string name="settings_battery_ok_hint">The app can poll the station every 10 seconds with the screen off, so the kWh limit and timer stop on time.</string>
+    <string name="settings_battery_hint">In sleep mode Android delays background polling. Allow unrestricted battery use so the limit stops charging on time.</string>
+    <string name="settings_battery_button">Turn off battery optimization</string>
+    <string name="settings_notifications">Notifications (outages and limit)</string>
+    <string name="settings_notifications_on">Allowed ✓</string>
+    <string name="settings_notifications_off">Off ⚠️</string>
+    <string name="settings_notifications_hint">Without notifications you won\'t be warned about power outages, a reached limit or a failed station stop.</string>
+    <string name="settings_notifications_button">Turn on notifications</string>
+    <string name="settings_updates">APP UPDATES</string>
+    <string name="settings_version">Current version</string>
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="settings_language">LANGUAGE</string>
+    <string name="settings_language_system">System</string>
+    <string name="settings_err_empty">Enter the device number and password to save</string>
+    <string name="settings_err_check">Couldn\'t verify the details on electros.org.ua</string>
+    <string name="settings_err_logout">Couldn\'t stop charging. Sign-out cancelled.</string>
+
+    <!-- Login -->
+    <string name="login_title">Sign in to your Electros station</string>
+    <string name="login_subtitle">Enter the device number and password to connect to electros.org.ua</string>
+    <string name="login_password">Device password</string>
+    <string name="login_button">Sign in</string>
+    <string name="login_err_empty">Fill in the device number and password</string>
+    <string name="login_err_auth">Couldn\'t sign in to electros.org.ua</string>
+
+    <!-- Updates -->
+    <string name="update_available">Update available</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_latest">You\'re up to date</string>
+    <string name="update_checking_releases">Checking GitHub Releases…</string>
+    <string name="update_error">Couldn\'t check for updates:\n%1$s</string>
+    <string name="update_current">Current: v%1$s</string>
+    <string name="update_new">New: %1$s</string>
+    <string name="update_changelog">What\'s new:</string>
+    <string name="update_changelog_default">Stability improvements and optimizations.</string>
+    <string name="update_downloading_progress">Downloading update: %1$d%%</string>
+    <string name="update_up_to_date_body">You have the latest version of Electros EV (v%1$s). There are no new releases on GitHub.</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_install">Install downloaded APK</string>
+    <string name="update_download_install">Download and install</string>
+    <string name="update_open_release">Open release page</string>
+    <string name="update_later">Later</string>
+    <string name="update_err_check">Couldn\'t check for updates</string>
+    <string name="update_err_download">Couldn\'t download the update or verify the file</string>
+    <string name="update_err_install">Couldn\'t start installing the update</string>
+
+    <!-- Notifications -->
+    <string name="channel_status">Charging status</string>
+    <string name="channel_status_desc">Ongoing notification about the current charge</string>
+    <string name="channel_alerts">Important alerts</string>
+    <string name="channel_alerts_desc">Power outages and reached limits</string>
+    <string name="channel_dlb">Voltage balancing</string>
+    <string name="channel_dlb_desc">Current changes after voltage sags and recoveries</string>
+    <string name="notif_timer_part"> • Timer %1$02d:%2$02d</string>
+    <string name="notif_progress_target">Charged %1$s of %2$s kWh (%3$d%%)%4$s</string>
+    <string name="notif_progress_timer">Delivered %1$s kWh%2$s</string>
+    <string name="notif_progress_unlimited">Charged %1$s kWh (no limit)</string>
+    <string name="notif_title">Electros: %1$s kW • %2$s</string>
+    <string name="notif_action_stop">Stop</string>
+    <string name="notif_outage_auto">Station OFFLINE. %1$s kWh saved. Charging will resume automatically.</string>
+    <string name="notif_outage_manual">Station OFFLINE. %1$s kWh saved. Auto-resume is off.</string>
+    <string name="notif_outage_title">⚠️ Power is out!</string>
+    <string name="notif_power_back_title">⚡ Power is back — station online</string>
+    <string name="notif_power_back_text">%1$s kWh saved. Tap “Resume charging” to start at %2$d A.</string>
+    <string name="notif_action_resume">Resume charging</string>
+    <string name="notif_done_title">⚡ Charging complete!</string>
+    <string name="notif_done_text">Target reached: %1$s kWh delivered.</string>
+    <string name="notif_dlb_down_title">⚡ Charging current lowered</string>
+    <string name="notif_dlb_up_title">⚡ Charging current raised</string>
+    <string name="notif_dlb_down_text">Voltage sag (%1$d V). Current lowered: %2$d A → %3$d A to protect the grid.</string>
+    <string name="notif_dlb_up_text">Voltage is stable (%1$d V). Current raised: %2$d A → %3$d A.</string>
+    <string name="notif_conn_lost_title">⚠️ Lost connection to the station!</string>
+    <string name="notif_conn_lost_text">The station holds %1$d A. Balancing is paused until the internet is back.</string>
+    <string name="notif_timer_done_title">⏱️ Charge timer finished!</string>
+    <string name="notif_timer_done_text">Ran for %1$s. Delivered %2$s kWh. Station stopped.</string>
+    <string name="notif_resumed_title">⚡ Power is back — charging resumed</string>
+    <string name="notif_resumed_text">Station restarted at %1$d A. Timer and counter continue.</string>
+    <string name="notif_stop_failed_title">⚠️ Couldn\'t stop the station</string>
+    <string name="notif_stop_failed_text">The stop command wasn\'t confirmed. Still retrying to stop charging.</string>
+    <string name="notif_restart_title">Monitoring needs a manual start</string>
+    <string name="notif_restart_text">Open the app to continue monitoring</string>
+</resources>

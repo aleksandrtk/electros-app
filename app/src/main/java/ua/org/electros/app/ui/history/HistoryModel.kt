@@ -72,24 +72,44 @@ data class HistoryUiState(
     val isEmpty: Boolean get() = days.isEmpty() && months.isEmpty()
 }
 
+/** Texts and locale the history model needs; supplied by the UI so they follow the app language. */
+data class HistoryLabels(
+    val locale: Locale,
+    val today: String,
+    val yesterday: String,
+    /** Year label pattern with one integer argument (the year). */
+    val yearPattern: String
+) {
+    companion object {
+        val DEFAULT = HistoryLabels(Locale.ENGLISH, "Today", "Yesterday", "%1${'$'}d")
+    }
+}
+
 internal object HistoryCalculator {
     /** A finished session that delivered less than this was an attempt that never charged; it is not shown. */
     const val MIN_SESSION_KWH = 0.01
     private const val MIN_CHARGING_MS_FOR_POWER = 5 * 60_000L
 
-    private val UK: Locale = Locale.of("uk", "UA")
-    private val MONTH_YEAR = DateTimeFormatter.ofPattern("LLLL yyyy", UK)
-    private val MONTH_SHORT = DateTimeFormatter.ofPattern("LLL", UK)
-    private val MONTH_FULL = DateTimeFormatter.ofPattern("LLLL", UK)
-    private val DAY_MONTH = DateTimeFormatter.ofPattern("d MMMM", UK)
 
     fun build(
         sessions: List<ChargeSessionEntity>,
         slices: List<ChargeSliceEntity>,
         tariffUah: Double,
         period: HistoryPeriod,
-        clock: Clock
+        clock: Clock,
+        labels: HistoryLabels = HistoryLabels.DEFAULT
     ): HistoryUiState {
+        val locale = labels.locale
+        val monthYear = DateTimeFormatter.ofPattern("LLLL yyyy", locale)
+        val monthShort = DateTimeFormatter.ofPattern("LLL", locale)
+        val monthFull = DateTimeFormatter.ofPattern("LLLL", locale)
+        val dayMonth = DateTimeFormatter.ofPattern("d MMMM", locale)
+        fun String.capitalized(): String = replaceFirstChar { it.titlecase(locale) }
+        fun dayLabel(date: LocalDate, today: LocalDate): String = when (date) {
+            today -> labels.today
+            today.minusDays(1) -> labels.yesterday
+            else -> date.format(dayMonth)
+        }
         val zone = clock.zone
         val today = LocalDate.now(clock)
         val slicesBySession = slices.groupBy { it.sessionId }
@@ -113,7 +133,7 @@ internal object HistoryCalculator {
                 val total = inMonth.sumOf { it.kwh }
                 HistoryUiState(
                     period = period,
-                    periodLabel = month.format(MONTH_YEAR).capitalized(),
+                    periodLabel = month.format(monthYear).capitalized(),
                     canGoBack = month > YearMonth.from(earliest),
                     canGoForward = month < YearMonth.from(today),
                     totalKwh = total,
@@ -151,7 +171,7 @@ internal object HistoryCalculator {
                 val currentMonth = YearMonth.from(today)
                 HistoryUiState(
                     period = period,
-                    periodLabel = "$year рік",
+                    periodLabel = labels.yearPattern.format(locale, year),
                     canGoBack = year > earliest.year,
                     canGoForward = year < today.year,
                     totalKwh = total,
@@ -162,7 +182,7 @@ internal object HistoryCalculator {
                     bars = (1..12).map { m ->
                         val month = YearMonth.of(year, m)
                         HistoryBar(
-                            label = month.format(MONTH_SHORT).take(3).capitalized(),
+                            label = month.format(monthShort).trimEnd('.').take(3).capitalized(),
                             kwh = byMonth[month].orEmpty().sumOf { it.kwh },
                             isCurrent = month == currentMonth
                         )
@@ -173,7 +193,7 @@ internal object HistoryCalculator {
                             val kwh = monthSessions.sumOf { it.kwh }
                             HistoryMonthRow(
                                 month = month,
-                                label = month.format(MONTH_FULL).capitalized(),
+                                label = month.format(monthFull).capitalized(),
                                 kwh = kwh,
                                 costUah = cost(kwh),
                                 sessionCount = monthSessions.size
@@ -237,13 +257,6 @@ internal object HistoryCalculator {
     private fun changePct(current: Double, previous: Double): Int? =
         if (previous < MIN_SESSION_KWH) null else (((current - previous) / previous) * 100).roundToInt()
 
-    private fun dayLabel(date: LocalDate, today: LocalDate): String = when (date) {
-        today -> "Сьогодні"
-        today.minusDays(1) -> "Вчора"
-        else -> date.format(DAY_MONTH)
-    }
-
-    private fun String.capitalized(): String = replaceFirstChar { it.titlecase(UK) }
 
     fun previous(period: HistoryPeriod): HistoryPeriod = when (period) {
         is HistoryPeriod.Month -> HistoryPeriod.Month(period.month.minusMonths(1))

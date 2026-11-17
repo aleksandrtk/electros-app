@@ -1,5 +1,11 @@
 package ua.org.electros.app.ui.history
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import ua.org.electros.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +44,15 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val labels = HistoryLabels(
+        locale = locale,
+        today = stringResource(R.string.history_today),
+        yesterday = stringResource(R.string.history_yesterday),
+        yearPattern = context.getString(R.string.history_year_label)
+    )
+    LaunchedEffect(labels) { viewModel.setLabels(labels) }
     var showTariffDialog by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -62,7 +77,7 @@ fun HistoryScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text(text = "Історія", style = MaterialTheme.typography.titleLarge, color = TextPrimaryDark)
+            Text(text = stringResource(R.string.history_title), style = MaterialTheme.typography.titleLarge, color = TextPrimaryDark)
         }
         item {
             PeriodHeader(
@@ -95,7 +110,7 @@ fun HistoryScreen(
         if (state.isEmpty) {
             item {
                 Text(
-                    text = if (isMonthView) "У цьому місяці заряджань не було" else "У цьому році заряджань не було",
+                    text = stringResource(if (isMonthView) R.string.history_empty_month else R.string.history_empty_year),
                     fontSize = 14.sp,
                     color = TextSecondaryDark,
                     textAlign = TextAlign.Center,
@@ -158,8 +173,8 @@ private fun PeriodHeader(
                 .background(SurfaceContainerDark)
                 .padding(3.dp)
         ) {
-            SegmentButton("Місяць", selected = isMonthView, onClick = onMonth, modifier = Modifier.weight(1f))
-            SegmentButton("Рік", selected = !isMonthView, onClick = onYear, modifier = Modifier.weight(1f))
+            SegmentButton(stringResource(R.string.history_month), selected = isMonthView, onClick = onMonth, modifier = Modifier.weight(1f))
+            SegmentButton(stringResource(R.string.history_year), selected = !isMonthView, onClick = onYear, modifier = Modifier.weight(1f))
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -217,7 +232,7 @@ private fun SummaryCard(
                     color = TextPrimaryDark
                 )
                 Text(
-                    text = " кВт⋅год",
+                    text = " " + stringResource(R.string.unit_kwh),
                     fontSize = 14.sp,
                     color = TextSecondaryDark,
                     modifier = Modifier.padding(bottom = 5.dp)
@@ -225,7 +240,11 @@ private fun SummaryCard(
                 Spacer(Modifier.weight(1f))
                 state.changeVsPreviousPct?.let { pct ->
                     Text(
-                        text = "${if (pct > 0) "+" else if (pct < 0) "−" else ""}${kotlin.math.abs(pct)}% до минулого ${if (isMonthView) "місяця" else "року"}",
+                        text = stringResource(
+                            if (isMonthView) R.string.history_change_month else R.string.history_change_year,
+                            if (pct > 0) "+" else if (pct < 0) "−" else "",
+                            kotlin.math.abs(pct)
+                        ),
                         fontSize = 11.sp,
                         color = TextSecondaryDark,
                         modifier = Modifier.padding(bottom = 6.dp)
@@ -235,13 +254,13 @@ private fun SummaryCard(
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 Metric(
-                    label = "Вартість",
-                    value = state.totalCostUah?.let { formatUah(it) } ?: "Вказати тариф",
+                    label = stringResource(R.string.history_cost),
+                    value = state.totalCostUah?.let { formatUah(it) } ?: stringResource(R.string.history_set_tariff),
                     valueColor = if (state.totalCostUah == null) AmberNixie else TextPrimaryDark,
                     modifier = Modifier.weight(1f).clickable(onClick = onTariffClick)
                 )
-                Metric(label = "Сесій", value = state.sessionCount.toString(), modifier = Modifier.weight(1f))
-                Metric(label = "Час заряду", value = formatDuration(state.chargingMs), modifier = Modifier.weight(1f))
+                Metric(label = stringResource(R.string.history_sessions), value = state.sessionCount.toString(), modifier = Modifier.weight(1f))
+                Metric(label = stringResource(R.string.history_charging_time), value = formatDuration(state.chargingMs), modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(16.dp))
             BarChart(bars = state.bars, isMonthView = isMonthView, onBarClick = onBarClick)
@@ -325,7 +344,7 @@ private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:
 private fun SessionCard(session: HistorySessionItem) {
     val zone = ZoneId.systemDefault()
     val start = TIME_FORMATTER.format(Instant.ofEpochMilli(session.startedAt).atZone(zone))
-    val end = session.endedAt?.let { TIME_FORMATTER.format(Instant.ofEpochMilli(it).atZone(zone)) } ?: "зараз"
+    val end = session.endedAt?.let { TIME_FORMATTER.format(Instant.ofEpochMilli(it).atZone(zone)) } ?: stringResource(R.string.history_now)
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -351,7 +370,7 @@ private fun SessionCard(session: HistorySessionItem) {
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = if (session.isActive && session.targetKwh > 0.0) {
-                        "%.1f / %.0f кВт⋅год".format(session.kwh, session.targetKwh)
+                        stringResource(R.string.kwh_of_target, "%.1f".format(session.kwh), "%.0f".format(session.targetKwh))
                     } else {
                         formatKwh(session.kwh)
                     },
@@ -371,13 +390,13 @@ private fun SessionCard(session: HistorySessionItem) {
                 )
             }
             Spacer(Modifier.height(6.dp))
-            val details = buildList {
-                add(statusLabel(session.status))
-                add(formatDuration(session.chargingMs))
-                session.avgPowerKw?.let { add("%.1f кВт сер.".format(it)) }
-                session.costUah?.let { add(formatUah(it)) }
-                add("${session.amperage}A")
-            }
+            val details = listOfNotNull(
+                stringResource(statusLabel(session.status)),
+                formatDuration(session.chargingMs),
+                session.avgPowerKw?.let { stringResource(R.string.history_avg_power, "%.1f".format(it)) },
+                session.costUah?.let { formatUah(it) },
+                stringResource(R.string.amps_value, session.amperage)
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = details.joinToString("  •  "),
@@ -389,7 +408,7 @@ private fun SessionCard(session: HistorySessionItem) {
             if (session.outageCount > 0) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Відключень світла: ${session.outageCount}",
+                    text = stringResource(R.string.history_outages, session.outageCount),
                     fontSize = 12.sp,
                     color = StudioAmberWarn
                 )
@@ -412,7 +431,10 @@ private fun MonthRow(row: HistoryMonthRow, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = row.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimaryDark)
                 Text(
-                    text = listOfNotNull(sessionsLabel(row.sessionCount), row.costUah?.let { formatUah(it) })
+                    text = listOfNotNull(
+                        pluralStringResource(R.plurals.history_session_count, row.sessionCount, row.sessionCount),
+                        row.costUah?.let { formatUah(it) }
+                    )
                         .joinToString("  •  "),
                     fontSize = 12.sp,
                     color = TextSecondaryDark
@@ -431,11 +453,11 @@ private fun TariffDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double
     val isValid = parsed != null && parsed >= 0.0 && parsed <= SettingsStore.MAX_TARIFF_UAH
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Тариф на електроенергію") },
+        title = { Text(stringResource(R.string.tariff_title)) },
         text = {
             Column {
                 Text(
-                    text = "Ціна за 1 кВт⋅год з вашого рахунку. Використовується лише для оцінки вартості.",
+                    text = stringResource(R.string.tariff_body),
                     fontSize = 13.sp,
                     color = TextSecondaryDark
                 )
@@ -444,10 +466,10 @@ private fun TariffDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double
                     value = text,
                     onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(6) },
                     singleLine = true,
-                    suffix = { Text("₴/кВт⋅год") },
+                    suffix = { Text(stringResource(R.string.tariff_suffix)) },
                     isError = text.isNotEmpty() && !isValid,
                     supportingText = if (text.isNotEmpty() && !isValid) {
-                        { Text("Введіть число від 0 до 100") }
+                        { Text(stringResource(R.string.tariff_invalid)) }
                     } else {
                         null
                     },
@@ -456,48 +478,42 @@ private fun TariffDialog(initial: Double, onDismiss: () -> Unit, onSave: (Double
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (isValid) onSave(parsed!!) }, enabled = isValid) { Text("Зберегти") }
+            TextButton(onClick = { if (isValid) onSave(parsed!!) }, enabled = isValid) { Text(stringResource(R.string.save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Скасувати") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
 
-private fun statusLabel(status: SessionStatus): String = when (status) {
-    SessionStatus.TARGET_REACHED -> "Ліміт досягнуто"
-    SessionStatus.VEHICLE_STOPPED -> "Авто завершило"
-    SessionStatus.CANCELLED -> "Зупинено вручну"
-    SessionStatus.CHARGING -> "Заряджається"
+@StringRes
+private fun statusLabel(status: SessionStatus): Int = when (status) {
+    SessionStatus.TARGET_REACHED -> R.string.session_target_reached
+    SessionStatus.VEHICLE_STOPPED -> R.string.session_vehicle_stopped
+    SessionStatus.CANCELLED -> R.string.session_cancelled
+    SessionStatus.CHARGING -> R.string.session_charging
     SessionStatus.OUTAGE_DETECTED,
     SessionStatus.OUTAGE_STABILIZING,
-    SessionStatus.AUTO_RESUMING -> "Очікування світла"
-    SessionStatus.STOP_PENDING -> "Зупинка…"
-    SessionStatus.IDLE -> "Очікування"
+    SessionStatus.AUTO_RESUMING -> R.string.session_waiting_power
+    SessionStatus.STOP_PENDING -> R.string.session_stopping
+    SessionStatus.IDLE -> R.string.session_idle
 }
 
-internal fun formatKwh(kwh: Double): String = "%.1f кВт⋅год".format(kwh)
+@Composable
+private fun formatKwh(kwh: Double): String = stringResource(R.string.kwh_dec, "%.1f".format(kwh))
 
-internal fun formatUah(uah: Double): String = "≈ %,d ₴".format(Math.round(uah)).replace(',', ' ')
+@Composable
+private fun formatUah(uah: Double): String =
+    stringResource(R.string.cost_uah, "%,d".format(Math.round(uah)).replace(',', '\u202F'))
 
-internal fun formatDuration(ms: Long): String {
-    val totalMinutes = ms / 60_000L
+@Composable
+private fun formatDuration(ms: Long): String {
+    val totalMinutes = (ms / 60_000L).toInt()
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     return when {
-        hours == 0L -> "$minutes хв"
-        minutes == 0L -> "$hours г"
-        else -> "$hours г $minutes хв"
+        hours == 0 -> stringResource(R.string.duration_min, minutes)
+        minutes == 0 -> stringResource(R.string.duration_h, hours)
+        else -> stringResource(R.string.duration_h_min, hours, minutes)
     }
-}
-
-private fun sessionsLabel(count: Int): String {
-    val mod10 = count % 10
-    val mod100 = count % 100
-    val word = when {
-        mod10 == 1 && mod100 != 11 -> "сесія"
-        mod10 in 2..4 && mod100 !in 12..14 -> "сесії"
-        else -> "сесій"
-    }
-    return "$count $word"
 }

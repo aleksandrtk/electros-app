@@ -1,5 +1,7 @@
 package ua.org.electros.app.ui.limiter
 
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.UiText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +25,7 @@ data class LimiterUiState(
     val isAutoResumeEnabled: Boolean = true,
     val isScheduleSaved: Boolean = false,
     val isApplyingSchedule: Boolean = false,
-    val scheduleError: String? = null,
+    val scheduleError: UiText? = null,
     val isVoltageBalancingEnabled: Boolean = true,
     val voltageLowThreshold: Int = 185,
     val voltageHighThreshold: Int = 205,
@@ -38,7 +40,7 @@ class LimiterViewModel(
     private data class ScheduleStatus(
         val saved: Boolean = false,
         val applying: Boolean = false,
-        val error: String? = null
+        val error: UiText? = null
     )
 
     private val _scheduleStatus = MutableStateFlow(ScheduleStatus())
@@ -160,7 +162,7 @@ class LimiterViewModel(
                     ScheduleStatus(
                         saved = false,
                         applying = false,
-                        error = err.message ?: "Не вдалося передати налаштування на станцію"
+                        error = UiText.Res(R.string.err_schedule)
                     )
                 }
             )
