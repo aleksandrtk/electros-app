@@ -182,6 +182,45 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun onStartClicked_withStaleOfflinePoll_rechecksStationAndStartsInsteadOfShowingOfflineBanner() =
+        runViewModelTest { vmStore, dsScope ->
+            val store = createSettingsStore("stale_offline_start.preferences_pb", dsScope)
+            val dao = FakeChargeDao()
+            val statusCode = AtomicReference(7)
+            val wsCommands = CopyOnWriteArrayList<String>()
+            val scraper = buildScraper(wsCommands) {
+                wsPayload(statusCode = statusCode.get(), selectedA = 10, energyKwh = 10.0, voltageV = 199)
+            }
+            val repo = ChargeRepository(
+                scraper = scraper,
+                chargeDao = dao,
+                settingsStore = store,
+                localTimeProvider = { LocalTime.of(12, 0) },
+                clockMs = { 5_000L }
+            )
+            val viewModel = createViewModel(vmStore) {
+                DashboardViewModel(
+                    repository = repo,
+                    settingsStore = store,
+                    isMonitorServiceRunning = { false },
+                    clockMs = { 5_000L }
+                )
+            }
+            val collectJob = launch { viewModel.uiState.collect {} }
+
+            // The last cached poll says offline...
+            viewModel.refreshTelemetry()
+            awaitCondition { viewModel.uiState.value.telemetry?.isOnline == false }
+            // ...but the station is already back (car plugged in, idle) when the user presses Start.
+            statusCode.set(1)
+            viewModel.onStartClicked(context = null)
+            awaitCondition { wsCommands.any { it.contains("\nstart\n") } }
+
+            assertThat(viewModel.uiState.value.errorMessage).isNotEqualTo(DashboardViewModel.OFFLINE_START_MESSAGE)
+            collectJob.cancelAndJoin()
+        }
+
+    @Test
     fun toggleVoltageBalancing_updatesUiStateDirectly() = runViewModelTest { vmStore, dsScope ->
         val store = createSettingsStore("dlb_toggle.preferences_pb", dsScope)
         val dao = FakeChargeDao()
