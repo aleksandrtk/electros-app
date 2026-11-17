@@ -52,6 +52,7 @@ fun SettingsScreen(
     var passwordInput by rememberSaveable { mutableStateOf("") }
     var isSerialVisible by rememberSaveable { mutableStateOf(false) }
     var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
+    var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
 
     fun checkSystemStatuses() {
         val pm = context.getSystemService(PowerManager::class.java)
@@ -197,13 +198,28 @@ fun SettingsScreen(
                     )
                 }
 
-                OutlinedButton(
-                    onClick = {
-                        ChargeMonitorService.stop(context)
-                        viewModel.logout {
-                            onLogout()
+                if (showLogoutConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showLogoutConfirm = false },
+                        title = { Text("Вийти зі станції?") },
+                        text = { Text("Якщо йде заряджання, його буде зупинено перед виходом.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showLogoutConfirm = false
+                                viewModel.logout {
+                                    ChargeMonitorService.stop(context)
+                                    onLogout()
+                                }
+                            }) { Text("Вийти", color = ErrorRed) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showLogoutConfirm = false }) { Text("Скасувати") }
                         }
-                    },
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { showLogoutConfirm = true },
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
                     modifier = Modifier.fillMaxWidth()

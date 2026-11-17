@@ -448,7 +448,7 @@ class ChargeRepositoryLifecycleTest {
                 startedAt = 1_000L
             )
         )
-        val scraper = buildScraper(CopyOnWriteArrayList()) { wsPayload(statusCode = 2, energyKwh = 14.0) }
+        val scraper = buildScraper(CopyOnWriteArrayList()) { wsPayload(statusCode = 1, energyKwh = 14.0) }
         val repo = ChargeRepository(scraper = scraper, chargeDao = dao, clockMs = { 9_000L })
 
         repo.logout()
@@ -472,7 +472,7 @@ class ChargeRepositoryLifecycleTest {
             )
         )
         val wsCommands = CopyOnWriteArrayList<String>()
-        val scraper = buildScraper(wsCommands) { wsPayload(statusCode = 2, energyKwh = 14.0) }
+        val scraper = buildScraper(wsCommands) { wsPayload(statusCode = 1, energyKwh = 14.0) }
         val repo = ChargeRepository(
             scraper = scraper,
             chargeDao = dao,
@@ -485,6 +485,27 @@ class ChargeRepositoryLifecycleTest {
         val timerCommands = wsCommands.filter { it.contains("\ndatetime\n") }
         assertThat(timerCommands).hasSize(1)
         assertThat(timerCommands.single()).endsWith("\n00:00\n00:00\n")
+    }
+
+    @Test
+    fun logout_whenStopCannotBeConfirmed_failsAndKeepsSession() = runBlocking {
+        val dao = FakeChargeDao()
+        dao.insertSession(
+            ChargeSessionEntity(
+                id = "s1",
+                targetKwh = 10.0,
+                amperageSetting = 16,
+                status = SessionStatus.CHARGING,
+                startedAt = 1_000L
+            )
+        )
+        val scraper = buildScraper(CopyOnWriteArrayList()) { wsPayload(statusCode = 2, energyKwh = 14.0) }
+        val repo = ChargeRepository(scraper = scraper, chargeDao = dao, clockMs = { 9_000L })
+
+        val result = repo.logout()
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(dao.getSessionById("s1")?.status).isEqualTo(SessionStatus.STOP_PENDING)
     }
 
     private class FakeChargeDao : ChargeDao {

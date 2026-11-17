@@ -74,14 +74,22 @@ class ChargeRepository(
         return result
     }
 
-    suspend fun logout() {
-        // The dead-man window armed for a limited session would otherwise stay on the station
-        // as a daily schedule once the app can no longer talk to it, so restore it first.
-        restoreScheduleTimer(session = chargeDao.getActiveSession())
+    /**
+     * Signs out. A running session is stopped on the station first (which also restores its schedule);
+     * if the stop cannot be confirmed the app keeps its credentials, because without them the station
+     * would keep charging with no limit and no dead-man timer.
+     */
+    suspend fun logout(): Result<Unit> {
+        val active = chargeDao.getActiveSession()
+        if (active != null) {
+            val stopped = stopActiveSession(active.id)
+            if (stopped.isFailure) return stopped
+        }
         authPreferences?.clearCredentials()
         scraper.clearSession()
         _telemetryState.value = null
         chargeDao.cancelActiveSessionsPreservingEnergy(clockMs())
+        return Result.success(Unit)
     }
 
     suspend fun getSessionById(sessionId: String): ChargeSessionEntity? {

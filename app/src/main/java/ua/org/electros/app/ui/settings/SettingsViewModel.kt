@@ -122,7 +122,13 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            repo.logout()
+            val result = repo.logout()
+            if (result.isFailure) {
+                _uiState.value = _uiState.value.copy(
+                    credentialsError = "Не вдалося зупинити заряджання. Вихід скасовано."
+                )
+                return@launch
+            }
             _uiState.value = _uiState.value.copy(
                 deviceSerial = "",
                 hasCredentials = false,
