@@ -15,6 +15,12 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.junit.Test
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.local.dao.ChargeDao
 import ua.org.electros.app.data.local.entity.ChargeSessionEntity
 import ua.org.electros.app.data.local.entity.ChargeSliceEntity
@@ -328,6 +334,119 @@ class ChargeRepositoryStopTest {
             )
         )
         dao.startNewSlice("s1", startCounter, startTime = 1_000L)
+    }
+
+    @get:org.junit.Rule
+    val tempFolder = org.junit.rules.TemporaryFolder()
+
+    private fun settingsStore(): Pair<SettingsStore, CoroutineScope> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val file = tempFolder.newFile("settings-${System.nanoTime()}.preferences_pb")
+        val ds = PreferenceDataStoreFactory.create(scope = scope) { file }
+        return SettingsStore(ds, scope) to scope
+    }
+
+    @Test
+    fun syncSchedule_whenStationOffline_sendsNothingAndStaysPending() = runTest {
+        val (store, scope) = settingsStore()
+        try {
+            store.awaitSettings()
+            store.setSchedule(enabled = true, startTime = "23:00", stopTime = "07:00")
+            val posts = CopyOnWriteArrayList<String>()
+            val repo = ChargeRepository(scraper = scraperReturning(OFFLINE_HTML, posts), chargeDao = FakeChargeDao(), settingsStore = store)
+
+            assertThat(repo.syncScheduleToStation().getOrNull()).isEqualTo(ScheduleSyncResult.OFFLINE)
+            assertThat(posts).isEmpty()
+            assertThat(store.awaitSettings().isSchedulePending).isTrue()
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun syncSchedule_whenStationOnline_writesTheWindowOnceAndMarksItSynced() = runTest {
+        val (store, scope) = settingsStore()
+        try {
+            store.awaitSettings()
+            store.setSchedule(enabled = true, startTime = "23:00", stopTime = "07:00")
+            val posts = CopyOnWriteArrayList<String>()
+            val repo = ChargeRepository(scraper = scraperReturning(CONNECTED_IDLE_HTML, posts), chargeDao = FakeChargeDao(), settingsStore = store)
+
+            assertThat(repo.syncScheduleToStation().getOrNull()).isEqualTo(ScheduleSyncResult.WRITTEN)
+            assertThat(posts).hasSize(1)
+            assertThat(posts[0]).contains("time_start=23%3A00")
+            assertThat(posts[0]).contains("time_stop=07%3A00")
+            assertThat(store.awaitSettings().scheduleOnStation).isEqualTo("23:00-07:00")
+
+            assertThat(repo.syncScheduleToStation().getOrNull()).isEqualTo(ScheduleSyncResult.IN_SYNC)
+            assertThat(posts).hasSize(1)
+
+            store.setScheduleEnabled(false)
+            assertThat(repo.syncScheduleToStation().getOrNull()).isEqualTo(ScheduleSyncResult.WRITTEN)
+            assertThat(posts[1]).contains("time_start=00%3A00")
+            assertThat(store.awaitSettings().isSchedulePending).isFalse()
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun syncSchedule_duringASession_waitsForTheSessionToEnd() = runTest {
+        val (store, scope) = settingsStore()
+        try {
+            store.awaitSettings()
+            store.setSchedule(enabled = true, startTime = "22:00", stopTime = "06:00")
+            val dao = FakeChargeDao()
+            seedActiveSession(dao, status = SessionStatus.CHARGING, targetKwh = 10.0)
+            val posts = CopyOnWriteArrayList<String>()
+            val repo = ChargeRepository(scraper = scraperReturning(CHARGING_HTML, posts), chargeDao = dao, settingsStore = store)
+
+            assertThat(repo.syncScheduleToStation().getOrNull()).isEqualTo(ScheduleSyncResult.AFTER_SESSION)
+            assertThat(posts).isEmpty()
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun scheduleSettings_unknownStationStateIsInSync_firstEditBecomesPending() = runTest {
+        val (store, scope) = settingsStore()
+        try {
+            val initial = store.awaitSettings()
+            assertThat(initial.scheduleOnStation).isNull()
+            assertThat(initial.isSchedulePending).isFalse()
+
+            store.setScheduleTimes("21:00", "05:00")
+            val edited = store.awaitSettings()
+            // The schedule was off before the edit, so the station is assumed to hold "off".
+            assertThat(edited.scheduleOnStation).isEqualTo("00:00-00:00")
+            assertThat(edited.isSchedulePending).isFalse()
+            store.setScheduleEnabled(true)
+            assertThat(store.awaitSettings().isSchedulePending).isTrue()
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    private fun scraperReturning(telemetryHtml: String, posts: MutableList<String>): ElectrosWebScraper {
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val req = chain.request()
+                if (req.method == "POST") {
+                    val buffer = okio.Buffer()
+                    req.body?.writeTo(buffer)
+                    posts += buffer.readUtf8()
+                }
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(telemetryHtml.toResponseBody("text/html".toMediaType()))
+                    .build()
+            })
+            .build()
+        return ElectrosWebScraper(client = client)
     }
 
     private fun scraperReturning(telemetryHtml: String): ElectrosWebScraper {

@@ -246,8 +246,11 @@ class DashboardViewModel(
         while (currentCoroutineContext().isActive) {
             val monitorRunning = isMonitorServiceRunning()
             if (isInitialFetch || !monitorRunning) {
-                repository.fetchLatestTelemetry(isMonitorServiceRunning = monitorRunning)
+                val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = monitorRunning).getOrNull()
                 isInitialFetch = false
+                if (fresh?.isOnline == true && !monitorRunning && settingsStore.currentSettings().isSchedulePending) {
+                    repository.syncScheduleToStation()
+                }
             }
             delay(60_000L)
         }
@@ -382,12 +385,8 @@ class DashboardViewModel(
         _errorMessage.value = null
 
         viewModelScope.launch {
-            val res = if (enabled) {
-                repository.setScheduleTimer(startTime, stopTime)
-            } else {
-                repository.setScheduleTimer("00:00", "00:00")
-            }
-            res.onFailure { err ->
+            // Offline or mid-session the write is deferred; the poll below and the session end retry it.
+            repository.syncScheduleToStation().onFailure { err ->
                 _errorMessage.value = formatDashboardError(err, R.string.err_schedule)
             }
         }

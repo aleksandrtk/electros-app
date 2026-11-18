@@ -1,6 +1,8 @@
 package ua.org.electros.app.data.repository
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +24,9 @@ import ua.org.electros.app.diag.toLogString
 import java.io.IOException
 import java.time.LocalTime
 import java.util.UUID
+
+/** What [ChargeRepository.syncScheduleToStation] did with the user's schedule. */
+enum class ScheduleSyncResult { WRITTEN, IN_SYNC, OFFLINE, AFTER_SESSION }
 
 class ChargeRepository(
     private val scraper: ElectrosWebScraper,
@@ -56,6 +61,7 @@ class ChargeRepository(
     /** Last station timer window the station accepted; null until one is sent in this process. */
     @Volatile
     private var lastTimerSent: Pair<String, String>? = null
+    private val scheduleSyncMutex = Mutex()
 
     private suspend fun sendTimer(start: String, stop: String): Result<Unit> {
         val res = runCatching { scraper.setTimer(start, stop) }.getOrElse { Result.failure(it) }
@@ -254,16 +260,20 @@ class ChargeRepository(
         val (schedEnabled, schedStart, schedStop) = readScheduleConfig()
         val wasLimited = session != null && (session.targetKwh > 0.0 || session.targetDurationMinutes > 0)
         // A stop clears the station timer first, so the user's own schedule is put back after every stop.
-        val shouldRestore = forceRestore || wasLimited || schedEnabled
+        // A schedule changed during the session is written now too.
+        val isPending = settingsStore?.awaitSettings()?.isSchedulePending == true
+        val shouldRestore = forceRestore || wasLimited || schedEnabled || isPending
         if (!shouldRestore) return
         val targetStart = if (schedEnabled) schedStart else TIMER_OFF
         val targetStop = if (schedEnabled) schedStop else TIMER_OFF
         // Each timer command can make the station pick charging up again, so never repeat one it already has.
         if (lastTimerSent == targetStart to targetStop) {
             DiagLog.d(TAG) { "Station schedule already $targetStart-$targetStop" }
+            settingsStore?.setScheduleOnStation("$targetStart-$targetStop")
             return
         }
         val res = sendTimer(targetStart, targetStop)
+        if (res.isSuccess) settingsStore?.setScheduleOnStation("$targetStart-$targetStop")
         DiagLog.i(
             TAG,
             "Station schedule restored to $targetStart-$targetStop: " +
@@ -546,9 +556,32 @@ class ChargeRepository(
         }
     }
 
-    suspend fun setScheduleTimer(start: String, stop: String): Result<Unit> {
-        return sendTimer(start, stop).also {
-            DiagLog.i(TAG, "Station schedule $start-$stop: " + if (it.isSuccess) "sent" else "failed, ${it.exceptionOrNull().reason()}")
+    /**
+     * Writes the user's schedule to the station's own timer if it is not there yet.
+     * Nothing is sent while a session runs (its timer is put back when the session ends) or while
+     * the station is offline (the caller retries when it comes back online).
+     */
+    suspend fun syncScheduleToStation(): Result<ScheduleSyncResult> = scheduleSyncMutex.withLock {
+        val store = settingsStore ?: return Result.failure(IllegalStateException("No settings"))
+        val settings = store.awaitSettings()
+        if (!settings.isSchedulePending) return Result.success(ScheduleSyncResult.IN_SYNC)
+        if (chargeDao.getActiveSession() != null) {
+            DiagLog.i(TAG, "Station schedule ${settings.desiredStationSchedule}: waits for the session to end")
+            return Result.success(ScheduleSyncResult.AFTER_SESSION)
+        }
+        val telemetry = scraper.fetchTelemetry().getOrElse { return Result.failure(it) }
+        _telemetryState.value = telemetry
+        if (!telemetry.isOnline) {
+            DiagLog.i(TAG, "Station schedule ${settings.desiredStationSchedule}: station offline, will retry")
+            return Result.success(ScheduleSyncResult.OFFLINE)
+        }
+        val target = settings.desiredStationSchedule
+        val (start, stop) = target.split("-").let { it[0] to it[1] }
+        val res = sendTimer(start, stop)
+        DiagLog.i(TAG, "Station schedule $target: " + if (res.isSuccess) "sent" else "failed, ${res.exceptionOrNull().reason()}")
+        res.map {
+            store.setScheduleOnStation(target)
+            ScheduleSyncResult.WRITTEN
         }
     }
 

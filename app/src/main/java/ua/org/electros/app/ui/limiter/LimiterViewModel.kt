@@ -1,7 +1,5 @@
 package ua.org.electros.app.ui.limiter
 
-import ua.org.electros.app.R
-import ua.org.electros.app.ui.UiText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,7 +7,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ua.org.electros.app.data.repository.ScheduleSyncResult
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import ua.org.electros.app.data.local.AppSettings
 import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.repository.ChargeRepository
@@ -23,14 +26,16 @@ data class LimiterUiState(
     val startTime: String = "23:00",
     val stopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
-    val isScheduleSaved: Boolean = false,
-    val isApplyingSchedule: Boolean = false,
-    val scheduleError: UiText? = null,
+    val scheduleSync: ScheduleSyncUi = ScheduleSyncUi.IN_SYNC,
+    /** Local time ("HH:mm") of the write done from this screen, if any. */
+    val scheduleWrittenAt: String? = null,
     val isVoltageBalancingEnabled: Boolean = true,
     val voltageLowThreshold: Int = AppSettings.DEFAULT_VOLTAGE_LOW_THRESHOLD,
     val voltageHighThreshold: Int = 205,
     val voltageMaxAmperage: Int = 12
 )
+
+enum class ScheduleSyncUi { IN_SYNC, WRITING, PENDING, OFFLINE, AFTER_SESSION, ERROR }
 
 class LimiterViewModel(
     private val repository: ChargeRepository,
@@ -38,10 +43,13 @@ class LimiterViewModel(
 ) : ViewModel() {
 
     private data class ScheduleStatus(
-        val saved: Boolean = false,
-        val applying: Boolean = false,
-        val error: UiText? = null
+        val writing: Boolean = false,
+        val lastResult: ScheduleSyncResult? = null,
+        val failed: Boolean = false,
+        val writtenAt: String? = null
     )
+
+    private var scheduleSyncJob: Job? = null
 
     private val _scheduleStatus = MutableStateFlow(ScheduleStatus())
 
@@ -66,9 +74,15 @@ class LimiterViewModel(
             startTime = settings.scheduleStartTime,
             stopTime = settings.scheduleStopTime,
             isAutoResumeEnabled = settings.autoResumeAfterOutage,
-            isScheduleSaved = status.saved,
-            isApplyingSchedule = status.applying,
-            scheduleError = status.error,
+            scheduleSync = when {
+                status.writing -> ScheduleSyncUi.WRITING
+                !settings.isSchedulePending -> ScheduleSyncUi.IN_SYNC
+                status.failed -> ScheduleSyncUi.ERROR
+                status.lastResult == ScheduleSyncResult.OFFLINE -> ScheduleSyncUi.OFFLINE
+                status.lastResult == ScheduleSyncResult.AFTER_SESSION -> ScheduleSyncUi.AFTER_SESSION
+                else -> ScheduleSyncUi.PENDING
+            },
+            scheduleWrittenAt = status.writtenAt,
             isVoltageBalancingEnabled = settings.isVoltageBalancingEnabled,
             voltageLowThreshold = settings.voltageLowThreshold,
             voltageHighThreshold = settings.voltageHighThreshold,
@@ -133,40 +147,45 @@ class LimiterViewModel(
     }
 
     fun toggleSchedule(enabled: Boolean) {
-        _scheduleStatus.value = ScheduleStatus()
         settingsStore.setScheduleEnabled(enabled)
+        syncSchedule(debounceMs = SCHEDULE_DEBOUNCE_MS)
     }
 
     fun setScheduleTimes(start: String, stop: String) {
-        _scheduleStatus.value = ScheduleStatus()
         settingsStore.setScheduleTimes(start, stop)
+        syncSchedule(debounceMs = SCHEDULE_DEBOUNCE_MS)
     }
 
-    fun toggleAutoResume(enabled: Boolean) {
-        settingsStore.setAutoResumeAfterOutage(enabled)
-    }
-
-    fun applyScheduleToStation() {
-        if (_scheduleStatus.value.applying) return
-        viewModelScope.launch {
-            _scheduleStatus.value = ScheduleStatus(saved = false, applying = true, error = null)
-            val settings = settingsStore.awaitSettings()
-            val result = if (settings.isScheduleEnabled) {
-                repository.setScheduleTimer(settings.scheduleStartTime, settings.scheduleStopTime)
-            } else {
-                repository.setScheduleTimer("00:00", "00:00")
+    /**
+     * Writes the schedule to the station after a short pause, so a few taps on +/− send one command.
+     * While the station is offline it keeps retrying for as long as this screen's ViewModel lives.
+     */
+    private fun syncSchedule(debounceMs: Long) {
+        scheduleSyncJob?.cancel()
+        scheduleSyncJob = viewModelScope.launch {
+            _scheduleStatus.value = _scheduleStatus.value.copy(writing = true, failed = false)
+            delay(debounceMs)
+            while (true) {
+                val result = repository.syncScheduleToStation()
+                val outcome = result.getOrNull()
+                _scheduleStatus.value = ScheduleStatus(
+                    writing = false,
+                    lastResult = outcome,
+                    failed = result.isFailure,
+                    writtenAt = if (outcome == ScheduleSyncResult.WRITTEN) {
+                        LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                    } else {
+                        _scheduleStatus.value.writtenAt
+                    }
+                )
+                if (outcome == ScheduleSyncResult.WRITTEN || outcome == ScheduleSyncResult.IN_SYNC) break
+                delay(SCHEDULE_RETRY_MS)
             }
-            _scheduleStatus.value = result.fold(
-                onSuccess = { ScheduleStatus(saved = true, applying = false, error = null) },
-                onFailure = { err ->
-                    ScheduleStatus(
-                        saved = false,
-                        applying = false,
-                        error = UiText.Res(R.string.err_schedule)
-                    )
-                }
-            )
         }
+    }
+
+    init {
+        if (settingsStore.currentSettings().isSchedulePending) syncSchedule(debounceMs = 0L)
     }
 
     fun toggleVoltageBalancing(enabled: Boolean) {
@@ -183,5 +202,10 @@ class LimiterViewModel(
 
     fun setVoltageMaxAmperage(amperage: Int) {
         settingsStore.setVoltageMaxAmperage(amperage)
+    }
+
+    private companion object {
+        const val SCHEDULE_DEBOUNCE_MS = 1_500L
+        const val SCHEDULE_RETRY_MS = 30_000L
     }
 }

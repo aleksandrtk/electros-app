@@ -44,8 +44,21 @@ data class AppSettings(
     val voltageMaxAmperage: Int = DEFAULT_VOLTAGE_MAX_AMPERAGE,
     val voltageMinAmperage: Int = DEFAULT_VOLTAGE_MIN_AMPERAGE,
     /** Electricity price in UAH per kWh entered by the user; 0 means unknown (costs are hidden). */
-    val electricityTariffUah: Double = 0.0
+    val electricityTariffUah: Double = 0.0,
+    /**
+     * The schedule window ("HH:MM-HH:MM", "00:00-00:00" when off) last confirmed as written to the
+     * station. Null means unknown, which is treated as in sync.
+     */
+    val scheduleOnStation: String? = null
 ) {
+    /** The window the station should hold for the user's schedule. */
+    val desiredStationSchedule: String
+        get() = if (isScheduleEnabled) "$scheduleStartTime-$scheduleStopTime" else SCHEDULE_OFF
+
+    /** True when the schedule was changed in the app but is not on the station yet. */
+    val isSchedulePending: Boolean
+        get() = scheduleOnStation != null && scheduleOnStation != desiredStationSchedule
+
     companion object {
         const val DEFAULT_PREFERRED_AMPERAGE = 16
         const val DEFAULT_TARGET_KWH_LIMIT = 15.0
@@ -57,6 +70,7 @@ data class AppSettings(
         const val DEFAULT_VOLTAGE_MAX_AMPERAGE = 12
         const val DEFAULT_VOLTAGE_MIN_AMPERAGE = 6
         const val MIN_HYSTERESIS_V = 10
+        const val SCHEDULE_OFF = "00:00-00:00"
 
         fun shiftScheduleHour(hhmm: String, delta: Int): String {
             val currentHour = hhmm.substringBefore(":").toIntOrNull()?.coerceIn(0, 23) ?: 0
@@ -211,44 +225,67 @@ class SettingsStore internal constructor(
     }
 
     fun setScheduleEnabled(enabled: Boolean) {
+        val baseline = scheduleBaseline()
         update(
-            optimistic = { it.copy(isScheduleEnabled = enabled) },
-            persist = { it[KEY_SCHEDULE_ENABLED] = enabled }
+            optimistic = { it.copy(isScheduleEnabled = enabled, scheduleOnStation = baseline) },
+            persist = { prefs ->
+                prefs[KEY_SCHEDULE_ENABLED] = enabled
+                prefs[KEY_SCHEDULE_ON_STATION] = baseline
+            }
         )
     }
 
     fun setScheduleTimes(startTime: String, stopTime: String) {
+        val baseline = scheduleBaseline()
         update(
-            optimistic = { it.copy(scheduleStartTime = startTime, scheduleStopTime = stopTime) },
+            optimistic = { it.copy(scheduleStartTime = startTime, scheduleStopTime = stopTime, scheduleOnStation = baseline) },
             persist = { prefs ->
                 prefs[KEY_SCHEDULE_START] = startTime
                 prefs[KEY_SCHEDULE_STOP] = stopTime
+                prefs[KEY_SCHEDULE_ON_STATION] = baseline
             }
         )
     }
 
     fun setSchedule(enabled: Boolean, startTime: String, stopTime: String) {
+        val baseline = scheduleBaseline()
         update(
             optimistic = {
                 it.copy(
                     isScheduleEnabled = enabled,
                     scheduleStartTime = startTime,
-                    scheduleStopTime = stopTime
+                    scheduleStopTime = stopTime,
+                    scheduleOnStation = baseline
                 )
             },
             persist = { prefs ->
                 prefs[KEY_SCHEDULE_ENABLED] = enabled
                 prefs[KEY_SCHEDULE_START] = startTime
                 prefs[KEY_SCHEDULE_STOP] = stopTime
+                prefs[KEY_SCHEDULE_ON_STATION] = baseline
             }
         )
     }
+
+    /**
+     * What the station holds before a schedule edit. When it was never recorded, the schedule as it
+     * stood before the edit is assumed, so the edit itself shows up as pending.
+     */
+    private fun scheduleBaseline(): String =
+        _settings.value.let { it.scheduleOnStation ?: it.desiredStationSchedule }
 
     fun setElectricityTariff(uahPerKwh: Double) {
         val clamped = uahPerKwh.coerceIn(0.0, MAX_TARIFF_UAH)
         update(
             optimistic = { it.copy(electricityTariffUah = clamped) },
             persist = { it[KEY_ELECTRICITY_TARIFF] = clamped }
+        )
+    }
+
+    fun setScheduleOnStation(window: String) {
+        update(
+            optimistic = { it.copy(scheduleOnStation = window) },
+            persist = { it[KEY_SCHEDULE_ON_STATION] = window }
         )
     }
 
@@ -393,6 +430,7 @@ class SettingsStore internal constructor(
         internal val KEY_SCHEDULE_ENABLED = booleanPreferencesKey("schedule_enabled")
         internal val KEY_SCHEDULE_START = stringPreferencesKey("schedule_start")
         internal val KEY_SCHEDULE_STOP = stringPreferencesKey("schedule_stop")
+        internal val KEY_SCHEDULE_ON_STATION = stringPreferencesKey("schedule_on_station")
         internal val KEY_AUTO_RESUME = booleanPreferencesKey("auto_resume")
         internal val KEY_VOLTAGE_BALANCING_ENABLED = booleanPreferencesKey("voltage_balancing_enabled")
         internal val KEY_VOLTAGE_LOW_THRESHOLD = intPreferencesKey("voltage_low_threshold")
@@ -447,7 +485,10 @@ class SettingsStore internal constructor(
                     ?: AppSettings.DEFAULT_VOLTAGE_MAX_AMPERAGE).coerceIn(6, 16),
                 voltageMinAmperage = (prefs[KEY_VOLTAGE_MIN_AMPERAGE]
                     ?: AppSettings.DEFAULT_VOLTAGE_MIN_AMPERAGE).coerceIn(6, 16),
-                electricityTariffUah = (prefs[KEY_ELECTRICITY_TARIFF] ?: 0.0).coerceIn(0.0, MAX_TARIFF_UAH)
+                electricityTariffUah = (prefs[KEY_ELECTRICITY_TARIFF] ?: 0.0).coerceIn(0.0, MAX_TARIFF_UAH),
+                // Older versions wrote the schedule only from an explicit button, so an install that has
+                // never recorded it is assumed to be in sync rather than rewriting the station on update.
+                scheduleOnStation = prefs[KEY_SCHEDULE_ON_STATION]
             )
         }
     }

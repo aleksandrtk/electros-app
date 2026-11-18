@@ -388,53 +388,22 @@ fun LimiterScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // Auto Resume Toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.limits_auto_resume),
-                        fontSize = 13.sp,
-                        color = TextPrimaryDark,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = state.isAutoResumeEnabled,
-                        onCheckedChange = { viewModel.toggleAutoResume(it) }
-                    )
+                val (syncText, syncColor) = when (state.scheduleSync) {
+                    ScheduleSyncUi.WRITING -> stringResource(R.string.limits_schedule_writing) to TextSecondaryDark
+                    ScheduleSyncUi.IN_SYNC -> (
+                        state.scheduleWrittenAt?.let { stringResource(R.string.limits_schedule_written_at, it) }
+                            ?: stringResource(R.string.limits_schedule_in_sync)
+                        ) to SecondaryCyan
+                    ScheduleSyncUi.OFFLINE -> stringResource(R.string.limits_schedule_offline) to WarningAmber
+                    ScheduleSyncUi.AFTER_SESSION -> stringResource(R.string.limits_schedule_after_session) to TextSecondaryDark
+                    ScheduleSyncUi.PENDING -> stringResource(R.string.limits_schedule_pending) to WarningAmber
+                    ScheduleSyncUi.ERROR -> stringResource(R.string.limits_schedule_error) to ErrorRed
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (state.scheduleError != null) {
-                    Text(
-                        text = state.scheduleError?.asString().orEmpty(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ErrorRed
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                Button(
-                    onClick = { viewModel.applyScheduleToStation() },
-                    enabled = !state.isApplyingSchedule,
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryContainerDark, contentColor = OnSecondaryContainerDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                ) {
-                    Text(
-                        text = when {
-                            state.isApplyingSchedule -> stringResource(R.string.limits_applying)
-                            state.isScheduleSaved -> stringResource(R.string.limits_applied)
-                            else -> stringResource(R.string.limits_apply)
-                        },
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Text(
+                    text = syncText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = syncColor
+                )
             }
         }
 

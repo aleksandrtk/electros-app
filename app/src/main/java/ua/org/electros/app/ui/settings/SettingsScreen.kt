@@ -243,6 +243,44 @@ fun SettingsScreen(
             }
         }
 
+        // Charging behaviour Card
+        val autoResume by viewModel.autoResumeAfterOutage.collectAsState()
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(text = stringResource(R.string.settings_charging), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_auto_resume),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimaryDark,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = autoResume,
+                        onCheckedChange = { viewModel.setAutoResumeAfterOutage(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimaryDark,
+                            checkedTrackColor = PrimaryNeonGreen
+                        )
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_auto_resume_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondaryDark,
+                    lineHeight = 17.sp
+                )
+            }
+        }
+
         // Language Card
         LanguageCard()
 

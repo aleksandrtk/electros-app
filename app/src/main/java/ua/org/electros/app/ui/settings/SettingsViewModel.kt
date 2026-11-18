@@ -8,7 +8,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ua.org.electros.app.data.local.SettingsStore
 import ua.org.electros.app.data.local.AuthPreferences
 import ua.org.electros.app.data.repository.ChargeRepository
 
@@ -24,8 +28,19 @@ data class SettingsUiState(
 
 class SettingsViewModel(
     private val authPreferences: AuthPreferences,
-    private val repository: ChargeRepository? = null
+    private val repository: ChargeRepository? = null,
+    private val settingsStore: SettingsStore? = null
 ) : ViewModel() {
+
+    /** Whether a session is restarted by the app after a power outage; null when settings are unavailable. */
+    val autoResumeAfterOutage: StateFlow<Boolean> = settingsStore?.settingsFlow
+        ?.map { it.autoResumeAfterOutage }
+        ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), settingsStore.currentSettings().autoResumeAfterOutage)
+        ?: MutableStateFlow(true)
+
+    fun setAutoResumeAfterOutage(enabled: Boolean) {
+        settingsStore?.setAutoResumeAfterOutage(enabled)
+    }
 
     private val _uiState = MutableStateFlow(
         SettingsUiState(

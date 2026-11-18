@@ -19,7 +19,7 @@ class AppViewModelFactory(
         DashboardViewModel::class.java -> DashboardViewModel(app.repository, app.settingsStore)
         LimiterViewModel::class.java -> LimiterViewModel(app.repository, app.settingsStore)
         HistoryViewModel::class.java -> HistoryViewModel(app.repository, app.settingsStore)
-        SettingsViewModel::class.java -> SettingsViewModel(app.authPreferences, app.repository)
+        SettingsViewModel::class.java -> SettingsViewModel(app.authPreferences, app.repository, app.settingsStore)
         LoginViewModel::class.java -> LoginViewModel(app.repository, app.authPreferences)
         OtaViewModel::class.java -> OtaViewModel()
         else -> error("Unknown ViewModel class: ${modelClass.name}")

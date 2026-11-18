@@ -114,10 +114,6 @@
     <string name="limits_schedule_title">Charge on a schedule</string>
     <string name="limits_start_time">START TIME</string>
     <string name="limits_stop_time">END TIME</string>
-    <string name="limits_auto_resume">Resume automatically after a power outage</string>
-    <string name="limits_applying">Sending to the station…</string>
-    <string name="limits_applied">✓ Settings sent to the station</string>
-    <string name="limits_apply">Send to station</string>
     <string name="limits_dlb_label">LOAD BALANCING (DLB)</string>
     <string name="limits_dlb_title">Adapt to grid voltage</string>
     <string name="limits_dlb_off">Off: the station runs at a fixed current without voltage-sag control.</string>
@@ -271,4 +267,14 @@
     <string name="settings_log_clear_body">All recorded entries will be deleted.</string>
     <string name="settings_log_empty">The log is empty</string>
     <string name="settings_log_share_title">Send the log</string>
+    <string name="limits_schedule_writing">Writing to the station…</string>
+    <string name="limits_schedule_written_at">✓ Written to the station at %1$s</string>
+    <string name="limits_schedule_in_sync">✓ The station has this schedule</string>
+    <string name="limits_schedule_offline">The station is offline. The schedule will be written when it is back online.</string>
+    <string name="limits_schedule_after_session">The schedule will be written to the station when the current charge ends.</string>
+    <string name="limits_schedule_pending">Not on the station yet. It will be written when the station is online.</string>
+    <string name="limits_schedule_error">Couldn\'t reach the station. Retrying in 30 seconds.</string>
+    <string name="settings_charging">CHARGING</string>
+    <string name="settings_auto_resume">Resume automatically after a power outage</string>
+    <string name="settings_auto_resume_hint">Applies to every charge the app runs, with or without a limit. When the power comes back and the voltage is steady, the app restarts charging and the energy delivered before the outage is kept. When off, the app only notifies you and you resume with one tap.</string>
 </resources>
