@@ -433,27 +433,17 @@ private fun StudioClassicNixieCard(
                             color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
                             letterSpacing = 2.sp
                         )
-                        if (isSessionActive) {
-                            Text(
-                                text = "V",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
-                                modifier = Modifier.padding(bottom = 3.dp)
-                            )
-                        }
-                    }
-
-                    if (!isSessionActive) {
                         Text(
-                            text = stringResource(R.string.dash_volts),
-                            fontSize = 14.sp,
+                            text = "V",
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            color = AmberNixie
+                            color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
+                            modifier = Modifier.padding(bottom = 3.dp)
                         )
-                    } else {
+                    }
+
+                    if (isSessionActive) {
                         Box(
                             modifier = Modifier
                                 .width(1.dp)
