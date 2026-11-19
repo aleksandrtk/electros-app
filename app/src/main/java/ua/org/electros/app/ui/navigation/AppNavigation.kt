@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.flow.map
+import ua.org.electros.app.ui.dashboard.mapleBar
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,12 +75,16 @@ fun AppNavigation(application: ElectrosApplication) {
         val historyViewModel: HistoryViewModel = viewModel(factory = factory)
         val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
 
+        val isWood by remember(application) {
+            application.settingsStore.settingsFlow.map { it.isWoodTheme }
+        }.collectAsState(initial = application.settingsStore.currentSettings().isWoodTheme)
         Scaffold(
             containerColor = StudioChassisDark,
             bottomBar = {
                 NavigationBar(
-                    containerColor = StudioPanelDark,
-                    tonalElevation = 0.dp
+                    containerColor = if (isWood) Color.Transparent else StudioPanelDark,
+                    tonalElevation = 0.dp,
+                    modifier = if (isWood) Modifier.mapleBar() else Modifier
                 ) {
                     NavTab.entries.forEach { tab ->
                         val isSelected = currentTab == tab
@@ -93,13 +99,23 @@ fun AppNavigation(application: ElectrosApplication) {
                                 )
                             },
                             label = { Text(text = stringResource(tab.titleRes), style = MaterialTheme.typography.labelSmall) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color.Black,
-                                selectedTextColor = AmberNixie,
-                                indicatorColor = AmberNixie,
-                                unselectedIconColor = TextSecondaryDark,
-                                unselectedTextColor = TextSecondaryDark
-                            )
+                            colors = if (isWood) {
+                                NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color(0xFFF4A947),
+                                    selectedTextColor = Color(0xFF9C3F00),
+                                    indicatorColor = Color(0xFF4A2D16),
+                                    unselectedIconColor = Color(0xFF4A2D16),
+                                    unselectedTextColor = Color(0xFF4A2D16)
+                                )
+                            } else {
+                                NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color.Black,
+                                    selectedTextColor = AmberNixie,
+                                    indicatorColor = AmberNixie,
+                                    unselectedIconColor = TextSecondaryDark,
+                                    unselectedTextColor = TextSecondaryDark
+                                )
+                            }
                         )
                     }
                 }

@@ -276,4 +276,9 @@
     <string name="settings_charging">ЗАРЯДКА</string>
     <string name="settings_auto_resume">Автоматичне відновлення після зникнення світла</string>
     <string name="settings_auto_resume_hint">Діє для кожної зарядки, яку веде застосунок, з лімітом чи без. Коли світло повернеться і напруга стабілізується, застосунок сам відновить зарядку, а енергія до відключення збережеться. Якщо вимкнено, ви отримаєте сповіщення і відновите зарядку одним дотиком.</string>
+    <string name="settings_appearance">ОФОРМЛЕННЯ</string>
+    <string name="settings_wood_theme">Дерев\'яний стиль</string>
+    <string name="settings_wood_theme_hint">Клен і горіх замість темної приладової панелі. Змінюється лише вигляд.</string>
+    <string name="dash_unit_volts_full">ВОЛЬТ</string>
+    <string name="dlb_off_short">Вимкнено</string>
 </resources>

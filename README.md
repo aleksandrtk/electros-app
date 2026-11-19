@@ -52,6 +52,9 @@ Charge to an exact kWh limit, ride through blackouts without losing progress, an
 ### 🔔 Notifications that matter
 Power lost or restored, limit or timer reached, current lowered or raised by auto-current, lost connection, and a warning if the station did not confirm a stop.
 
+### 🪵 Wooden style
+An optional look for the main screen, switched on in **Settings → Appearance**: walnut and oak boards, a turning wooden selector, engraved lettering and a copper start button. The dark instrument panel stays the default.
+
 ### 🌐 Two languages
 Ukrainian and English, switchable in **Settings → Language**. On first launch the app picks Ukrainian if the phone is set to Ukrainian or Russian, and English otherwise.
 

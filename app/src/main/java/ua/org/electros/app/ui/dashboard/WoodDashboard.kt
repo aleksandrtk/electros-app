@@ -1,0 +1,578 @@
+package ua.org.electros.app.ui.dashboard
+
+import android.view.HapticFeedbackConstants
+import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import ua.org.electros.app.R
+import ua.org.electros.app.ui.asString
+import java.util.Locale
+
+/**
+ * The wooden look of the main screen. The whole panel is one painted image (the reference design
+ * with its lettering removed); everything that changes is drawn on top of it at the reference's
+ * own coordinates, so the layout matches the design exactly. Coordinates are in reference pixels
+ * of the 1115 px wide original and are scaled to the screen width.
+ */
+private const val REF_WIDTH = 1115f
+private const val REF_PANEL_HEIGHT = 1755f
+/** Height of the plain walnut band at the bottom of the design, reused to fill taller screens. */
+private const val BOTTOM_BAND = 28f
+
+/** Condensed sans like the lettering of the reference. */
+private val WoodFont = FontFamily(
+    androidx.compose.ui.text.font.Typeface(
+        android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL)
+    )
+)
+
+private val SandText = Color(0xFFE8C9A2)
+private val SandBright = Color(0xFFEDB676)
+private val BrownText = Color(0xFF3B2210)
+private val BrownSoft = Color(0xFF5A3A1E)
+private val OffDot = Color(0xFFC2694C)
+private val OnDot = Color(0xFF6E9A3A)
+
+/** Places content inside a rectangle of the reference image. */
+private class RefScope(val unit: Dp, val boxScope: BoxScope) {
+    fun px(v: Float): Dp = unit * v
+}
+
+@Composable
+private fun RefScope.Area(
+    x0: Float, y0: Float, x1: Float, y1: Float,
+    alignment: Alignment = Alignment.CenterStart,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .offset(x = px(x0), y = px(y0))
+            .width(px(x1 - x0))
+            .height(px(y1 - y0))
+            .then(modifier),
+        contentAlignment = alignment,
+        content = content
+    )
+}
+
+@Composable
+private fun RefScope.sp(refPx: Float): TextUnit = with(LocalDensity.current) { px(refPx).toSp() }
+
+@Composable
+private fun RefScope.Label(
+    text: String,
+    sizePx: Float,
+    color: Color,
+    weight: FontWeight = FontWeight.Medium,
+    spacing: Float = 0.06f
+) {
+    Text(
+        text = text,
+        style = TextStyle(
+            fontFamily = WoodFont,
+            fontWeight = weight,
+            fontSize = sp(sizePx),
+            letterSpacing = sp(sizePx * spacing),
+            color = color
+        ),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/**
+ * Lettering cut into the board: the top edge of each glyph falls into shade and its lower edge
+ * catches the light, so the text reads as engraved rather than printed on top.
+ */
+@Composable
+private fun RefScope.Engraved(
+    text: String,
+    sizePx: Float,
+    color: Color,
+    weight: FontWeight = FontWeight.Medium,
+    spacing: Float = 0.06f
+) {
+    val base = TextStyle(
+        fontFamily = WoodFont,
+        fontWeight = weight,
+        fontSize = sp(sizePx),
+        letterSpacing = sp(sizePx * spacing)
+    )
+    val edge = px(sizePx * 0.05f)
+    Box {
+        // Lit lower wall of the cut.
+        Text(
+            text = text,
+            style = base.copy(color = Color(0x66FFE9C8)),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.offset(y = edge)
+        )
+        // Shaded upper wall.
+        Text(
+            text = text,
+            style = base.copy(color = Color(0xA0140800)),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.offset(y = -edge * 0.7f)
+        )
+        Text(
+            text = text,
+            style = base.copy(color = color),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/**
+ * The auto-current toggle sunk into the oak like the status badge next to it: a dark pocket
+ * whose upper wall is in shade and whose lower rim catches the light, a muted olive track set
+ * into it, and a flat thumb that slides inside the pocket.
+ */
+@Composable
+private fun WoodToggle(checked: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    val position by animateFloatAsState(if (checked) 1f else 0f, label = "toggle")
+    Canvas(
+        modifier = modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onToggle
+        )
+    ) {
+        val lip = size.height * 0.06f
+        val pocketSize = Size(size.width, size.height - lip)
+        val corner = CornerRadius(pocketSize.height / 2f, pocketSize.height / 2f)
+        // Light catching the board's edge just below the pocket.
+        drawRoundRect(color = Color(0x8CFFDDAE), topLeft = Offset(0f, lip), size = pocketSize, cornerRadius = corner)
+        // The pocket.
+        drawRoundRect(color = Color(0xFF2A1609), size = pocketSize, cornerRadius = corner)
+        // Track inside it, olive when on, the pocket's own dark wood when off.
+        val inset = pocketSize.height * 0.08f
+        val track = Size(pocketSize.width - inset * 2f, pocketSize.height - inset * 2f)
+        val trackCorner = CornerRadius(track.height / 2f, track.height / 2f)
+        drawRoundRect(
+            color = lerp(Color(0xFF2F1A0C), Color(0xFF4C5A20), position),
+            topLeft = Offset(inset, inset),
+            size = track,
+            cornerRadius = trackCorner
+        )
+        // Shade cast by the pocket's upper wall over everything inside.
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                0f to Color(0xD0000000),
+                0.35f to Color(0x40000000),
+                0.6f to Color(0x00000000),
+                startY = 0f,
+                endY = pocketSize.height
+            ),
+            size = pocketSize,
+            cornerRadius = corner
+        )
+        // Thumb, flat and resting in the pocket.
+        val r = track.height / 2f * 0.9f
+        val cx = inset + track.height / 2f + (track.width - track.height) * position
+        val cy = pocketSize.height / 2f + pocketSize.height * 0.03f
+        drawCircle(
+            color = lerp(Color(0xFF6B4A2C), Color(0xFF5F7030), position),
+            radius = r,
+            center = Offset(cx, cy)
+        )
+        drawCircle(
+            brush = Brush.verticalGradient(
+                listOf(Color(0x30FFF0D0), Color(0x00000000), Color(0x50000000)),
+                startY = cy - r,
+                endY = cy + r
+            ),
+            radius = r,
+            center = Offset(cx, cy)
+        )
+        drawCircle(color = Color(0x60000000), radius = r, center = Offset(cx, cy), style = Stroke(width = r * 0.06f))
+    }
+}
+
+private enum class WoodSheet { LIMIT, TIMER, SCHEDULE }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun WoodDashboard(
+    state: DashboardUiState,
+    viewModel: DashboardViewModel,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val telemetry = state.telemetry
+    val isOnline = telemetry?.isOnline == true
+    val voltage = telemetry?.voltageCurrent
+    val panel = ImageBitmap.imageResource(R.drawable.wood_screen)
+    val knobFace = ImageBitmap.imageResource(R.drawable.knob_face)
+    var openSheet by rememberSaveable { mutableStateOf<WoodSheet?>(null) }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val unit = maxWidth / REF_WIDTH
+        val panelHeight = unit * REF_PANEL_HEIGHT
+        val boxHeight = maxHeight
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // Taller screens than the design continue with the design's own bottom band of
+                // walnut, stretched down, so there is no seam.
+                .drawBehind {
+                    val bandTop = (REF_PANEL_HEIGHT - BOTTOM_BAND).toInt()
+                    drawImage(
+                        panel,
+                        srcOffset = IntOffset(0, bandTop),
+                        srcSize = IntSize(panel.width, BOTTOM_BAND.toInt()),
+                        dstOffset = IntOffset(0, (panelHeight.toPx() - 2f).toInt()),
+                        dstSize = IntSize(size.width.toInt(), (size.height - panelHeight.toPx() + 2f).toInt().coerceAtLeast(1))
+                    )
+                }
+                .verticalScroll(rememberScrollState())
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().height(panelHeight)) {
+                Image(
+                    bitmap = panel,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize()
+                )
+                val ref = RefScope(unit, this)
+                with(ref) {
+                    WoodHeader(state, isOnline)
+                    WoodVoltage(state, isOnline, voltage)
+                    WoodCurrent(state, knobFace) { amps -> viewModel.onAmperageSelected(amps) }
+                    WoodAutoCurrent(state, isOnline, voltage) {
+                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        viewModel.toggleVoltageBalancing(!state.isVoltageBalancingEnabled)
+                    }
+                    WoodRow(1215f, stringResource(R.string.energy_limit_title), state.isKwhLimitEnabled) { openSheet = WoodSheet.LIMIT }
+                    WoodRow(1335f, stringResource(R.string.charge_timer_title), state.isDurationTimerEnabled) { openSheet = WoodSheet.TIMER }
+                    WoodRow(1455f, stringResource(R.string.schedule_title), state.isScheduleEnabled) { openSheet = WoodSheet.SCHEDULE }
+                    WoodActionButton(state, onStart, onStop)
+                }
+            }
+            // Warnings sit on the walnut below the button, where the design has free space.
+            CompositionLocalProvider(LocalDashPalette provides WalnutDashPalette) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(min = (boxHeight - panelHeight).coerceAtLeast(0.dp))
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val errorMessage = state.errorMessage
+                    if (errorMessage != null) {
+                        ErrorMessageCard(message = errorMessage.asString())
+                    } else if (state.isStopPending) {
+                        ErrorMessageCard(message = stringResource(R.string.dash_stop_pending))
+                    }
+                    if (state.activeSession != null && state.isOutageActive) {
+                        val remMinText = if (state.activeTargetDurationMinutes > 0) {
+                            formatCountdownHms((state.activeTargetDurationMinutes * 60_000L - state.accumulatedChargingMs).coerceAtLeast(0L))
+                        } else null
+                        OutageBanner(
+                            deliveredKwh = state.totalDeliveredKwh,
+                            targetKwh = state.activeTargetKwh,
+                            isLimitEnabled = state.activeTargetKwh > 0.0,
+                            isAutoResumeEnabled = state.isAutoResumeEnabled,
+                            isStationOnline = isOnline,
+                            isBusy = state.isStartingOrStopping,
+                            remainingTimerText = remMinText,
+                            onCancelOutage = onStop
+                        )
+                    } else if (telemetry != null && !isOnline) {
+                        OfflineWarningCard()
+                    }
+                }
+            }
+        }
+    }
+
+    val sheet = openSheet
+    if (sheet != null) {
+        ModalBottomSheet(
+            onDismissRequest = { openSheet = null },
+            containerColor = Color(0xFF2A170B)
+        ) {
+            CompositionLocalProvider(LocalDashPalette provides WalnutDashPalette) {
+                Box(modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 28.dp)) {
+                    when (sheet) {
+                        WoodSheet.LIMIT -> StudioClassicKwhLimitCard(
+                            startExpanded = true,
+                            isKwhLimitEnabled = state.isKwhLimitEnabled,
+                            targetQuotaKwh = state.targetQuotaKwh,
+                            activeTargetKwh = state.activeTargetKwh,
+                            hasActiveSession = state.activeSession != null,
+                            onSelectKwhLimit = { enabled, quota -> viewModel.setKwhLimit(context, enabled, quota) }
+                        )
+                        WoodSheet.TIMER -> StudioClassicTimerCard(
+                            startExpanded = true,
+                            isDurationTimerEnabled = state.isDurationTimerEnabled,
+                            targetDurationHours = state.targetDurationHours,
+                            activeTargetDurationMinutes = state.activeTargetDurationMinutes,
+                            accumulatedChargingMs = state.accumulatedChargingMs,
+                            lastTickAt = state.lastTickAt,
+                            hasActiveSession = state.activeSession != null,
+                            isChargingActive = telemetry?.isChargingActive ?: false,
+                            isOutageActive = state.isOutageActive,
+                            onSelectDuration = { enabled, hours -> viewModel.setDurationTimer(context, enabled, hours) }
+                        )
+                        WoodSheet.SCHEDULE -> StudioClassicScheduleCard(
+                            startExpanded = true,
+                            isScheduleEnabled = state.isScheduleEnabled,
+                            scheduleStartTime = state.scheduleStartTime,
+                            scheduleStopTime = state.scheduleStopTime,
+                            onUpdateSchedule = { enabled, start, stop -> viewModel.setScheduleTimer(enabled, start, stop) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RefScope.WoodHeader(state: DashboardUiState, isOnline: Boolean) {
+    val telemetry = state.telemetry
+    Area(26f, 62f, 54f, 94f, Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(px(22f))
+                .clip(CircleShape)
+                .background(if (isOnline) Color(0xFFE59A5C) else OffDot)
+        )
+    }
+    Area(72f, 50f, 980f, 106f) {
+        Engraved(formatHeaderStatus(telemetry?.statusText.orEmpty(), isOnline).asString().uppercase(), 36f, SandText)
+    }
+    val amps = resolveDisplayedAmperes(telemetry, state.selectedAmperes)
+    Area(996f, 48f, 1090f, 110f, Alignment.Center) {
+        Label("${amps}A", 32f, SandBright, FontWeight.Medium, 0.04f)
+    }
+}
+
+@Composable
+private fun RefScope.WoodVoltage(state: DashboardUiState, isOnline: Boolean, voltage: Int?) {
+    Area(66f, 165f, 1040f, 212f) {
+        Engraved(stringResource(R.string.dash_line_voltage).uppercase(), 34f, SandText)
+    }
+    Area(102f, 232f, 600f, 330f) {
+        Text(
+            text = if (isOnline && voltage != null) "$voltage" else "---",
+            style = TextStyle(
+                fontFamily = WoodFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = sp(96f),
+                letterSpacing = sp(3f),
+                color = SandBright
+            )
+        )
+    }
+    Area(560f, 250f, 1022f, 330f, Alignment.CenterEnd) {
+        if (state.activeSession != null) {
+            val delivered = state.totalDeliveredKwh
+            val text = if (state.activeTargetKwh > 0.0) {
+                "%.2f / %.0f %s".format(Locale.US, delivered, state.activeTargetKwh, stringResource(R.string.unit_kwh))
+            } else {
+                "+%.2f %s".format(Locale.US, delivered, stringResource(R.string.unit_kwh))
+            }
+            Label(text, 46f, SandBright, FontWeight.Bold, 0.02f)
+        } else {
+            Label(stringResource(R.string.dash_unit_volts_full), 36f, SandText, FontWeight.Medium, 0.04f)
+        }
+    }
+}
+
+@Composable
+private fun RefScope.WoodCurrent(state: DashboardUiState, knobFace: ImageBitmap, onSelect: (Int) -> Unit) {
+    val view = LocalView.current
+    Area(66f, 436f, 840f, 482f) {
+        Engraved(stringResource(R.string.dash_charge_current).uppercase(), 34f, BrownText)
+    }
+    Area(868f, 430f, 1048f, 490f, Alignment.Center) {
+        Label(stringResource(R.string.kw_value, "%.2f".format(Locale.US, state.telemetry?.powerKw ?: 0.0)), 32f, SandBright, FontWeight.Medium, 0.03f)
+    }
+    val labels = listOf(
+        6 to Offset(278f, 840f),
+        8 to Offset(278f, 687f),
+        10 to Offset(560f, 545f),
+        12 to Offset(835f, 687f),
+        16 to Offset(835f, 840f)
+    )
+    labels.forEach { (amps, c) ->
+        Area(c.x - 70f, c.y - 40f, c.x + 70f, c.y + 40f, Alignment.Center,
+            modifier = Modifier
+                .clip(RoundedCornerShape(px(16f)))
+                .clickable {
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    onSelect(amps)
+                }
+        ) {
+            Engraved("${amps}A", 50f, BrownText, if (amps == state.selectedAmperes) FontWeight.Bold else FontWeight.Medium, 0.02f)
+        }
+    }
+    // The carved face from the design turns over its own picture, centred on the same spot.
+    val r = 158f
+    Area(561.5f - r, 760f - r, 561.5f + r, 760f + r) {
+        KnobDial(
+            selectedAmperes = state.selectedAmperes,
+            onAmperageSelected = onSelect,
+            modifier = Modifier.fillMaxSize()
+        ) { angle ->
+            val d = size.width.toInt()
+            rotate(angle, Offset(size.width / 2f, size.height / 2f)) {
+                drawImage(knobFace, dstOffset = IntOffset.Zero, dstSize = IntSize(d, d))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RefScope.WoodAutoCurrent(state: DashboardUiState, isOnline: Boolean, voltage: Int?, onToggle: () -> Unit) {
+    val enabled = state.isVoltageBalancingEnabled
+    val low = state.voltageLowThreshold
+    val max = state.voltageMaxAmperage
+    val status = when {
+        !enabled -> null
+        !isOnline || voltage == null || voltage <= 0 -> stringResource(R.string.dlb_standby)
+        voltage < low -> stringResource(R.string.dlb_derating, voltage)
+        else -> stringResource(R.string.dlb_normal, max)
+    }
+    Area(30f, 1003f, 1088f, 1192f, modifier = Modifier.clickable(onClick = onToggle)) {}
+    Area(66f, 1060f, 92f, 1086f, Alignment.Center) {
+        Box(Modifier.size(px(20f)).clip(CircleShape).background(if (enabled) OnDot else OffDot))
+    }
+    Area(108f, 1050f, 570f, 1098f) {
+        Engraved(stringResource(R.string.dlb_title).uppercase(), 36f, BrownText)
+    }
+    Area(578f, 1042f, 890f, 1104f, Alignment.Center) {
+        Label((status ?: stringResource(R.string.dlb_off_short)).uppercase(), 34f, SandBright, FontWeight.Medium, 0.03f)
+    }
+    Area(918f, 1038f, 1052f, 1108f, Alignment.Center) {
+        WoodToggle(enabled, onToggle, Modifier.fillMaxWidth().height(px(60f)))
+    }
+    Area(62f, 1132f, 1060f, 1176f) {
+        val hint = if (enabled && state.selectedAmperes > max) {
+            stringResource(R.string.dlb_max_warning, max, state.selectedAmperes)
+        } else if (enabled) {
+            stringResource(R.string.dlb_hint_on, low, max)
+        } else {
+            stringResource(R.string.dlb_hint_off, state.selectedAmperes)
+        }
+        if (enabled && state.selectedAmperes > max) {
+            Label(hint, 32f, Color(0xFF8F3E00), FontWeight.Medium, 0f)
+        } else {
+            Engraved(hint, 32f, BrownSoft, FontWeight.Normal, 0f)
+        }
+    }
+}
+
+@Composable
+private fun RefScope.WoodRow(top: Float, title: String, isOn: Boolean, onClick: () -> Unit) {
+    Area(30f, top, 1088f, top + 97f, modifier = Modifier.clip(RoundedCornerShape(px(26f))).clickable(onClick = onClick)) {}
+    Area(66f, top + 38f, 92f, top + 64f, Alignment.Center) {
+        Box(Modifier.size(px(20f)).clip(CircleShape).background(if (isOn) OnDot else OffDot))
+    }
+    Area(112f, top + 24f, 1060f, top + 76f) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Engraved(title.uppercase(), 38f, SandText)
+            Label("  ▾", 24f, SandText.copy(alpha = 0.6f), FontWeight.Normal, 0f)
+        }
+    }
+}
+
+@Composable
+private fun RefScope.WoodActionButton(state: DashboardUiState, onStart: () -> Unit, onStop: () -> Unit) {
+    val telemetry = state.telemetry
+    val isCharging = (telemetry?.isChargingActive ?: false) || state.isStopPending
+    val busy = state.isStartingOrStopping
+    val text = when {
+        isCharging && busy -> stringResource(R.string.stopping)
+        isCharging -> stringResource(R.string.stop)
+        busy -> stringResource(R.string.starting)
+        state.isKwhLimitEnabled && state.isDurationTimerEnabled ->
+            stringResource(R.string.start_charge_kwh_hours, state.targetQuotaKwh.toInt(), state.targetDurationHours)
+        state.isKwhLimitEnabled -> stringResource(R.string.start_charge_kwh, state.targetQuotaKwh.toInt())
+        state.isDurationTimerEnabled -> stringResource(R.string.start_charge_hours, state.targetDurationHours)
+        else -> stringResource(R.string.start_charge)
+    }
+    Area(
+        34f, 1580f, 1084f, 1700f, Alignment.Center,
+        modifier = Modifier
+            .clip(RoundedCornerShape(px(28f)))
+            // While charging the copper is tinted red, so the plate reads as a stop button.
+            .drawBehind {
+                if (isCharging) drawRect(Color(0xFFB02A18), alpha = 0.55f, blendMode = BlendMode.Multiply)
+            }
+            .clickable(enabled = !busy) { if (isCharging) onStop() else onStart() }
+    ) {
+        Engraved(text.uppercase(), 44f, if (isCharging) Color(0xFFFBE3CF) else Color(0xFF3A1C0A), FontWeight.Medium, 0.08f)
+    }
+}

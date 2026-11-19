@@ -38,6 +38,15 @@ class SettingsViewModel(
         ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), settingsStore.currentSettings().autoResumeAfterOutage)
         ?: MutableStateFlow(true)
 
+    val isWoodTheme: StateFlow<Boolean> = settingsStore?.settingsFlow
+        ?.map { it.isWoodTheme }
+        ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), settingsStore.currentSettings().isWoodTheme)
+        ?: MutableStateFlow(false)
+
+    fun setWoodTheme(enabled: Boolean) {
+        settingsStore?.setWoodTheme(enabled)
+    }
+
     fun setAutoResumeAfterOutage(enabled: Boolean) {
         settingsStore?.setAutoResumeAfterOutage(enabled)
     }

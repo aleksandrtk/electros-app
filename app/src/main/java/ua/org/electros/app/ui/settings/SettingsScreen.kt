@@ -281,6 +281,44 @@ fun SettingsScreen(
             }
         }
 
+        // Appearance Card
+        val isWood by viewModel.isWoodTheme.collectAsState()
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(text = stringResource(R.string.settings_appearance), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_wood_theme),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimaryDark,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = isWood,
+                        onCheckedChange = { viewModel.setWoodTheme(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimaryDark,
+                            checkedTrackColor = PrimaryNeonGreen
+                        )
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_wood_theme_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondaryDark,
+                    lineHeight = 17.sp
+                )
+            }
+        }
+
         // Language Card
         LanguageCard()
 

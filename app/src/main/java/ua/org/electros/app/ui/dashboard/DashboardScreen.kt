@@ -58,6 +58,7 @@ import kotlinx.coroutines.launch
 import ua.org.electros.app.ui.theme.*
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.imageResource
 import ua.org.electros.app.R
 import ua.org.electros.app.ui.asString
 import kotlin.math.atan2
@@ -98,15 +99,38 @@ fun DashboardScreen(
         }
     }
 
+    CompositionLocalProvider(
+        LocalDashPalette provides if (state.isWoodTheme) WalnutDashPalette else ClassicDashPalette
+    ) {
+    val onStartCharge = {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.onStartClicked(context)
+    }
+
     PullToRefreshBox(
         isRefreshing = state.isRefreshing,
         onRefresh = { viewModel.refreshTelemetry() },
         modifier = modifier.fillMaxSize()
     ) {
+        if (state.isWoodTheme) {
+            WoodDashboard(
+                state = state,
+                viewModel = viewModel,
+                onStart = onStartCharge,
+                onStop = { viewModel.onStopClicked(context) }
+            )
+            return@PullToRefreshBox
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(StudioChassisDark)
+                .dashChassis()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -231,19 +255,11 @@ fun DashboardScreen(
                 targetQuotaKwh = state.targetQuotaKwh,
                 isDurationTimerEnabled = state.isDurationTimerEnabled,
                 targetDurationHours = state.targetDurationHours,
-                onStart = {
-                    if (ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.POST_NOTIFICATIONS
-                        ) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                    viewModel.onStartClicked(context)
-                },
+                onStart = onStartCharge,
                 onStop = { viewModel.onStopClicked(context) }
             )
         }
+    }
     }
 }
 
@@ -289,6 +305,7 @@ private fun StudioTopHeader(
         isDerated -> AmberNixie
         isBoosted -> SecondaryCyan
         hasTimerTarget -> AmberNixie
+        LocalDashPalette.current.isWood -> AmberNixie
         else -> StudioGreen
     }
 
@@ -308,7 +325,12 @@ private fun StudioTopHeader(
                 modifier = Modifier
                     .size(9.dp)
                     .clip(CircleShape)
-                    .background(if (isOnline) StudioGreen else IndustrialRed)
+                    .background(
+                        if (!isOnline) IndustrialRed
+                        else if (isChargingActive) StudioGreen
+                        else if (LocalDashPalette.current.isWood) AmberNixie
+                        else StudioGreen
+                    )
             )
             Text(
                 text = formatHeaderStatus(statusText, isOnline).asString(),
@@ -327,7 +349,7 @@ private fun StudioTopHeader(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .background(StudioScreenDark)
+                .dashScreen()
                 .border(1.dp, modeAccent.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                 .padding(horizontal = 8.dp, vertical = 3.dp)
         ) {
@@ -367,10 +389,11 @@ private fun StudioClassicNixieCard(
     }
     val remainingKwh = (activeTargetKwh - deliveredKwh).coerceAtLeast(0.0)
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(StudioPanelBorder, StudioPanelBorder))),
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = StudioPanelBorder,
+        seed = 1f,
+        woodAccent = false,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -412,7 +435,7 @@ private fun StudioClassicNixieCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(StudioScreenDark)
+                    .dashScreen()
                     .border(2.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -434,14 +457,16 @@ private fun StudioClassicNixieCard(
                             color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
                             letterSpacing = 2.sp
                         )
-                        Text(
-                            text = "V",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
+                        if (!LocalDashPalette.current.isWood || isSessionActive) {
+                            Text(
+                                text = "V",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (isOnline && voltage != null) AmberNixie else TextTertiaryDark,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
                     }
 
                     if (isSessionActive) {
@@ -510,6 +535,16 @@ private fun StudioClassicNixieCard(
                                 }
                             }
                         }
+                    } else if (LocalDashPalette.current.isWood) {
+                        Text(
+                            text = stringResource(R.string.dash_unit_volts_full),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.2.sp,
+                            color = TextSecondaryDark,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
                     }
                 }
 
@@ -519,7 +554,7 @@ private fun StudioClassicNixieCard(
                             .fillMaxWidth()
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(Color(0xFF161A22))
+                            .background(LocalDashPalette.current.trackBg)
                     ) {
                         Box(
                             modifier = Modifier
@@ -550,51 +585,26 @@ private fun StudioClassicRotaryKnobCard(
         kotlin.math.abs(stops[idx] - selectedAmperes)
     } ?: 2
 
-    val stopAngles = KnobPhysics.STOP_ANGLES
-    fun angleForIndex(idx: Int) = stopAngles[idx.coerceIn(0, stopAngles.lastIndex)]
-    val targetAngle = angleForIndex(currentIndex)
-    // Read inside the long-lived gesture handler so a value change does not restart a drag in progress.
-    val latestIndex by rememberUpdatedState(currentIndex)
-
-    // Heavy, critically damped settle: the knob glides into the detent and stops, no overshoot or wobble.
-    val settleSpec = remember {
-        spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 260f)
-    }
-    val knobAngle = remember { Animatable(targetAngle) }
-    val knobScope = rememberCoroutineScope()
-
-    var isDragging by remember { mutableStateOf(false) }
-    var dragAngle by remember { mutableFloatStateOf(targetAngle) }
-    var lastHapticIndex by remember { mutableIntStateOf(currentIndex) }
-
-    // Follow value changes made elsewhere (label tap, half-tap, station sync), never during a drag.
-    LaunchedEffect(targetAngle) {
-        if (!isDragging) knobAngle.animateTo(targetAngle, settleSpec)
-    }
-
-    /** Hands the knob from the finger back to the animation without a visual jump. */
-    fun settleFrom(fromAngle: Float, toIndex: Int) {
-        knobScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            knobAngle.snapTo(fromAngle)
-            knobAngle.animateTo(angleForIndex(toIndex), settleSpec)
-        }
-    }
-
-    val currentAngle = if (isDragging) dragAngle else knobAngle.value
 
     val stageCenterOffsetY = 10.dp
+    // Read outside the card, so take the maple colors the card's board uses.
+    val knobPalette = if (LocalDashPalette.current.isWood) MapleDashPalette else LocalDashPalette.current
+    val woodKnobFace = androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.knob_face)
+    // The wood knob is drawn larger, like a real wooden selector.
+    val knobScale = if (LocalDashPalette.current.isWood) 1.22f else 1f
     val labelOffsets = listOf(
-        Pair((-96).dp, 30.dp),  // 6A
-        Pair((-96).dp, (-28).dp), // 8A
-        Pair(0.dp, (-80).dp),     // 10A
-        Pair(96.dp, (-28).dp),    // 12A
-        Pair(96.dp, 30.dp)        // 16A
+        Pair((-96).dp * knobScale, 30.dp * knobScale),  // 6A
+        Pair((-96).dp * knobScale, (-28).dp * knobScale), // 8A
+        Pair(0.dp, (-80).dp * knobScale),     // 10A
+        Pair(96.dp * knobScale, (-28).dp * knobScale),    // 12A
+        Pair(96.dp * knobScale, 30.dp * knobScale)        // 16A
     )
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(StudioPanelBorder, StudioPanelBorder))),
+    DashCard(
+        tone = WoodTone.MAPLE,
+        borderColor = StudioPanelBorder,
+        seed = 2f,
+        woodAccent = false,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -620,7 +630,7 @@ private fun StudioClassicRotaryKnobCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(StudioScreenDark)
+                        .dashScreen()
                         .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
@@ -640,11 +650,11 @@ private fun StudioClassicRotaryKnobCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp),
+                    .height(180.dp * knobScale),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
-                    modifier = Modifier.offset(y = stageCenterOffsetY),
+                    modifier = Modifier.offset(y = stageCenterOffsetY * knobScale),
                     contentAlignment = Alignment.Center
                 ) {
                     // Clean high-contrast amperage labels around the recessed dial well
@@ -658,8 +668,8 @@ private fun StudioClassicRotaryKnobCard(
                                 fontSize = if (isCurrent) 17.sp else 16.sp,
                                 fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = if (isCurrent) Color(0xFFFF9F1C) else Color(0xFF8E97A8),
-                                shadow = if (isCurrent) {
+                                color = if (isCurrent) knobPalette.knobLabelActive else knobPalette.knobLabel,
+                                shadow = if (isCurrent && !knobPalette.isWood) {
                                     Shadow(
                                         color = Color(0xB8FF9F1C),
                                         offset = Offset.Zero,
@@ -681,110 +691,20 @@ private fun StudioClassicRotaryKnobCard(
                     }
 
                     // 140dp 3D Recessed Socket + Sculpted Chamfered Cam Switch Canvas
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .pointerInput(stops) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    val cx = size.width / 2f
-                                    val cy = size.height / 2f
-                                    val radius = size.width * 0.48f
-                                    val startDist = hypot(down.position.x - cx, down.position.y - cy)
-
-                                    // Only interact if the touch starts inside the circular knob well
-                                    if (startDist > radius) return@awaitEachGesture
-
-                                    var isDragStarted = false
-                                    var totalDragMovement = 0f
-                                    val startPos = down.position
-                                    var lastTouchAngle = Math.toDegrees(atan2((startPos.x - cx).toDouble(), -(startPos.y - cy).toDouble())).toFloat()
-                                    var currentKnobAngle = knobAngle.value
-
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                                        if (!change.pressed) {
-                                            // Finger released
-                                            if (isDragStarted) {
-                                                change.consume()
-                                                val finalIdx = KnobPhysics.nearestStopIndex(dragAngle)
-                                                settleFrom(dragAngle, finalIdx)
-                                                isDragging = false
-                                                if (finalIdx != latestIndex) {
-                                                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                                                    onAmperageSelected(stops[finalIdx])
-                                                }
-                                            } else if (totalDragMovement < 8.dp.toPx()) {
-                                                // Tap on knob: left half decreases, right half increases
-                                                change.consume()
-                                                val isRightSide = startPos.x >= cx
-                                                val newIdx = if (isRightSide) {
-                                                    (latestIndex + 1).coerceAtMost(stops.lastIndex)
-                                                } else {
-                                                    (latestIndex - 1).coerceAtLeast(0)
-                                                }
-                                                if (newIdx != latestIndex) {
-                                                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                                                    onAmperageSelected(stops[newIdx])
-                                                }
-                                            }
-                                            break
-                                        }
-
-                                        val curPos = change.position
-                                        val dx = curPos.x - cx
-                                        val dy = curPos.y - cy
-                                        val distFromStart = hypot(curPos.x - startPos.x, curPos.y - startPos.y)
-                                        totalDragMovement += distFromStart
-
-                                        if (!isDragStarted && distFromStart > 6.dp.toPx()) {
-                                            isDragStarted = true
-                                            // Pick the knob up exactly where it is, even mid-animation.
-                                            currentKnobAngle = knobAngle.value
-                                            dragAngle = currentKnobAngle
-                                            lastHapticIndex = KnobPhysics.nearestStopIndex(currentKnobAngle)
-                                            isDragging = true
-                                            knobScope.launch { knobAngle.stop() }
-                                        }
-
-                                        if (isDragStarted) {
-                                            change.consume()
-                                            val currentTouchAngle = Math.toDegrees(atan2(dx.toDouble(), -dy.toDouble())).toFloat()
-                                            var delta = currentTouchAngle - lastTouchAngle
-                                            if (delta > 180f) delta -= 360f
-                                            if (delta < -180f) delta += 360f
-                                            lastTouchAngle = currentTouchAngle
-
-                                            // Hard mechanical end stops: no rubber-band over-travel to spring back from.
-                                            currentKnobAngle = KnobPhysics.clampToTravel(currentKnobAngle + delta)
-
-                                            // Magnetic detents: parks on each position, then moves on to the next.
-                                            dragAngle = KnobPhysics.detentAngle(currentKnobAngle)
-
-                                            val closestIdx = KnobPhysics.nearestStopIndex(dragAngle)
-                                            if (closestIdx != lastHapticIndex && KnobPhysics.isSeatedIn(dragAngle, closestIdx)) {
-                                                lastHapticIndex = closestIdx
-                                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                            }
-                                        }
-                                    }
-                                    if (isDragging) {
-                                        // Gesture cancelled mid-drag: glide back to the committed position.
-                                        settleFrom(dragAngle, latestIndex)
-                                        isDragging = false
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+                    KnobDial(
+                        selectedAmperes = selectedAmperes,
+                        onAmperageSelected = onAmperageSelected,
+                        modifier = Modifier.size(140.dp * knobScale)
+                    ) { currentAngle ->
                             val w = size.width
                             val h = size.height
                             val cx = w / 2f
                             val cy = h / 2f
                             val centerOffset = Offset(cx, cy)
+                            if (knobPalette.isWood) {
+                                drawWoodKnob(currentAngle, woodKnobFace)
+                                return@KnobDial
+                            }
 
                             val outerBezelRadius = w * 0.48f
                             val wellRadius = w * 0.472f
@@ -1051,7 +971,6 @@ private fun StudioClassicRotaryKnobCard(
                                 )
                             }
                         }
-                    }
                 }
             }
         }
@@ -1081,10 +1000,11 @@ private fun StudioClassicDlbCard(
     }
     val borderColor = if (isDlbEnabled) statusColor.copy(alpha = 0.45f) else StudioPanelBorder
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
+    DashCard(
+        tone = WoodTone.MAPLE,
+        borderColor = borderColor,
+        seed = 3f,
+        woodAccent = false,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -1136,7 +1056,7 @@ private fun StudioClassicDlbCard(
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = StudioGreen,
-                            checkedTrackColor = Color(0xFF15281F),
+                            checkedTrackColor = LocalDashPalette.current.onBg,
                             checkedBorderColor = StudioGreen.copy(alpha = 0.6f),
                             uncheckedThumbColor = TextTertiaryDark,
                             uncheckedTrackColor = StudioScreenDark,
@@ -1169,7 +1089,8 @@ private fun StudioClassicDlbCard(
 }
 
 @Composable
-private fun StudioClassicKwhLimitCard(
+internal fun StudioClassicKwhLimitCard(
+    startExpanded: Boolean = false,
     isKwhLimitEnabled: Boolean,
     targetQuotaKwh: Double,
     activeTargetKwh: Double,
@@ -1177,7 +1098,7 @@ private fun StudioClassicKwhLimitCard(
     onSelectKwhLimit: (Boolean, Double) -> Unit
 ) {
     val view = LocalView.current
-    val expanded = rememberSaveable { mutableStateOf(false) }
+    val expanded = rememberSaveable { mutableStateOf(startExpanded) }
     val hasActiveQuota = hasActiveSession && activeTargetKwh > 0.0
     val isLimitOn = isKwhLimitEnabled || hasActiveQuota
     val displayKwh = if (hasActiveQuota) activeTargetKwh else targetQuotaKwh
@@ -1186,10 +1107,11 @@ private fun StudioClassicKwhLimitCard(
     val statusColor = if (isLimitOn) StudioGreen else TextTertiaryDark
     val borderColor = if (isLimitOn) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = borderColor,
+        seed = 4f,
+        woodAccent = false,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -1250,7 +1172,7 @@ private fun StudioClassicKwhLimitCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (!isKwhLimitEnabled) Color(0xFF2B181A) else StudioScreenDark)
+                            .background(if (!isKwhLimitEnabled) LocalDashPalette.current.offBg else StudioScreenDark)
                             .border(
                                 width = 1.dp,
                                 color = if (!isKwhLimitEnabled) IndustrialRedBorder else StudioScreenBorder,
@@ -1267,7 +1189,7 @@ private fun StudioClassicKwhLimitCard(
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            color = if (!isKwhLimitEnabled) Color(0xFFFF8A80) else TextSecondaryDark
+                            color = if (!isKwhLimitEnabled) LocalDashPalette.current.offText else TextSecondaryDark
                         )
                     }
                 }
@@ -1279,7 +1201,7 @@ private fun StudioClassicKwhLimitCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(StudioScreenDark)
+                        .dashScreen()
                         .border(1.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1341,7 +1263,7 @@ private fun StudioClassicKwhLimitCard(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) Color(0xFF15281F) else StudioScreenDark)
+                                .background(if (isSelected) LocalDashPalette.current.onBg else StudioScreenDark)
                                 .border(
                                     width = if (isSelected) 1.5.dp else 1.dp,
                                     color = if (isSelected) StudioGreen else StudioScreenBorder,
@@ -1373,7 +1295,8 @@ private fun StudioClassicKwhLimitCard(
  * Variation 4.1 Classic: Full-Width Heavy Switch Action Button
  */
 @Composable
-private fun StudioClassicTimerCard(
+internal fun StudioClassicTimerCard(
+    startExpanded: Boolean = false,
     isDurationTimerEnabled: Boolean,
     targetDurationHours: Int,
     activeTargetDurationMinutes: Int,
@@ -1385,7 +1308,7 @@ private fun StudioClassicTimerCard(
     onSelectDuration: (Boolean, Int) -> Unit
 ) {
     val view = LocalView.current
-    val expanded = rememberSaveable { mutableStateOf(false) }
+    val expanded = rememberSaveable { mutableStateOf(startExpanded) }
     val nowMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(
@@ -1430,10 +1353,11 @@ private fun StudioClassicTimerCard(
 
     val borderColor = if (isCountingDown) AmberNixie.copy(alpha = 0.45f) else StudioPanelBorder
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = borderColor,
+        seed = 5f,
+        woodAccent = false,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -1485,7 +1409,7 @@ private fun StudioClassicTimerCard(
                         .fillMaxWidth()
                         .height(3.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(StudioScreenDark)
+                        .dashScreen()
                 ) {
                     Box(
                         modifier = Modifier
@@ -1513,7 +1437,7 @@ private fun StudioClassicTimerCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (!isDurationTimerEnabled) Color(0xFF2B181A) else StudioScreenDark)
+                            .background(if (!isDurationTimerEnabled) LocalDashPalette.current.offBg else StudioScreenDark)
                             .border(
                                 width = 1.dp,
                                 color = if (!isDurationTimerEnabled) IndustrialRedBorder else StudioScreenBorder,
@@ -1530,7 +1454,7 @@ private fun StudioClassicTimerCard(
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            color = if (!isDurationTimerEnabled) Color(0xFFFF8A80) else TextSecondaryDark
+                            color = if (!isDurationTimerEnabled) LocalDashPalette.current.offText else TextSecondaryDark
                         )
                     }
                 }
@@ -1549,7 +1473,7 @@ private fun StudioClassicTimerCard(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) Color(0xFF2B1D0A) else StudioScreenDark)
+                                    .background(if (isSelected) LocalDashPalette.current.amberBg else StudioScreenDark)
                                     .border(
                                         width = if (isSelected) 1.5.dp else 1.dp,
                                         color = if (isSelected) AmberNixie else StudioScreenBorder,
@@ -1578,7 +1502,7 @@ private fun StudioClassicTimerCard(
     }
 }
 
-private fun formatCountdownHms(ms: Long): String {
+internal fun formatCountdownHms(ms: Long): String {
     val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
     val hours = totalSeconds / 3600L
     val minutes = (totalSeconds % 3600L) / 60L
@@ -1587,14 +1511,15 @@ private fun formatCountdownHms(ms: Long): String {
 }
 
 @Composable
-private fun StudioClassicScheduleCard(
+internal fun StudioClassicScheduleCard(
+    startExpanded: Boolean = false,
     isScheduleEnabled: Boolean,
     scheduleStartTime: String,
     scheduleStopTime: String,
     onUpdateSchedule: (Boolean, String, String) -> Unit
 ) {
     val view = LocalView.current
-    val expanded = rememberSaveable { mutableStateOf(false) }
+    val expanded = rememberSaveable { mutableStateOf(startExpanded) }
     val draftStart = rememberSaveable(scheduleStartTime) {
         mutableStateOf(scheduleStartTime)
     }
@@ -1606,10 +1531,11 @@ private fun StudioClassicScheduleCard(
     val statusColor = if (isScheduleEnabled) StudioGreen else TextTertiaryDark
     val borderColor = if (isScheduleEnabled) StudioGreen.copy(alpha = 0.45f) else StudioPanelBorder
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(borderColor, borderColor))),
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = borderColor,
+        seed = 6f,
+        woodAccent = false,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -1670,7 +1596,7 @@ private fun StudioClassicScheduleCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (!isScheduleEnabled) Color(0xFF2B181A) else StudioScreenDark)
+                            .background(if (!isScheduleEnabled) LocalDashPalette.current.offBg else StudioScreenDark)
                             .border(
                                 width = 1.dp,
                                 color = if (!isScheduleEnabled) IndustrialRedBorder else StudioScreenBorder,
@@ -1687,7 +1613,7 @@ private fun StudioClassicScheduleCard(
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            color = if (isScheduleEnabled) Color(0xFFFF8A80) else StudioGreen
+                            color = if (isScheduleEnabled) LocalDashPalette.current.offText else StudioGreen
                         )
                     }
                 }
@@ -1710,7 +1636,7 @@ private fun StudioClassicScheduleCard(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(StudioScreenDark)
+                                .dashScreen()
                                 .border(1.dp, StudioScreenBorder, RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1767,7 +1693,7 @@ private fun StudioClassicScheduleCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF15281F))
+                        .background(LocalDashPalette.current.onBg)
                         .border(1.dp, StudioGreen.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                         .clickable {
                             view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
@@ -1829,22 +1755,25 @@ private fun StudioClassicActionButton(
         }
     } else {
         // Start Charge Button
+        val palette = LocalDashPalette.current
+        val startShape = RoundedCornerShape(12.dp)
         Button(
             onClick = onStart,
             enabled = !isBusy,
-            shape = RoundedCornerShape(12.dp),
+            shape = startShape,
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1E2619),
-                contentColor = StudioGreen,
-                disabledContainerColor = StudioPanelDark,
-                disabledContentColor = TextTertiaryDark
+                containerColor = palette.startBg,
+                contentColor = palette.startText,
+                disabledContainerColor = if (palette.isWood) Color.Transparent else StudioPanelDark,
+                disabledContentColor = if (palette.isWood) palette.startText.copy(alpha = 0.6f) else TextTertiaryDark
             ),
-            border = ButtonDefaults.outlinedButtonBorder().copy(
+            border = if (palette.isWood) null else ButtonDefaults.outlinedButtonBorder().copy(
                 brush = Brush.linearGradient(listOf(StudioGreen.copy(alpha = 0.6f), StudioGreen.copy(alpha = 0.6f)))
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .then(if (palette.isWood) Modifier.copperPlate(startShape) else Modifier)
+                .height(if (palette.isWood) 54.dp else 48.dp)
         ) {
             Text(
                 text = when {
@@ -1866,11 +1795,12 @@ private fun StudioClassicActionButton(
 }
 
 @Composable
-private fun ErrorMessageCard(message: String) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(IndustrialRed, IndustrialRed))),
+internal fun ErrorMessageCard(message: String) {
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = IndustrialRed,
+        seed = 7f,
+        woodAccent = true,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -1885,7 +1815,7 @@ private fun ErrorMessageCard(message: String) {
 }
 
 @Composable
-private fun OutageBanner(
+internal fun OutageBanner(
     deliveredKwh: Double,
     targetKwh: Double,
     isLimitEnabled: Boolean,
@@ -1913,10 +1843,11 @@ private fun OutageBanner(
         else -> stringResource(R.string.outage_body_auto, delivered, "")
     }
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(StudioAmberWarn, StudioAmberWarn))),
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = StudioAmberWarn,
+        seed = 8f,
+        woodAccent = true,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -1967,11 +1898,12 @@ private fun OutageBanner(
 }
 
 @Composable
-private fun OfflineWarningCard() {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = StudioPanelDark),
-        border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(IndustrialRed, IndustrialRed))),
+internal fun OfflineWarningCard() {
+    DashCard(
+        tone = WoodTone.WALNUT,
+        borderColor = IndustrialRed,
+        seed = 9f,
+        woodAccent = true,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -2001,10 +1933,21 @@ private fun OfflineWarningCard() {
 /** Live state of a dashboard card. Shown only while the feature is on; the card's own control shows on/off. */
 @Composable
 private fun StudioStatusPill(text: String, color: Color) {
+    // The pill is a dark inlay, so on maple it takes the light walnut colors.
+    val onInlay = if (LocalDashPalette.current.tone == WoodTone.MAPLE) {
+        when (color) {
+            MapleDashPalette.textSecondary -> WalnutDashPalette.textSecondary
+            MapleDashPalette.textTertiary -> WalnutDashPalette.textTertiary
+            MapleDashPalette.green -> WalnutDashPalette.green
+            else -> color
+        }
+    } else {
+        color
+    }
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(StudioScreenDark)
+            .dashScreen()
             .border(1.dp, StudioScreenBorder, RoundedCornerShape(6.dp))
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
@@ -2013,7 +1956,7 @@ private fun StudioStatusPill(text: String, color: Color) {
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
-            color = color
+            color = onInlay
         )
     }
 }

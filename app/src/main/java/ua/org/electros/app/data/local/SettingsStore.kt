@@ -51,7 +51,9 @@ data class AppSettings(
      */
     val scheduleOnStation: String? = null,
     /** Station counter (kWh) the last time it was seen online and not charging; -1 when unknown. */
-    val lastIdleCounterKwh: Double = -1.0
+    val lastIdleCounterKwh: Double = -1.0,
+    /** Look of the main screen: false is the dark instrument style, true is the wooden one. */
+    val isWoodTheme: Boolean = false
 ) {
     /** The window the station should hold for the user's schedule. */
     val desiredStationSchedule: String
@@ -291,6 +293,13 @@ class SettingsStore internal constructor(
         )
     }
 
+    fun setWoodTheme(enabled: Boolean) {
+        update(
+            optimistic = { it.copy(isWoodTheme = enabled) },
+            persist = { it[KEY_WOOD_THEME] = enabled }
+        )
+    }
+
     fun setLastIdleCounterKwh(counterKwh: Double) {
         update(
             optimistic = { it.copy(lastIdleCounterKwh = counterKwh) },
@@ -442,6 +451,7 @@ class SettingsStore internal constructor(
         internal val KEY_SCHEDULE_ON_STATION = stringPreferencesKey("schedule_on_station")
         internal val KEY_AUTO_RESUME = booleanPreferencesKey("auto_resume")
         internal val KEY_LAST_IDLE_COUNTER = doublePreferencesKey("last_idle_counter_kwh")
+        internal val KEY_WOOD_THEME = booleanPreferencesKey("wood_theme")
         internal val KEY_VOLTAGE_BALANCING_ENABLED = booleanPreferencesKey("voltage_balancing_enabled")
         internal val KEY_VOLTAGE_LOW_THRESHOLD = intPreferencesKey("voltage_low_threshold")
         internal val KEY_VOLTAGE_HIGH_THRESHOLD = intPreferencesKey("voltage_high_threshold")
@@ -499,7 +509,8 @@ class SettingsStore internal constructor(
                 // Older versions wrote the schedule only from an explicit button, so an install that has
                 // never recorded it is assumed to be in sync rather than rewriting the station on update.
                 scheduleOnStation = prefs[KEY_SCHEDULE_ON_STATION],
-                lastIdleCounterKwh = prefs[KEY_LAST_IDLE_COUNTER] ?: -1.0
+                lastIdleCounterKwh = prefs[KEY_LAST_IDLE_COUNTER] ?: -1.0,
+                isWoodTheme = prefs[KEY_WOOD_THEME] ?: false
             )
         }
     }
