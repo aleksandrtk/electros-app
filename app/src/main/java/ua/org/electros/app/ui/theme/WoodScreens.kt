@@ -5,6 +5,27 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LocalContentColor
@@ -35,8 +56,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import ua.org.electros.app.ui.dashboard.WoodTone
-import ua.org.electros.app.ui.dashboard.rememberWoodBrush
+import ua.org.electros.app.ui.dashboard.copperPlate
 
 /**
  * Colors the secondary screens (limits, history, settings, login, updates) read. Each of those
@@ -130,41 +150,83 @@ val WoodColorScheme = darkColorScheme(
 )
 
 /**
- * Screen background: the classic chassis color, or the walnut behind the main screen's boards,
- * lit from the top middle and falling into shade towards the edges and the bottom like there.
+ * Screen background: the classic chassis color, or the walnut of the main screen, built from the
+ * design's own lit header strip and continued down with its light falling off like there.
  */
 @Composable
 fun Modifier.screenBackground(): Modifier {
     val palette = LocalScreenPalette.current
     if (!palette.isWood) return this.then(Modifier.drawWithContent { drawRect(palette.surface); drawContent() })
-    val walnut = rememberWoodBrush(WoodTone.WALNUT, seed = 11f)
+    val walnut = ImageBitmap.imageResource(R.drawable.wood_background)
     return this.drawWithContent {
-        drawRect(walnut)
-        // The main screen's walnut is warmer and redder than the photo.
-        drawRect(Color(0x33A0400F))
-        drawRect(
-            Brush.verticalGradient(
-                0f to Color(0x00000000),
-                0.3f to Color(0x40000000),
-                1f to Color(0x99000000)
-            )
-        )
-        drawRect(
-            Brush.horizontalGradient(
-                0f to Color(0x60000000),
-                0.15f to Color(0x00000000),
-                0.85f to Color(0x00000000),
-                1f to Color(0x60000000)
-            )
-        )
-        drawRect(
-            Brush.radialGradient(
-                listOf(Color(0x38FFD8A0), Color(0x00000000)),
-                center = Offset(size.width / 2f, 0f),
-                radius = size.width * 0.7f
-            )
-        )
+        val w = size.width.roundToInt()
+        val scale = size.width / walnut.width
+        // Shown at the main screen's scale from the top; very tall screens stretch the rest.
+        val h = maxOf(size.height.roundToInt(), (walnut.height * scale).roundToInt())
+        drawImage(walnut, dstOffset = IntOffset.Zero, dstSize = IntSize(w, h), filterQuality = FilterQuality.High)
         drawContent()
+    }
+}
+
+/** A button: the classic Material button, or the copper plate of the main screen's start button. */
+@Composable
+fun ThemedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = ButtonDefaults.shape,
+    colors: ButtonColors = ButtonDefaults.buttonColors(),
+    danger: Boolean = false,
+    outlined: Boolean = false,
+    content: @Composable RowScope.() -> Unit
+) {
+    val palette = LocalScreenPalette.current
+    if (!palette.isWood) {
+        if (outlined) {
+            OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled, shape = shape, colors = colors, content = content)
+        } else {
+            Button(onClick = onClick, modifier = modifier, enabled = enabled, shape = shape, colors = colors, content = content)
+        }
+        return
+    }
+    val textColor = if (danger) Color(0xFFFBE3CF) else Color(0xFF3A1C0A)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // Not clipped, so the plate keeps its shadow; pressing darkens the plate instead of a ripple.
+    Box(
+        modifier = modifier
+            .heightIn(min = 52.dp)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        // Only the plate fades while the button is unavailable; its lettering stays readable.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .alpha(if (enabled) 1f else 0.5f)
+                .copperPlate(shape)
+                .then(
+                    // A dangerous action is the copper tinted red, like the stop button.
+                    if (danger) Modifier.drawBehind {
+                        drawRect(Color(0xFFB02A18), alpha = 0.55f, blendMode = BlendMode.Multiply)
+                    } else Modifier
+                )
+                .drawWithContent {
+                    drawContent()
+                    if (pressed) drawOutline(shape.createOutline(size, layoutDirection, this), Color(0x40000000))
+                }
+        )
+        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+        CompositionLocalProvider(LocalContentColor provides textColor) {
+            ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(color = textColor, letterSpacing = 1.5.sp)) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = content
+                )
+            }
+        }
+        }
     }
 }
 

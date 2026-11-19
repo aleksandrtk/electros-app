@@ -130,7 +130,7 @@ fun LoginScreen(
                         )
                     }
 
-                    Button(
+                    ThemedButton(
                         onClick = { viewModel.login(onLoginSuccess) },
                         enabled = !state.isLoading,
                         shape = RoundedCornerShape(24.dp),

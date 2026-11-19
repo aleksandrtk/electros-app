@@ -189,7 +189,7 @@ fun SettingsScreen(
                     )
                 }
 
-                Button(
+                ThemedButton(
                     onClick = {
                         viewModel.updateCredentials(serialInput, passwordInput) {
                             passwordInput = ""
@@ -232,7 +232,9 @@ fun SettingsScreen(
                     )
                 }
 
-                OutlinedButton(
+                ThemedButton(
+                    outlined = true,
+                    danger = true,
                     onClick = { showLogoutConfirm = true },
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
@@ -348,7 +350,7 @@ fun SettingsScreen(
                 )
 
                 if (!state.isBatteryOptimizationIgnored) {
-                    Button(
+                    ThemedButton(
                         onClick = {
                             val reqIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                                 data = "package:${context.packageName}".toUri()
@@ -379,7 +381,7 @@ fun SettingsScreen(
                         color = ErrorRed,
                         lineHeight = 17.sp
                     )
-                    Button(
+                    ThemedButton(
                         onClick = {
                             val notifIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
                                 putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -409,7 +411,7 @@ fun SettingsScreen(
 
                 SettingRow(label = stringResource(R.string.settings_version), value = "v${BuildConfig.VERSION_NAME}")
 
-                Button(
+                ThemedButton(
                     onClick = { otaViewModel?.checkForUpdates(manual = true) },
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryNeonGreen, contentColor = OnPrimaryDark),
@@ -565,7 +567,7 @@ private fun DiagnosticLogCard() {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
+                ThemedButton(
                     onClick = {
                         isExporting = true
                         scope.launch {
@@ -588,7 +590,8 @@ private fun DiagnosticLogCard() {
                 ) {
                     Text(stringResource(R.string.settings_log_export), fontWeight = FontWeight.Bold)
                 }
-                OutlinedButton(
+                ThemedButton(
+                    outlined = true,
                     onClick = { showClearConfirm = true },
                     enabled = sizeBytes > 0L,
                     shape = RoundedCornerShape(24.dp),
