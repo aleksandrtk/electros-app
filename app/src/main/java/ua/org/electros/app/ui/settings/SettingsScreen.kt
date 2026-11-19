@@ -285,6 +285,7 @@ fun SettingsScreen(
 
         // Appearance Card
         val isWood by viewModel.isWoodTheme.collectAsState()
+        val isHiFi by viewModel.isWoodHiFi.collectAsState()
         ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
@@ -293,24 +294,36 @@ fun SettingsScreen(
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(text = stringResource(R.string.settings_appearance), style = MaterialTheme.typography.labelSmall, color = PrimaryNeonGreen)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceContainerHighDark)
+                        .padding(3.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.settings_wood_theme),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextPrimaryDark,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = isWood,
-                        onCheckedChange = { viewModel.setWoodTheme(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = OnPrimaryDark,
-                            checkedTrackColor = PrimaryNeonGreen
-                        )
-                    )
+                    listOf(
+                        Triple(false, false, R.string.settings_theme_classic),
+                        Triple(true, false, R.string.settings_theme_wood),
+                        Triple(true, true, R.string.settings_theme_wood_hifi)
+                    ).forEach { (wood, hiFi, label) ->
+                        val isSelected = isWood == wood && (!wood || isHiFi == hiFi)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) SurfaceContainerHighestDark else androidx.compose.ui.graphics.Color.Transparent)
+                                .clickable { if (!isSelected) viewModel.setAppearance(wood, hiFi) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(label),
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (isSelected) TextPrimaryDark else TextSecondaryDark,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
                 Text(
                     text = stringResource(R.string.settings_wood_theme_hint),

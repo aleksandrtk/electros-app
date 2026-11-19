@@ -53,7 +53,12 @@ Charge to an exact kWh limit, ride through blackouts without losing progress, an
 Power lost or restored, limit or timer reached, current lowered or raised by auto-current, lost connection, and a warning if the station did not confirm a stop.
 
 ### 🪵 Wooden style
-An optional look for the main screen, switched on in **Settings → Appearance**: walnut and oak boards, a turning wooden selector, engraved lettering and a copper start button. The dark instrument panel stays the default.
+An optional look, picked in **Settings → Appearance**. The dark instrument panel stays the default.
+
+- **Wood**: walnut and oak boards on every screen, a turning wooden selector, engraved lettering and copper buttons.
+- **Wood Hi-Fi**: the same boards with modern details on the main screen: crisp Manrope and JetBrains Mono lettering, a smoked-glass voltmeter with amber digits, a walnut knob in a brass ring and a brushed bronze start plate.
+
+Fonts: [Manrope](https://github.com/googlefonts/manrope) (© 2019 The Manrope Project Authors) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (© 2020 The JetBrains Mono Project Authors), both under the [SIL Open Font License 1.1](https://openfontlicense.org). The license notice is also kept in each font file.
 
 ### 🌐 Two languages
 Ukrainian and English, switchable in **Settings → Language**. On first launch the app picks Ukrainian if the phone is set to Ukrainian or Russian, and English otherwise.

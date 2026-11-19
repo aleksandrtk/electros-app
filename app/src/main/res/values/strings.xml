@@ -278,7 +278,10 @@
     <string name="settings_auto_resume_hint">Applies to every charge the app runs, with or without a limit. When the power comes back and the voltage is steady, the app restarts charging and the energy delivered before the outage is kept. When off, the app only notifies you and you resume with one tap.</string>
     <string name="settings_appearance">APPEARANCE</string>
     <string name="settings_wood_theme">Wooden style</string>
-    <string name="settings_wood_theme_hint">Maple and walnut instead of the dark instrument panel. Only the look changes.</string>
+    <string name="settings_theme_classic">Classic</string>
+    <string name="settings_theme_wood">Wood</string>
+    <string name="settings_theme_wood_hifi">Wood Hi-Fi</string>
+    <string name="settings_wood_theme_hint">Classic dark instrument panel, or the wooden panel with carved lettering or with modern hi-fi details. Only the look changes.</string>
     <string name="dash_unit_volts_full">VOLTS</string>
     <string name="dlb_off_short">Off</string>
 </resources>

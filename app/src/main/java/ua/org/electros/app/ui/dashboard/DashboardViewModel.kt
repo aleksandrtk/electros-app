@@ -56,6 +56,7 @@ data class DashboardUiState(
     val scheduleStopTime: String = "07:00",
     val isAutoResumeEnabled: Boolean = true,
     val isWoodTheme: Boolean = false,
+    val isWoodHiFi: Boolean = false,
     val errorMessage: UiText? = null
 )
 
@@ -238,6 +239,7 @@ class DashboardViewModel(
             scheduleStopTime = schedStop,
             isAutoResumeEnabled = settings.autoResumeAfterOutage,
             isWoodTheme = settings.isWoodTheme,
+            isWoodHiFi = settings.isWoodHiFi,
             errorMessage = error
         )
     }

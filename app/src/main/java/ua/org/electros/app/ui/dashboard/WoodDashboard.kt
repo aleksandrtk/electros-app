@@ -72,6 +72,14 @@ import androidx.compose.ui.unit.dp
 import ua.org.electros.app.R
 import ua.org.electros.app.ui.asString
 import java.util.Locale
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.FilterQuality
 
@@ -96,6 +104,27 @@ private val WoodFont = FontFamily(
 private val SandText = Color(0xFFE8C9A2)
 private val SandBright = Color(0xFFEDB676)
 private val BrownText = Color(0xFF3B2210)
+
+/**
+ * "Modern craft hi-fi" dressing of the same panel, for comparison: clean grotesque and mono
+ * lettering burnt sharply into the wood, a smoked-glass voltmeter with amber digits, a milled
+ * walnut knob in a brass ring with a light guide, and a brushed bronze start plate.
+ */
+internal val LocalWoodHiFi = staticCompositionLocalOf { false }
+private val WOOD_HIFI: Boolean @Composable @ReadOnlyComposable get() = LocalWoodHiFi.current
+
+private val Manrope = FontFamily(
+    listOf(FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map { w ->
+        Font(R.font.manrope, w, variationSettings = FontVariation.Settings(FontVariation.weight(w.weight)))
+    }
+)
+private val JetMono = FontFamily(
+    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
+    Font(R.font.jetbrains_mono_bold, FontWeight.Bold)
+)
+/** Laser-burnt lettering on oak: sharp dark umber. */
+private val BurntUmber = Color(0xFF24120A)
+private val OledAmber = Color(0xFFFFB347)
 private val BrownSoft = Color(0xFF5A3A1E)
 private val OffDot = Color(0xFFC2694C)
 private val OnDot = Color(0xFF6E9A3A)
@@ -159,8 +188,25 @@ private fun RefScope.Engraved(
     color: Color,
     weight: FontWeight = FontWeight.Medium,
     spacing: Float = 0.06f,
-    onDark: Boolean = false
+    onDark: Boolean = false,
+    mono: Boolean = false
 ) {
+    if (WOOD_HIFI) {
+        // Burnt in by a laser: one crisp layer, no bevel.
+        Text(
+            text = text,
+            style = TextStyle(
+                fontFamily = if (mono) JetMono else Manrope,
+                fontWeight = if (weight == FontWeight.Normal) FontWeight.Medium else FontWeight.SemiBold,
+                fontSize = sp(sizePx * 0.9f),
+                letterSpacing = sp(sizePx * (spacing * 0.6f)),
+                color = if (onDark) color else if (color == BrownText || color == BrownSoft) BurntUmber else color
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
     val base = TextStyle(
         fontFamily = WoodFont,
         fontWeight = weight,
@@ -279,6 +325,7 @@ internal fun WoodDashboard(
     val knobFace = ImageBitmap.imageResource(R.drawable.knob_face)
     var openSheet by rememberSaveable { mutableStateOf<WoodSheet?>(null) }
 
+    CompositionLocalProvider(LocalWoodHiFi provides state.isWoodHiFi) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val unit = maxWidth / REF_WIDTH
         val boxHeight = maxHeight
@@ -372,6 +419,7 @@ internal fun WoodDashboard(
             }
         }
     }
+    }
 
     val sheet = openSheet
     if (sheet != null) {
@@ -432,7 +480,7 @@ private fun RefScope.WoodHeader(state: DashboardUiState, isOnline: Boolean) {
     }
     val amps = resolveDisplayedAmperes(telemetry, state.selectedAmperes)
     Area(996f, 48f, 1090f, 110f, Alignment.Center) {
-        Engraved("${amps}A", 32f, SandBright, FontWeight.Medium, 0.04f, onDark = true)
+        Engraved("${amps}A", 32f, SandBright, FontWeight.Medium, 0.04f, onDark = true, mono = true)
     }
 }
 
@@ -440,6 +488,28 @@ private fun RefScope.WoodHeader(state: DashboardUiState, isOnline: Boolean) {
 private fun RefScope.WoodVoltage(state: DashboardUiState, isOnline: Boolean, voltage: Int?) {
     Area(66f, 165f, 1040f, 212f) {
         Engraved(stringResource(R.string.dash_line_voltage).uppercase(), 34f, SandText, onDark = true)
+    }
+    if (WOOD_HIFI) {
+        Area(72f, 222f, 1048f, 348f) { SmokedGlass(Modifier.fillMaxSize()) }
+        val value = if (isOnline && voltage != null) "$voltage" else "---"
+        Area(108f, 228f, 640f, 342f) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                OledText(value, 92f)
+                Box(modifier = Modifier.padding(start = px(12f), bottom = px(12f))) { OledText("V", 44f) }
+            }
+        }
+        if (state.activeSession != null) {
+            Area(560f, 250f, 1022f, 330f, Alignment.CenterEnd) {
+                val delivered = state.totalDeliveredKwh
+                val text = if (state.activeTargetKwh > 0.0) {
+                    "%.2f / %.0f %s".format(Locale.US, delivered, state.activeTargetKwh, stringResource(R.string.unit_kwh))
+                } else {
+                    "+%.2f %s".format(Locale.US, delivered, stringResource(R.string.unit_kwh))
+                }
+                OledText(text, 40f)
+            }
+        }
+        return
     }
     Area(102f, 232f, 600f, 330f) {
         Row(verticalAlignment = Alignment.Bottom) {
@@ -469,7 +539,7 @@ private fun RefScope.WoodCurrent(state: DashboardUiState, knobFace: ImageBitmap,
         Engraved(stringResource(R.string.dash_charge_current).uppercase(), 34f, BrownText)
     }
     Area(868f, 430f, 1048f, 490f, Alignment.Center) {
-        Engraved(stringResource(R.string.kw_value, "%.2f".format(Locale.US, state.telemetry?.powerKw ?: 0.0)), 32f, SandBright, FontWeight.Medium, 0.03f, onDark = true)
+        Engraved(stringResource(R.string.kw_value, "%.2f".format(Locale.US, state.telemetry?.powerKw ?: 0.0)), 32f, SandBright, FontWeight.Medium, 0.03f, onDark = true, mono = true)
     }
     val labels = listOf(
         6 to Offset(278f, 840f),
@@ -487,10 +557,12 @@ private fun RefScope.WoodCurrent(state: DashboardUiState, knobFace: ImageBitmap,
                     onSelect(amps)
                 }
         ) {
-            Engraved("${amps}A", 50f, BrownText, if (amps == state.selectedAmperes) FontWeight.Bold else FontWeight.Medium, 0.02f)
+            Engraved("${amps}A", 50f, BrownText, if (amps == state.selectedAmperes) FontWeight.Bold else FontWeight.Medium, 0.02f, mono = true)
         }
     }
     // The carved face from the design turns over its own picture, centred on the same spot.
+    val walnut = ImageBitmap.imageResource(R.drawable.wood_walnut_dark)
+    val hiFi = WOOD_HIFI
     val r = 158f
     Area(561.5f - r, 760f - r, 561.5f + r, 760f + r) {
         KnobDial(
@@ -498,9 +570,13 @@ private fun RefScope.WoodCurrent(state: DashboardUiState, knobFace: ImageBitmap,
             onAmperageSelected = onSelect,
             modifier = Modifier.fillMaxSize()
         ) { angle ->
-            val d = size.width.toInt()
-            rotate(angle, Offset(size.width / 2f, size.height / 2f)) {
-                drawImage(knobFace, dstOffset = IntOffset.Zero, dstSize = IntSize(d, d))
+            if (hiFi) {
+                drawBrassKnob(angle, walnut)
+            } else {
+                val d = size.width.toInt()
+                rotate(angle, Offset(size.width / 2f, size.height / 2f)) {
+                    drawImage(knobFace, dstOffset = IntOffset.Zero, dstSize = IntSize(d, d))
+                }
             }
         }
     }
@@ -575,6 +651,10 @@ private fun RefScope.WoodActionButton(state: DashboardUiState, onStart: () -> Un
         state.isDurationTimerEnabled -> stringResource(R.string.start_charge_hours, state.targetDurationHours)
         else -> stringResource(R.string.start_charge)
     }
+    if (WOOD_HIFI) {
+        BronzePlate(text, isCharging, busy) { if (isCharging) onStop() else onStart() }
+        return
+    }
     Area(
         34f, 1580f, 1084f, 1700f, Alignment.Center,
         modifier = Modifier
@@ -586,5 +666,171 @@ private fun RefScope.WoodActionButton(state: DashboardUiState, onStart: () -> Un
             .clickable(enabled = !busy) { if (isCharging) onStop() else onStart() }
     ) {
         Engraved(text.uppercase(), 44f, if (isCharging) Color(0xFFFBE3CF) else Color(0xFF3A1C0A), FontWeight.Medium, 0.08f)
+    }
+}
+
+/** Amber OLED digits glowing behind the glass. */
+@Composable
+private fun RefScope.OledText(text: String, sizePx: Float) {
+    Text(
+        text = text,
+        style = TextStyle(
+            fontFamily = JetMono,
+            fontWeight = FontWeight.Medium,
+            fontSize = sp(sizePx),
+            color = OledAmber,
+            shadow = Shadow(color = Color(0xB0FF8A1E), blurRadius = with(LocalDensity.current) { px(sizePx * 0.28f).toPx() })
+        ),
+        maxLines = 1
+    )
+}
+
+/** A pane of smoked glass set flush into the walnut, with a soft reflection across it. */
+@Composable
+private fun RefScope.SmokedGlass(modifier: Modifier) {
+    val corner = px(18f)
+    Canvas(modifier = modifier) {
+        val c = CornerRadius(corner.toPx(), corner.toPx())
+        drawRoundRect(color = Color(0xFF0A0604), cornerRadius = c)
+        drawRoundRect(
+            brush = Brush.verticalGradient(listOf(Color(0xFF1E140D), Color(0xFF0D0805), Color(0xFF140C07))),
+            topLeft = Offset(2f, 2f),
+            size = Size(size.width - 4f, size.height - 4f),
+            cornerRadius = c
+        )
+        // Reflection: a faint diagonal sheen over the upper left.
+        val clip = Path().apply {
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, 0f, size.width, size.height, c))
+        }
+        clipPath(clip) {
+            drawRect(
+                Brush.linearGradient(
+                    0f to Color(0x1AFFFFFF),
+                    0.35f to Color(0x08FFFFFF),
+                    0.36f to Color(0x00FFFFFF),
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width * 0.6f, size.height * 1.4f)
+                )
+            )
+            drawRect(Brush.verticalGradient(listOf(Color(0x66000000), Color.Transparent), endY = size.height * 0.25f))
+        }
+        // Polished glass edge, lit along the bottom.
+        drawRoundRect(color = Color(0x55FFE0B8), cornerRadius = c, style = Stroke(width = 1.2f), topLeft = Offset(0f, 1.5f))
+        drawRoundRect(color = Color(0xFF050302), cornerRadius = c, style = Stroke(width = 1.5f))
+    }
+}
+
+/** Milled walnut knob in a brass ring, with a glowing light guide as its pointer. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBrassKnob(angle: Float, walnut: ImageBitmap) {
+    val r = size.minDimension / 2f
+    val c = Offset(size.width / 2f, size.height / 2f)
+    // Shadow the knob drops into its socket.
+    drawCircle(
+        Brush.radialGradient(listOf(Color(0xB0000000), Color.Transparent), center = c + Offset(0f, r * 0.06f), radius = r * 1.04f),
+        radius = r * 1.04f, center = c + Offset(0f, r * 0.06f)
+    )
+    // Brass ring.
+    drawCircle(
+        Brush.sweepGradient(
+            listOf(Color(0xFFB8893B), Color(0xFFF4DA94), Color(0xFF8A6421), Color(0xFFD9B05A), Color(0xFF7A5519), Color(0xFFEFCF80), Color(0xFFB8893B)),
+            center = c
+        ),
+        radius = r * 0.97f, center = c
+    )
+    drawCircle(Color(0x80000000), radius = r * 0.97f, center = c, style = Stroke(width = r * 0.012f))
+    // Walnut face, turning with the knob.
+    val face = r * 0.86f
+    // Plain photo walnut, enlarged so the grain reads at knob size.
+    rotate(angle, c) {
+        clipPath(Path().apply { addOval(androidx.compose.ui.geometry.Rect(c, face)) }) {
+            val crop = (walnut.width * 0.55f).toInt()
+            drawImage(
+                walnut,
+                srcOffset = IntOffset((walnut.width - crop) / 2, (walnut.height - crop) / 2),
+                srcSize = IntSize(crop, crop),
+                dstOffset = IntOffset((c.x - face).toInt(), (c.y - face).toInt()),
+                dstSize = IntSize((face * 2).toInt(), (face * 2).toInt()),
+                filterQuality = FilterQuality.High
+            )
+        }
+    }
+    drawCircle(Color(0x50140A04), radius = face, center = c)
+    // Milled rings and light from the top left.
+    for (i in 1..6) drawCircle(Color(0x10FFE8C8), radius = face * (0.3f + i * 0.1f), center = c, style = Stroke(width = 1f))
+    drawCircle(
+        Brush.linearGradient(listOf(Color(0x30FFE8C8), Color.Transparent, Color(0x60000000)), start = c - Offset(face, face), end = c + Offset(face, face)),
+        radius = face, center = c
+    )
+    drawCircle(Color(0xA0000000), radius = face, center = c, style = Stroke(width = r * 0.025f))
+    // Light guide: an amber line from the hub to the rim, glowing.
+    rotate(angle, c) {
+        val start = c - Offset(0f, face * 0.32f)
+        val end = c - Offset(0f, face * 0.86f)
+        drawLine(Color(0x1A000000), start, end, strokeWidth = r * 0.11f, cap = StrokeCap.Round)
+        drawLine(Color(0x55FF9A2E), start, end, strokeWidth = r * 0.085f, cap = StrokeCap.Round)
+        drawLine(Color(0xFFFFC46B), start, end, strokeWidth = r * 0.035f, cap = StrokeCap.Round)
+    }
+}
+
+/** Brushed bronze start plate that gives under the finger. */
+@Composable
+private fun RefScope.BronzePlate(text: String, isCharging: Boolean, busy: Boolean, onClick: () -> Unit) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val press by animateFloatAsState(if (pressed) 1f else 0f, label = "press")
+    val strokes = remember {
+        val rng = java.util.Random(3)
+        List(140) { rng.nextFloat() to (rng.nextFloat() * 0.10f) }
+    }
+    Area(
+        28f, 1576f, 1088f, 1696f, Alignment.Center,
+        modifier = Modifier
+            .scale(1f - press * 0.015f)
+            .clickable(interactionSource = interaction, indication = null, enabled = !busy) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                onClick()
+            }
+    ) {
+        val corner = px(30f)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cr = CornerRadius(corner.toPx(), corner.toPx())
+            val clip = Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, 0f, size.width, size.height, cr)) }
+            clipPath(clip) {
+                drawRect(
+                    Brush.verticalGradient(
+                        if (isCharging) listOf(Color(0xFFB0503A), Color(0xFF8E3524), Color(0xFF6E2618))
+                        else listOf(Color(0xFFC08A52), Color(0xFFA06A35), Color(0xFF7C4E24))
+                    )
+                )
+                // Brushing: fine horizontal strokes of lighter and darker metal.
+                strokes.forEachIndexed { i, (y, a) ->
+                    val yy = y * size.height
+                    drawLine(
+                        if (i % 2 == 0) Color.White.copy(alpha = a) else Color.Black.copy(alpha = a),
+                        Offset(0f, yy), Offset(size.width, yy), strokeWidth = 1f
+                    )
+                }
+                drawRect(Brush.horizontalGradient(listOf(Color(0x30000000), Color(0x18FFF0D8), Color(0x30000000))))
+                if (press > 0f) drawRect(Color.Black.copy(alpha = 0.18f * press))
+            }
+            // Chamfer: lit top edge, dark lower edge.
+            drawRoundRect(
+                Brush.verticalGradient(0f to Color(0xC0FFE6C0), 0.12f to Color(0x00FFE6C0), 0.85f to Color(0x00000000), 1f to Color(0xB0200A00)),
+                cornerRadius = cr, style = Stroke(width = 3.dp.toPx())
+            )
+            drawRoundRect(Color(0xA0200A00), cornerRadius = cr, style = Stroke(width = 1f))
+        }
+        Text(
+            text = text.uppercase(),
+            style = TextStyle(
+                fontFamily = Manrope,
+                fontWeight = FontWeight.Bold,
+                fontSize = sp(40f),
+                letterSpacing = sp(40f * 0.12f),
+                color = if (isCharging) Color(0xFFFBE3CF) else Color(0xFF2A1405)
+            ),
+            maxLines = 1
+        )
     }
 }

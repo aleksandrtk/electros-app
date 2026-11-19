@@ -47,6 +47,15 @@ class SettingsViewModel(
         settingsStore?.setWoodTheme(enabled)
     }
 
+    val isWoodHiFi: StateFlow<Boolean> = settingsStore?.settingsFlow
+        ?.map { it.isWoodHiFi }
+        ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), settingsStore.currentSettings().isWoodHiFi)
+        ?: MutableStateFlow(false)
+
+    fun setAppearance(wood: Boolean, hiFi: Boolean) {
+        settingsStore?.setAppearance(wood, hiFi)
+    }
+
     fun setAutoResumeAfterOutage(enabled: Boolean) {
         settingsStore?.setAutoResumeAfterOutage(enabled)
     }
