@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import ua.org.electros.app.R
 import ua.org.electros.app.ui.asString
 import java.util.Locale
+import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.FilterQuality
 
 /**
  * The wooden look of the main screen. The whole panel is one painted image (the reference design
@@ -98,9 +100,31 @@ private val BrownSoft = Color(0xFF5A3A1E)
 private val OffDot = Color(0xFFC2694C)
 private val OnDot = Color(0xFF6E9A3A)
 
+/**
+ * Spreads the design over taller screens. Every band of the panel is stretched by the same
+ * factor except the one holding the knob, which stays round.
+ */
+private class YMap(extra: Float) {
+    private val k = 1f + extra / (REF_PANEL_HEIGHT - (KNOB_BAND_END - KNOB_BAND_START))
+    operator fun invoke(y: Float): Float = when {
+        y <= KNOB_BAND_START -> y * k
+        y <= KNOB_BAND_END -> KNOB_BAND_START * k + (y - KNOB_BAND_START)
+        else -> KNOB_BAND_START * k + (KNOB_BAND_END - KNOB_BAND_START) + (y - KNOB_BAND_END) * k
+    }
+    val height: Float get() = this(REF_PANEL_HEIGHT)
+    val bands = listOf(0f to KNOB_BAND_START, KNOB_BAND_START to KNOB_BAND_END, KNOB_BAND_END to REF_PANEL_HEIGHT)
+}
+
+/** The knob and its socket, kept at the design's proportions. */
+private const val KNOB_BAND_START = 565f
+private const val KNOB_BAND_END = 950f
+/** At most this share of the design's height is added, so tablets don't get stretched boards. */
+private const val MAX_STRETCH = 0.3f
+
 /** Places content inside a rectangle of the reference image. */
-private class RefScope(val unit: Dp, val boxScope: BoxScope) {
+private class RefScope(val unit: Dp, val map: YMap) {
     fun px(v: Float): Dp = unit * v
+    fun py(v: Float): Dp = unit * map(v)
 }
 
 @Composable
@@ -112,9 +136,9 @@ private fun RefScope.Area(
 ) {
     Box(
         modifier = Modifier
-            .offset(x = px(x0), y = px(y0))
+            .offset(x = px(x0), y = py(y0))
             .width(px(x1 - x0))
-            .height(px(y1 - y0))
+            .height(py(y1) - py(y0))
             .then(modifier),
         contentAlignment = alignment,
         content = content
@@ -123,28 +147,6 @@ private fun RefScope.Area(
 
 @Composable
 private fun RefScope.sp(refPx: Float): TextUnit = with(LocalDensity.current) { px(refPx).toSp() }
-
-@Composable
-private fun RefScope.Label(
-    text: String,
-    sizePx: Float,
-    color: Color,
-    weight: FontWeight = FontWeight.Medium,
-    spacing: Float = 0.06f
-) {
-    Text(
-        text = text,
-        style = TextStyle(
-            fontFamily = WoodFont,
-            fontWeight = weight,
-            fontSize = sp(sizePx),
-            letterSpacing = sp(sizePx * spacing),
-            color = color
-        ),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
-}
 
 /**
  * Lettering cut into the board: the top edge of each glyph falls into shade and its lower edge
@@ -156,7 +158,8 @@ private fun RefScope.Engraved(
     sizePx: Float,
     color: Color,
     weight: FontWeight = FontWeight.Medium,
-    spacing: Float = 0.06f
+    spacing: Float = 0.06f,
+    onDark: Boolean = false
 ) {
     val base = TextStyle(
         fontFamily = WoodFont,
@@ -169,7 +172,7 @@ private fun RefScope.Engraved(
         // Lit lower wall of the cut.
         Text(
             text = text,
-            style = base.copy(color = Color(0x66FFE9C8)),
+            style = base.copy(color = if (onDark) Color(0x38FFE2B8) else Color(0x66FFE9C8)),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.offset(y = edge)
@@ -177,7 +180,7 @@ private fun RefScope.Engraved(
         // Shaded upper wall.
         Text(
             text = text,
-            style = base.copy(color = Color(0xA0140800)),
+            style = base.copy(color = if (onDark) Color(0xE0000000) else Color(0xA0140800)),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.offset(y = -edge * 0.7f)
@@ -278,8 +281,14 @@ internal fun WoodDashboard(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val unit = maxWidth / REF_WIDTH
-        val panelHeight = unit * REF_PANEL_HEIGHT
         val boxHeight = maxHeight
+        // Warnings need the free space under the button; otherwise the boards grow to fill it.
+        val hasWarnings = state.errorMessage != null || state.isStopPending ||
+            (state.activeSession != null && state.isOutageActive) || (telemetry != null && !isOnline)
+        val extra = if (hasWarnings) 0f else
+            ((boxHeight - unit * REF_PANEL_HEIGHT) / unit).coerceIn(0f, REF_PANEL_HEIGHT * MAX_STRETCH)
+        val map = remember(extra) { YMap(extra) }
+        val panelHeight = unit * map.height
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -298,13 +307,22 @@ internal fun WoodDashboard(
                 .verticalScroll(rememberScrollState())
         ) {
             Box(modifier = Modifier.fillMaxWidth().height(panelHeight)) {
-                Image(
-                    bitmap = panel,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier.fillMaxSize()
-                )
-                val ref = RefScope(unit, this)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val scale = size.width / REF_WIDTH
+                    map.bands.forEach { (from, to) ->
+                        val top = (map(from) * scale).roundToInt()
+                        val bottom = (map(to) * scale).roundToInt()
+                        drawImage(
+                            panel,
+                            srcOffset = IntOffset(0, from.toInt()),
+                            srcSize = IntSize(panel.width, (to - from).toInt()),
+                            dstOffset = IntOffset(0, top),
+                            dstSize = IntSize(size.width.roundToInt(), bottom - top),
+                            filterQuality = FilterQuality.High
+                        )
+                    }
+                }
+                val ref = RefScope(unit, map)
                 with(ref) {
                     WoodHeader(state, isOnline)
                     WoodVoltage(state, isOnline, voltage)
@@ -410,30 +428,26 @@ private fun RefScope.WoodHeader(state: DashboardUiState, isOnline: Boolean) {
         )
     }
     Area(72f, 50f, 980f, 106f) {
-        Engraved(formatHeaderStatus(telemetry?.statusText.orEmpty(), isOnline).asString().uppercase(), 36f, SandText)
+        Engraved(formatHeaderStatus(telemetry?.statusText.orEmpty(), isOnline).asString().uppercase(), 36f, SandText, onDark = true)
     }
     val amps = resolveDisplayedAmperes(telemetry, state.selectedAmperes)
     Area(996f, 48f, 1090f, 110f, Alignment.Center) {
-        Label("${amps}A", 32f, SandBright, FontWeight.Medium, 0.04f)
+        Engraved("${amps}A", 32f, SandBright, FontWeight.Medium, 0.04f, onDark = true)
     }
 }
 
 @Composable
 private fun RefScope.WoodVoltage(state: DashboardUiState, isOnline: Boolean, voltage: Int?) {
     Area(66f, 165f, 1040f, 212f) {
-        Engraved(stringResource(R.string.dash_line_voltage).uppercase(), 34f, SandText)
+        Engraved(stringResource(R.string.dash_line_voltage).uppercase(), 34f, SandText, onDark = true)
     }
     Area(102f, 232f, 600f, 330f) {
-        Text(
-            text = if (isOnline && voltage != null) "$voltage" else "---",
-            style = TextStyle(
-                fontFamily = WoodFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = sp(96f),
-                letterSpacing = sp(3f),
-                color = SandBright
-            )
-        )
+        Row(verticalAlignment = Alignment.Bottom) {
+            Engraved(if (isOnline && voltage != null) "$voltage" else "---", 96f, SandBright, FontWeight.Bold, 0.03f, onDark = true)
+            Box(modifier = Modifier.padding(start = px(10f), bottom = px(14f))) {
+                Engraved("V", 50f, SandBright, FontWeight.Bold, 0f, onDark = true)
+            }
+        }
     }
     Area(560f, 250f, 1022f, 330f, Alignment.CenterEnd) {
         if (state.activeSession != null) {
@@ -443,9 +457,7 @@ private fun RefScope.WoodVoltage(state: DashboardUiState, isOnline: Boolean, vol
             } else {
                 "+%.2f %s".format(Locale.US, delivered, stringResource(R.string.unit_kwh))
             }
-            Label(text, 46f, SandBright, FontWeight.Bold, 0.02f)
-        } else {
-            Label(stringResource(R.string.dash_unit_volts_full), 36f, SandText, FontWeight.Medium, 0.04f)
+            Engraved(text, 46f, SandBright, FontWeight.Bold, 0.02f, onDark = true)
         }
     }
 }
@@ -457,7 +469,7 @@ private fun RefScope.WoodCurrent(state: DashboardUiState, knobFace: ImageBitmap,
         Engraved(stringResource(R.string.dash_charge_current).uppercase(), 34f, BrownText)
     }
     Area(868f, 430f, 1048f, 490f, Alignment.Center) {
-        Label(stringResource(R.string.kw_value, "%.2f".format(Locale.US, state.telemetry?.powerKw ?: 0.0)), 32f, SandBright, FontWeight.Medium, 0.03f)
+        Engraved(stringResource(R.string.kw_value, "%.2f".format(Locale.US, state.telemetry?.powerKw ?: 0.0)), 32f, SandBright, FontWeight.Medium, 0.03f, onDark = true)
     }
     val labels = listOf(
         6 to Offset(278f, 840f),
@@ -513,7 +525,7 @@ private fun RefScope.WoodAutoCurrent(state: DashboardUiState, isOnline: Boolean,
         Engraved(stringResource(R.string.dlb_title).uppercase(), 36f, BrownText)
     }
     Area(578f, 1042f, 890f, 1104f, Alignment.Center) {
-        Label((status ?: stringResource(R.string.dlb_off_short)).uppercase(), 34f, SandBright, FontWeight.Medium, 0.03f)
+        Engraved((status ?: stringResource(R.string.dlb_off_short)).uppercase(), 34f, SandBright, FontWeight.Medium, 0.03f, onDark = true)
     }
     Area(918f, 1038f, 1052f, 1108f, Alignment.Center) {
         WoodToggle(enabled, onToggle, Modifier.fillMaxWidth().height(px(60f)))
@@ -527,7 +539,7 @@ private fun RefScope.WoodAutoCurrent(state: DashboardUiState, isOnline: Boolean,
             stringResource(R.string.dlb_hint_off, state.selectedAmperes)
         }
         if (enabled && state.selectedAmperes > max) {
-            Label(hint, 32f, Color(0xFF8F3E00), FontWeight.Medium, 0f)
+            Engraved(hint, 32f, Color(0xFF8F3E00), FontWeight.Medium, 0f)
         } else {
             Engraved(hint, 32f, BrownSoft, FontWeight.Normal, 0f)
         }
@@ -542,8 +554,8 @@ private fun RefScope.WoodRow(top: Float, title: String, isOn: Boolean, onClick: 
     }
     Area(112f, top + 24f, 1060f, top + 76f) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Engraved(title.uppercase(), 38f, SandText)
-            Label("  ▾", 24f, SandText.copy(alpha = 0.6f), FontWeight.Normal, 0f)
+            Engraved(title.uppercase(), 38f, SandText, onDark = true)
+            Engraved("  ▾", 24f, SandText.copy(alpha = 0.6f), FontWeight.Normal, 0f, onDark = true)
         }
     }
 }

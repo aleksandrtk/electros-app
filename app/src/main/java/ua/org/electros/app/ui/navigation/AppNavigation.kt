@@ -39,6 +39,22 @@ enum class NavTab(@androidx.annotation.StringRes val titleRes: Int, val iconRes:
 
 @Composable
 fun AppNavigation(application: ElectrosApplication) {
+    val isWood by remember(application) {
+        application.settingsStore.settingsFlow.map { it.isWoodTheme }
+    }.collectAsState(initial = application.settingsStore.currentSettings().isWoodTheme)
+    // One composition shape for both looks, so switching keeps the open tab and other state.
+    MaterialTheme(
+        colorScheme = if (isWood) WoodColorScheme else MaterialTheme.colorScheme,
+        typography = MaterialTheme.typography
+    ) {
+        CompositionLocalProvider(LocalScreenPalette provides if (isWood) WoodScreenPalette else ClassicScreenPalette) {
+            AppContent(application, isWood)
+        }
+    }
+}
+
+@Composable
+private fun AppContent(application: ElectrosApplication, isWood: Boolean) {
     val factory = remember(application) { AppViewModelFactory(application) }
     val otaViewModel: OtaViewModel = viewModel(factory = factory)
     val showUpdateDialog by otaViewModel.showUpdateDialog.collectAsState()
@@ -75,11 +91,8 @@ fun AppNavigation(application: ElectrosApplication) {
         val historyViewModel: HistoryViewModel = viewModel(factory = factory)
         val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
 
-        val isWood by remember(application) {
-            application.settingsStore.settingsFlow.map { it.isWoodTheme }
-        }.collectAsState(initial = application.settingsStore.currentSettings().isWoodTheme)
         Scaffold(
-            containerColor = StudioChassisDark,
+            containerColor = if (isWood) WoodScreenPalette.surface else StudioChassisDark,
             bottomBar = {
                 NavigationBar(
                     containerColor = if (isWood) Color.Transparent else StudioPanelDark,
@@ -95,10 +108,10 @@ fun AppNavigation(application: ElectrosApplication) {
                                 Icon(
                                     painter = painterResource(id = tab.iconRes),
                                     contentDescription = stringResource(tab.titleRes),
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(if (isWood) 32.dp else 26.dp)
                                 )
                             },
-                            label = { Text(text = stringResource(tab.titleRes), style = MaterialTheme.typography.labelSmall) },
+                            label = { Text(text = stringResource(tab.titleRes), style = if (isWood) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall) },
                             colors = if (isWood) {
                                 NavigationBarItemDefaults.colors(
                                     selectedIconColor = Color(0xFFF4A947),

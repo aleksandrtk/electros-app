@@ -99,7 +99,7 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(SurfaceDark)
+            .screenBackground()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -111,7 +111,7 @@ fun SettingsScreen(
         )
 
         // Station Credentials Card
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -245,7 +245,7 @@ fun SettingsScreen(
 
         // Charging behaviour Card
         val autoResume by viewModel.autoResumeAfterOutage.collectAsState()
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -283,7 +283,7 @@ fun SettingsScreen(
 
         // Appearance Card
         val isWood by viewModel.isWoodTheme.collectAsState()
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -323,7 +323,7 @@ fun SettingsScreen(
         LanguageCard()
 
         // Background Monitoring / Doze Card
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -399,7 +399,7 @@ fun SettingsScreen(
         DiagnosticLogCard()
 
         // App Updates Card
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -455,7 +455,7 @@ private object SerialMaskVisualTransformation : VisualTransformation {
 private fun LanguageCard() {
     val context = LocalContext.current
     var selected by remember { mutableStateOf(AppLanguage.current(context)) }
-    Card(
+    ThemedCard(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
         modifier = Modifier.fillMaxWidth()
@@ -520,7 +520,7 @@ private fun DiagnosticLogCard() {
         }
     }
 
-    Card(
+    ThemedCard(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
         modifier = Modifier.fillMaxWidth()

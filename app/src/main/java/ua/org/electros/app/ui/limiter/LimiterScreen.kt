@@ -32,7 +32,7 @@ fun LimiterScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(SurfaceDark)
+            .screenBackground()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -44,7 +44,7 @@ fun LimiterScreen(
         )
 
         // Energy Quota Card
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -168,7 +168,7 @@ fun LimiterScreen(
         }
 
         // Charge Duration Timer Card (1-12 hours with Outage Survival)
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -293,7 +293,7 @@ fun LimiterScreen(
         }
 
         // Night Tariff Scheduler Card
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()
@@ -408,7 +408,7 @@ fun LimiterScreen(
         }
 
         // Dynamic Load Balancing (DLB) Card
-        Card(
+        ThemedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
             modifier = Modifier.fillMaxWidth()

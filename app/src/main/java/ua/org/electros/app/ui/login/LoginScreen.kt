@@ -34,7 +34,7 @@ fun LoginScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(SurfaceDark)
+            .screenBackground()
             .safeDrawingPadding()
             .imePadding()
             .padding(24.dp),
@@ -67,7 +67,7 @@ fun LoginScreen(
                 modifier = Modifier.padding(horizontal = 8.dp)
             )
 
-            Card(
+            ThemedCard(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
                 modifier = Modifier.fillMaxWidth()

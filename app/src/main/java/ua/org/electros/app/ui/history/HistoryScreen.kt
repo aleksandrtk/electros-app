@@ -72,7 +72,7 @@ fun HistoryScreen(
         state = listState,
         modifier = modifier
             .fillMaxSize()
-            .background(SurfaceDark),
+            .screenBackground(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -218,7 +218,7 @@ private fun SummaryCard(
     onTariffClick: () -> Unit,
     onBarClick: (Int) -> Unit
 ) {
-    Card(
+    ThemedCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
         modifier = Modifier.fillMaxWidth()
@@ -346,7 +346,7 @@ private fun SessionCard(session: HistorySessionItem) {
     val start = TIME_FORMATTER.format(Instant.ofEpochMilli(session.startedAt).atZone(zone))
     val end = session.endedAt?.let { TIME_FORMATTER.format(Instant.ofEpochMilli(it).atZone(zone)) } ?: stringResource(R.string.history_now)
 
-    Card(
+    ThemedCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
         border = if (session.isActive) {
@@ -419,7 +419,7 @@ private fun SessionCard(session: HistorySessionItem) {
 
 @Composable
 private fun MonthRow(row: HistoryMonthRow, onClick: () -> Unit) {
-    Card(
+    ThemedCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceContainerDark),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
