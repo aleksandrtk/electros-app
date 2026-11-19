@@ -16,8 +16,8 @@ android {
         applicationId = "ua.org.electros.app"
         minSdk = 37
         targetSdk = 37
-        versionCode = 2121
-        versionName = "2.12.1"
+        versionCode = 2130
+        versionName = "2.13.0"
     }
 
     val releaseKeystorePath = System.getenv("ELECTROS_KEYSTORE")?.takeIf { it.isNotBlank() }
