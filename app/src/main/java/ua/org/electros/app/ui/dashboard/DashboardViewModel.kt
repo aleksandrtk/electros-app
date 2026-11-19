@@ -248,11 +248,13 @@ class DashboardViewModel(
             if (isInitialFetch || !monitorRunning) {
                 val fresh = repository.fetchLatestTelemetry(isMonitorServiceRunning = monitorRunning).getOrNull()
                 isInitialFetch = false
+                // A charge the station started by itself gets a session; the screen then starts the monitor.
+                if (fresh != null && !monitorRunning) repository.adoptUntrackedCharge(fresh)
                 if (fresh?.isOnline == true && !monitorRunning && settingsStore.currentSettings().isSchedulePending) {
                     repository.syncScheduleToStation()
                 }
             }
-            delay(60_000L)
+            delay(if (uiState.value.activeSession == null && uiState.value.telemetry?.isOnline == true) 20_000L else 60_000L)
         }
     }
 

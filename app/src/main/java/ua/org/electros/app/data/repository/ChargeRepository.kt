@@ -134,9 +134,49 @@ class ChargeRepository(
             if (!isMonitorServiceRunning && (!data.isOnline || !data.isChargingActive)) {
                 reconcileInactiveSessionOutsideMonitor(data)
             }
+            if (data.isOnline && !data.isChargingActive) rememberIdleCounter(data.consumedEnergyKwh)
             _telemetryState.value = data
         }
         return result
+    }
+
+    private suspend fun rememberIdleCounter(counterKwh: Double) {
+        val store = settingsStore ?: return
+        if (kotlin.math.abs(store.awaitSettings().lastIdleCounterKwh - counterKwh) > 0.0005) {
+            store.setLastIdleCounterKwh(counterKwh)
+        }
+    }
+
+    /**
+     * Starts tracking a charge the station is running without an app session, for example one the
+     * station started by itself when power came back. The session has no limits; it counts from the
+     * station counter last seen while idle, or from 0 when the counter has been reset since (the
+     * station counter restarts at 0 on power-up).
+     */
+    suspend fun adoptUntrackedCharge(telemetry: TelemetryData): String? {
+        if (!telemetry.isOnline || !telemetry.isChargingActive) return null
+        if (chargeDao.getActiveSession() != null) return null
+        val lastIdle = settingsStore?.awaitSettings()?.lastIdleCounterKwh ?: -1.0
+        val anchor = if (lastIdle >= 0.0 && lastIdle <= telemetry.consumedEnergyKwh) lastIdle else 0.0
+        val now = clockMs()
+        val session = ChargeSessionEntity(
+            id = UUID.randomUUID().toString(),
+            targetKwh = 0.0,
+            amperageSetting = telemetry.selectedCurrentAmperes,
+            status = SessionStatus.CHARGING,
+            startedAt = now,
+            targetDurationMinutes = 0,
+            accumulatedChargingMs = 0L,
+            lastTickAt = now
+        )
+        chargeDao.insertSession(session)
+        chargeDao.startNewSlice(session.id, anchor, now)
+        DiagLog.i(
+            TAG,
+            "Charge started outside the app, tracking it as ${session.id.take(8)} from counter ${anchor.kwh()}: " +
+                telemetry.toLogString()
+        )
+        return session.id
     }
 
     private suspend fun reconcileInactiveSessionOutsideMonitor(data: TelemetryData) {

@@ -428,6 +428,38 @@ class ChargeRepositoryStopTest {
         }
     }
 
+    @Test
+    fun adoptUntrackedCharge_countsFromTheLastIdleCounterOrFromZeroAfterAReset() = runTest {
+        val (store, scope) = settingsStore()
+        try {
+            store.awaitSettings()
+            val dao = FakeChargeDao()
+            val idleRepo = ChargeRepository(scraper = scraperReturning(CONNECTED_IDLE_HTML), chargeDao = dao, settingsStore = store)
+            val idle = idleRepo.fetchLatestTelemetry().getOrThrow()
+            assertThat(store.awaitSettings().lastIdleCounterKwh).isWithin(0.001).of(idle.consumedEnergyKwh)
+            store.setLastIdleCounterKwh(10.0)
+
+            val repo = ChargeRepository(scraper = scraperReturning(CHARGING_HTML), chargeDao = dao, settingsStore = store)
+            val charging = repo.fetchLatestTelemetry().getOrThrow()
+            val id = repo.adoptUntrackedCharge(charging)!!
+            val session = dao.getSessionById(id)!!
+            assertThat(session.targetKwh).isEqualTo(0.0)
+            assertThat(session.targetDurationMinutes).isEqualTo(0)
+            assertThat(dao.getLatestSliceForSession(id)!!.stationCounterStartKwh).isWithin(0.001).of(10.0)
+
+            // A session already exists: nothing new.
+            assertThat(repo.adoptUntrackedCharge(charging)).isNull()
+
+            // The counter is below the last idle reading, so the station was reset: count from 0.
+            dao.updateSession(session.copy(status = SessionStatus.CANCELLED, completedAt = 2_000L))
+            store.setLastIdleCounterKwh(charging.consumedEnergyKwh + 5.0)
+            val id2 = repo.adoptUntrackedCharge(charging)!!
+            assertThat(dao.getLatestSliceForSession(id2)!!.stationCounterStartKwh).isEqualTo(0.0)
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun scraperReturning(telemetryHtml: String, posts: MutableList<String>): ElectrosWebScraper {
         val client = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->

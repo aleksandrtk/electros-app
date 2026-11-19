@@ -161,7 +161,8 @@ fun DashboardScreen(
             StudioClassicNixieCard(
                 voltage = telemetry?.voltageCurrent,
                 isOnline = telemetry?.isOnline ?: false,
-                isSessionActive = isChargingOrSessionActive,
+                // Without an app session there is nothing to count from, so no "+0.00".
+                isSessionActive = state.activeSession != null,
                 deliveredKwh = state.totalDeliveredKwh,
                 activeTargetKwh = state.activeTargetKwh
             )
@@ -393,7 +394,7 @@ private fun StudioClassicNixieCard(
                 )
                 if (isSessionActive) {
                     Text(
-                        text = stringResource(if (isOnline) R.string.dash_session_energy else R.string.dash_stored_energy),
+                        text = stringResource(R.string.dash_session_energy),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.6.sp
