@@ -2,12 +2,12 @@ package ua.org.electros.app.ui.navigation
 
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.flow.map
-import ua.org.electros.app.ui.dashboard.mapleBar
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -92,12 +92,15 @@ private fun AppContent(application: ElectrosApplication, isWood: Boolean) {
         val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
 
         Scaffold(
-            containerColor = if (isWood) WoodScreenPalette.surface else StudioChassisDark,
+            // In the wood looks the walnut runs under the floating dock as well.
+            containerColor = if (isWood) Color.Transparent else StudioChassisDark,
+            modifier = if (isWood) Modifier.screenBackground() else Modifier,
             bottomBar = {
-                NavigationBar(
-                    containerColor = if (isWood) Color.Transparent else StudioPanelDark,
-                    tonalElevation = 0.dp,
-                    modifier = if (isWood) Modifier.mapleBar() else Modifier
+                if (isWood) {
+                    WoodNavBar(current = currentTab, onSelect = { currentTab = it })
+                } else NavigationBar(
+                    containerColor = StudioPanelDark,
+                    tonalElevation = 0.dp
                 ) {
                     NavTab.entries.forEach { tab ->
                         val isSelected = currentTab == tab
@@ -108,51 +111,43 @@ private fun AppContent(application: ElectrosApplication, isWood: Boolean) {
                                 Icon(
                                     painter = painterResource(id = tab.iconRes),
                                     contentDescription = stringResource(tab.titleRes),
-                                    modifier = Modifier.size(if (isWood) 32.dp else 26.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             },
-                            label = { Text(text = stringResource(tab.titleRes), style = if (isWood) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall) },
-                            colors = if (isWood) {
-                                NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color(0xFFF4A947),
-                                    selectedTextColor = Color(0xFF9C3F00),
-                                    indicatorColor = Color(0xFF4A2D16),
-                                    unselectedIconColor = Color(0xFF4A2D16),
-                                    unselectedTextColor = Color(0xFF4A2D16)
-                                )
-                            } else {
-                                NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.Black,
-                                    selectedTextColor = AmberNixie,
-                                    indicatorColor = AmberNixie,
-                                    unselectedIconColor = TextSecondaryDark,
-                                    unselectedTextColor = TextSecondaryDark
-                                )
-                            }
+                            label = { Text(text = stringResource(tab.titleRes), style = MaterialTheme.typography.labelSmall) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.Black,
+                                selectedTextColor = AmberNixie,
+                                indicatorColor = AmberNixie,
+                                unselectedIconColor = TextSecondaryDark,
+                                unselectedTextColor = TextSecondaryDark
+                            )
                         )
                     }
                 }
             }
         ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding).then(if (isWood) Modifier.fadeIntoDock() else Modifier)) {
             when (currentTab) {
                 NavTab.CHARGING -> DashboardScreen(
                     viewModel = dashboardViewModel,
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier
                 )
                 NavTab.LIMITER -> LimiterScreen(
                     viewModel = limiterViewModel,
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier
                 )
                 NavTab.HISTORY -> HistoryScreen(
                     viewModel = historyViewModel,
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier
                 )
                 NavTab.SETTINGS -> SettingsScreen(
                     viewModel = settingsViewModel,
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier,
                     otaViewModel = otaViewModel,
                     onLogout = { isLoggedIn = false }
                 )
+            }
             }
         }
     }

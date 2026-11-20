@@ -202,6 +202,9 @@ fun DashboardScreen(
             StudioClassicDlbCard(
                 isDlbEnabled = state.isVoltageBalancingEnabled,
                 lowThreshold = state.voltageLowThreshold,
+                highThreshold = state.voltageHighThreshold,
+                isCharging = telemetry?.isChargingActive == true,
+                stationAmperes = telemetry?.selectedCurrentAmperes,
                 voltage = telemetry?.voltageCurrent,
                 isOnline = telemetry?.isOnline ?: false,
                 selectedAmperes = state.selectedAmperes,
@@ -984,6 +987,9 @@ private fun StudioClassicRotaryKnobCard(
 private fun StudioClassicDlbCard(
     isDlbEnabled: Boolean,
     lowThreshold: Int,
+    highThreshold: Int,
+    isCharging: Boolean,
+    stationAmperes: Int?,
     voltage: Int?,
     isOnline: Boolean,
     selectedAmperes: Int,
@@ -992,11 +998,22 @@ private fun StudioClassicDlbCard(
 ) {
     val view = LocalView.current
     // The switch alone shows on/off; the pill shows what auto-current is doing right now.
-    val (statusText, statusColor) = when {
-        !isDlbEnabled -> Pair(null, TextTertiaryDark)
-        !isOnline || voltage == null || voltage <= 0 -> Pair(stringResource(R.string.dlb_standby), TextSecondaryDark)
-        voltage < lowThreshold -> Pair(stringResource(R.string.dlb_derating, voltage), StudioAmberWarn)
-        else -> Pair(stringResource(R.string.dlb_normal, voltageMaxAmperage), StudioGreen)
+    val status = resolveAutoCurrentStatus(
+        enabled = isDlbEnabled,
+        isOnline = isOnline,
+        voltage = voltage,
+        isCharging = isCharging,
+        stationAmperes = stationAmperes,
+        lowThreshold = lowThreshold,
+        highThreshold = highThreshold,
+        maxAmperage = voltageMaxAmperage
+    )
+    val statusText = if (status == AutoCurrentStatus.Off) null else autoCurrentLabel(status)
+    val statusColor = when (status) {
+        AutoCurrentStatus.Off -> TextTertiaryDark
+        AutoCurrentStatus.NoData -> TextSecondaryDark
+        is AutoCurrentStatus.Low, is AutoCurrentStatus.Waiting -> StudioAmberWarn
+        AutoCurrentStatus.Ok -> StudioGreen
     }
     val borderColor = if (isDlbEnabled) statusColor.copy(alpha = 0.45f) else StudioPanelBorder
 
@@ -1067,23 +1084,6 @@ private fun StudioClassicDlbCard(
                 }
             }
 
-            if (isDlbEnabled && selectedAmperes > voltageMaxAmperage) {
-                Text(
-                    text = stringResource(R.string.dlb_max_warning, voltageMaxAmperage, selectedAmperes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = StudioAmberWarn
-                )
-            } else {
-                Text(
-                    text = if (isDlbEnabled) {
-                        stringResource(R.string.dlb_hint_on, lowThreshold, voltageMaxAmperage)
-                    } else {
-                        stringResource(R.string.dlb_hint_off, selectedAmperes)
-                    },
-                    fontSize = 10.sp,
-                    color = TextTertiaryDark
-                )
-            }
         }
     }
 }

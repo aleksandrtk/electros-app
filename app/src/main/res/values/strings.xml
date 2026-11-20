@@ -47,12 +47,10 @@
     <string name="dash_remaining">Remaining %1$s · %2$d%%</string>
     <string name="dash_charge_current">CHARGE CURRENT</string>
     <string name="dlb_title">AUTO-CURRENT</string>
-    <string name="dlb_standby">STANDBY</string>
-    <string name="dlb_derating">DERATING • %1$dV</string>
-    <string name="dlb_normal">NORMAL • UP TO %1$dA</string>
-    <string name="dlb_max_warning">Max auto-current: %1$dA (selected %2$dA)</string>
-    <string name="dlb_hint_on">Lowers current below %1$dV, raises it back up to %2$dA</string>
-    <string name="dlb_hint_off">Fixed current %1$dA • voltage-sag protection is off</string>
+    <string name="dlb_standby">NO DATA</string>
+    <string name="dlb_derating">LOW • %1$dV</string>
+    <string name="dlb_normal">VOLTAGE OK</string>
+    <string name="dlb_waiting">WAITING %1$dV</string>
     <string name="energy_limit_title">ENERGY LIMIT (KWH)</string>
     <string name="energy_limit_hint">AUTO-STOP QUOTA (NO AUTO-START)</string>
     <string name="off">OFF</string>
@@ -117,6 +115,7 @@
     <string name="limits_dlb_title">Adapt to grid voltage</string>
     <string name="limits_dlb_off">Off: the station runs at a fixed current without voltage-sag control.</string>
     <string name="limits_dlb_explain">⚡ If the voltage drops below %1$d V, the current is lowered step by step to 6 A. From %2$d V it goes back up to %3$d A, from %4$d V up to at most %5$d A.</string>
+    <string name="limits_dlb_statuses">On the main screen next to Auto-current: “Voltage OK” means the current is not reduced; “Low” means the voltage is below the threshold and the current has been lowered; “Waiting 200V” means the current stays reduced until the voltage reaches that value; “No data” means the station is not reporting voltage yet.</string>
     <string name="limits_dlb_low">Lower current below</string>
     <string name="limits_dlb_high">Restore current above</string>
     <string name="limits_below_v">&lt; %1$d V</string>

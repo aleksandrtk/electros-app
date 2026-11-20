@@ -404,16 +404,6 @@ fun Modifier.dashScreen(): Modifier {
     }
 }
 
-/** Bottom bar in the wood look: a maple board. */
-@Composable
-fun Modifier.mapleBar(): Modifier {
-    // The oak strip of the reference design, stretched to the bar.
-    val strip = ImageBitmap.imageResource(R.drawable.wood_navbar)
-    return this.drawBehind {
-        drawImage(strip, dstOffset = IntOffset.Zero, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
-    }
-}
-
 /** Screen background: the classic chassis color, or dark walnut planks. */
 @Composable
 fun Modifier.dashChassis(): Modifier {

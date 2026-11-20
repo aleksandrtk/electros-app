@@ -483,6 +483,13 @@ fun LimiterScreen(
                             )
                         }
 
+                        Text(
+                            text = stringResource(R.string.limits_dlb_statuses),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondaryDark,
+                            lineHeight = 18.sp
+                        )
+
                         // Low Voltage Slider (< 190V default)
                         Column {
                             Row(

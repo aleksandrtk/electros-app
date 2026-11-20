@@ -8,6 +8,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
@@ -94,26 +96,18 @@ private const val REF_PANEL_HEIGHT = 1755f
 /** Height of the plain walnut band at the bottom of the design, reused to fill taller screens. */
 private const val BOTTOM_BAND = 28f
 
-/** Condensed sans like the lettering of the reference. */
-private val WoodFont = FontFamily(
-    androidx.compose.ui.text.font.Typeface(
-        android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL)
-    )
-)
-
 private val SandText = Color(0xFFE8C9A2)
 private val SandBright = Color(0xFFEDB676)
 private val BrownText = Color(0xFF3B2210)
 
 /**
- * "Modern craft hi-fi" dressing of the same panel, for comparison: clean grotesque and mono
- * lettering burnt sharply into the wood, a smoked-glass voltmeter with amber digits, a milled
- * walnut knob in a brass ring with a light guide, and a brushed bronze start plate.
+ * "Modern craft hi-fi" dressing of the same panel: lettering burnt sharply into the wood
+ * instead of carved, a milled walnut knob in a brass ring with a light guide, and a brushed bronze start plate.
  */
 internal val LocalWoodHiFi = staticCompositionLocalOf { false }
 private val WOOD_HIFI: Boolean @Composable @ReadOnlyComposable get() = LocalWoodHiFi.current
 
-private val Manrope = FontFamily(
+internal val Manrope = FontFamily(
     listOf(FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map { w ->
         Font(R.font.manrope, w, variationSettings = FontVariation.Settings(FontVariation.weight(w.weight)))
     }
@@ -128,6 +122,7 @@ private val OledAmber = Color(0xFFFFB347)
 private val BrownSoft = Color(0xFF5A3A1E)
 private val OffDot = Color(0xFFC2694C)
 private val OnDot = Color(0xFF6E9A3A)
+private val ChargingDot = Color(0xFF7CC04B)
 
 /**
  * Spreads the design over taller screens. Every band of the panel is stretched by the same
@@ -208,7 +203,7 @@ private fun RefScope.Engraved(
         return
     }
     val base = TextStyle(
-        fontFamily = WoodFont,
+        fontFamily = if (mono) JetMono else Manrope,
         fontWeight = weight,
         fontSize = sp(sizePx),
         letterSpacing = sp(sizePx * spacing)
@@ -374,7 +369,7 @@ internal fun WoodDashboard(
                     WoodHeader(state, isOnline)
                     WoodVoltage(state, isOnline, voltage)
                     WoodCurrent(state, knobFace) { amps -> viewModel.onAmperageSelected(amps) }
-                    WoodAutoCurrent(state, isOnline, voltage) {
+                    WoodAutoCurrent(state, isOnline, voltage, panel) {
                         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         viewModel.toggleVoltageBalancing(!state.isVoltageBalancingEnabled)
                     }
@@ -472,7 +467,14 @@ private fun RefScope.WoodHeader(state: DashboardUiState, isOnline: Boolean) {
             modifier = Modifier
                 .size(px(22f))
                 .clip(CircleShape)
-                .background(if (isOnline) Color(0xFFE59A5C) else OffDot)
+                .background(
+                    when {
+                        // Green while energy flows, amber when the station is online and idle.
+                        isOnline && telemetry?.isChargingActive == true -> ChargingDot
+                        isOnline -> Color(0xFFE59A5C)
+                        else -> OffDot
+                    }
+                )
         )
     }
     Area(72f, 50f, 980f, 106f) {
@@ -489,45 +491,23 @@ private fun RefScope.WoodVoltage(state: DashboardUiState, isOnline: Boolean, vol
     Area(66f, 165f, 1040f, 212f) {
         Engraved(stringResource(R.string.dash_line_voltage).uppercase(), 34f, SandText, onDark = true)
     }
-    if (WOOD_HIFI) {
-        Area(72f, 222f, 1048f, 348f) { SmokedGlass(Modifier.fillMaxSize()) }
-        val value = if (isOnline && voltage != null) "$voltage" else "---"
-        Area(108f, 228f, 640f, 342f) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                OledText(value, 92f)
-                Box(modifier = Modifier.padding(start = px(12f), bottom = px(12f))) { OledText("V", 44f) }
-            }
-        }
-        if (state.activeSession != null) {
-            Area(560f, 250f, 1022f, 330f, Alignment.CenterEnd) {
-                val delivered = state.totalDeliveredKwh
-                val text = if (state.activeTargetKwh > 0.0) {
-                    "%.2f / %.0f %s".format(Locale.US, delivered, state.activeTargetKwh, stringResource(R.string.unit_kwh))
-                } else {
-                    "+%.2f %s".format(Locale.US, delivered, stringResource(R.string.unit_kwh))
-                }
-                OledText(text, 40f)
-            }
-        }
-        return
-    }
-    Area(102f, 232f, 600f, 330f) {
+    Area(72f, 222f, 1048f, 348f) { SmokedGlass(Modifier.fillMaxSize()) }
+    val value = if (isOnline && voltage != null) "$voltage" else "---"
+    Area(108f, 228f, 640f, 342f) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Engraved(if (isOnline && voltage != null) "$voltage" else "---", 96f, SandBright, FontWeight.Bold, 0.03f, onDark = true)
-            Box(modifier = Modifier.padding(start = px(10f), bottom = px(14f))) {
-                Engraved("V", 50f, SandBright, FontWeight.Bold, 0f, onDark = true)
-            }
+            OledText(value, 92f)
+            Box(modifier = Modifier.padding(start = px(12f), bottom = px(12f))) { OledText("V", 44f) }
         }
     }
-    Area(560f, 250f, 1022f, 330f, Alignment.CenterEnd) {
-        if (state.activeSession != null) {
+    if (state.activeSession != null) {
+        Area(560f, 250f, 1022f, 330f, Alignment.CenterEnd) {
             val delivered = state.totalDeliveredKwh
             val text = if (state.activeTargetKwh > 0.0) {
                 "%.2f / %.0f %s".format(Locale.US, delivered, state.activeTargetKwh, stringResource(R.string.unit_kwh))
             } else {
                 "+%.2f %s".format(Locale.US, delivered, stringResource(R.string.unit_kwh))
             }
-            Engraved(text, 46f, SandBright, FontWeight.Bold, 0.02f, onDark = true)
+            OledText(text, 40f)
         }
     }
 }
@@ -583,43 +563,77 @@ private fun RefScope.WoodCurrent(state: DashboardUiState, knobFace: ImageBitmap,
 }
 
 @Composable
-private fun RefScope.WoodAutoCurrent(state: DashboardUiState, isOnline: Boolean, voltage: Int?, onToggle: () -> Unit) {
+private fun RefScope.WoodAutoCurrent(state: DashboardUiState, isOnline: Boolean, voltage: Int?, panel: ImageBitmap, onToggle: () -> Unit) {
     val enabled = state.isVoltageBalancingEnabled
-    val low = state.voltageLowThreshold
-    val max = state.voltageMaxAmperage
-    val status = when {
-        !enabled -> null
-        !isOnline || voltage == null || voltage <= 0 -> stringResource(R.string.dlb_standby)
-        voltage < low -> stringResource(R.string.dlb_derating, voltage)
-        else -> stringResource(R.string.dlb_normal, max)
-    }
+    val telemetry = state.telemetry
+    val status = autoCurrentLabel(
+        resolveAutoCurrentStatus(
+            enabled = enabled,
+            isOnline = isOnline,
+            voltage = voltage,
+            isCharging = telemetry?.isChargingActive == true,
+            stationAmperes = telemetry?.selectedCurrentAmperes,
+            lowThreshold = state.voltageLowThreshold,
+            highThreshold = state.voltageHighThreshold,
+            maxAmperage = state.voltageMaxAmperage
+        )
+    )
     Area(30f, 1003f, 1088f, 1192f, modifier = Modifier.clickable(onClick = onToggle)) {}
-    Area(66f, 1060f, 92f, 1086f, Alignment.Center) {
+    // The slot of the picture sits high on the board; plain board is laid over it and a
+    // slot of our own is cut in the middle, so the single line of the card is centred.
+    Area(552f, 1026f, 916f, 1118f) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+            drawImage(
+                panel,
+                srcOffset = IntOffset(552, 1104),
+                srcSize = IntSize(364, 72),
+                dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                filterQuality = FilterQuality.High
+            )
+            // Feathered edges, so the patch melts into the board around it.
+            val fx = 22f / 364f
+            val fy = 18f / 92f
+            drawRect(
+                Brush.horizontalGradient(0f to Color.Transparent, fx to Color.Black, 1f - fx to Color.Black, 1f to Color.Transparent),
+                blendMode = BlendMode.DstIn
+            )
+            drawRect(
+                Brush.verticalGradient(0f to Color.Transparent, fy to Color.Black, 1f - fy to Color.Black, 1f to Color.Transparent),
+                blendMode = BlendMode.DstIn
+            )
+        }
+    }
+    Area(578f, 1066f, 890f, 1128f, Alignment.Center, modifier = Modifier.woodSlot(px(16f))) {
+        Engraved(status.uppercase(), 32f, SandBright, FontWeight.Medium, 0.03f, onDark = true)
+    }
+    Area(66f, 1084f, 92f, 1110f, Alignment.Center) {
         Box(Modifier.size(px(20f)).clip(CircleShape).background(if (enabled) OnDot else OffDot))
     }
-    Area(108f, 1050f, 570f, 1098f) {
+    Area(108f, 1074f, 570f, 1122f) {
         Engraved(stringResource(R.string.dlb_title).uppercase(), 36f, BrownText)
     }
-    Area(578f, 1042f, 890f, 1104f, Alignment.Center) {
-        Engraved((status ?: stringResource(R.string.dlb_off_short)).uppercase(), 34f, SandBright, FontWeight.Medium, 0.03f, onDark = true)
-    }
-    Area(918f, 1038f, 1052f, 1108f, Alignment.Center) {
+    Area(918f, 1062f, 1052f, 1132f, Alignment.Center) {
         WoodToggle(enabled, onToggle, Modifier.fillMaxWidth().height(px(60f)))
     }
-    Area(62f, 1132f, 1060f, 1176f) {
-        val hint = if (enabled && state.selectedAmperes > max) {
-            stringResource(R.string.dlb_max_warning, max, state.selectedAmperes)
-        } else if (enabled) {
-            stringResource(R.string.dlb_hint_on, low, max)
-        } else {
-            stringResource(R.string.dlb_hint_off, state.selectedAmperes)
-        }
-        if (enabled && state.selectedAmperes > max) {
-            Engraved(hint, 32f, Color(0xFF8F3E00), FontWeight.Medium, 0f)
-        } else {
-            Engraved(hint, 32f, BrownSoft, FontWeight.Normal, 0f)
-        }
-    }
+}
+
+/** A dark slot routed into the board, like the ones in the reference picture. */
+private fun Modifier.woodSlot(corner: Dp): Modifier = this.drawBehind {
+    val c = CornerRadius(corner.toPx(), corner.toPx())
+    drawRoundRect(Color(0xFF1A0906), cornerRadius = c)
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(Color(0xFF26170E), Color(0xFF32200F), Color(0xFF3A1F0C))),
+        topLeft = Offset(0f, size.height * 0.08f),
+        size = Size(size.width, size.height * 0.92f),
+        cornerRadius = c
+    )
+    // Lit lower lip of the cut.
+    drawRoundRect(
+        color = Color(0x55FFD9A6),
+        topLeft = Offset(size.width * 0.02f, size.height - 2.5f),
+        size = Size(size.width * 0.96f, 2.5f),
+        cornerRadius = CornerRadius(2f, 2f)
+    )
 }
 
 @Composable
