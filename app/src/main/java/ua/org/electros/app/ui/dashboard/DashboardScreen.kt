@@ -1167,7 +1167,8 @@ internal fun StudioClassicKwhLimitCard(
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        color = TextTertiaryDark
+                        color = TextTertiaryDark,
+                        modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp)
                     )
                     Box(
                         modifier = Modifier
@@ -1186,6 +1187,8 @@ internal fun StudioClassicKwhLimitCard(
                     ) {
                         Text(
                             text = stringResource(R.string.off),
+                            maxLines = 1,
+                            softWrap = false,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -1432,7 +1435,8 @@ internal fun StudioClassicTimerCard(
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        color = TextTertiaryDark
+                        color = TextTertiaryDark,
+                        modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp)
                     )
                     Box(
                         modifier = Modifier
@@ -1451,6 +1455,8 @@ internal fun StudioClassicTimerCard(
                     ) {
                         Text(
                             text = stringResource(R.string.off),
+                            maxLines = 1,
+                            softWrap = false,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
