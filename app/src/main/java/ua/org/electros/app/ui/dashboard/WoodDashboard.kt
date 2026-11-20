@@ -373,9 +373,24 @@ internal fun WoodDashboard(
                         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         viewModel.toggleVoltageBalancing(!state.isVoltageBalancingEnabled)
                     }
-                    WoodRow(1215f, stringResource(R.string.energy_limit_title), state.isKwhLimitEnabled) { openSheet = WoodSheet.LIMIT }
-                    WoodRow(1335f, stringResource(R.string.charge_timer_title), state.isDurationTimerEnabled) { openSheet = WoodSheet.TIMER }
-                    WoodRow(1455f, stringResource(R.string.schedule_title), state.isScheduleEnabled) { openSheet = WoodSheet.SCHEDULE }
+                    // Like the classic cards, a running session's own limit wins over the setting.
+                    val session = state.activeSession != null
+                    val kwhOn = state.isKwhLimitEnabled || (session && state.activeTargetKwh > 0.0)
+                    val kwh = if (session && state.activeTargetKwh > 0.0) state.activeTargetKwh else state.targetQuotaKwh
+                    val timerOn = state.isDurationTimerEnabled || (session && state.activeTargetDurationMinutes > 0)
+                    val hours = if (session && state.activeTargetDurationMinutes > 0) (state.activeTargetDurationMinutes + 59) / 60 else state.targetDurationHours
+                    WoodRow(
+                        1215f, stringResource(R.string.energy_limit_title), kwhOn,
+                        if (kwhOn) stringResource(R.string.kwh_int, kwh.toInt()) else null
+                    ) { openSheet = WoodSheet.LIMIT }
+                    WoodRow(
+                        1335f, stringResource(R.string.charge_timer_title), timerOn,
+                        if (timerOn) stringResource(R.string.limits_hours, hours) else null
+                    ) { openSheet = WoodSheet.TIMER }
+                    WoodRow(
+                        1455f, stringResource(R.string.schedule_title), state.isScheduleEnabled,
+                        if (state.isScheduleEnabled) "${state.scheduleStartTime}–${state.scheduleStopTime}" else null
+                    ) { openSheet = WoodSheet.SCHEDULE }
                     WoodActionButton(state, onStart, onStop)
                 }
             }
@@ -637,15 +652,23 @@ private fun Modifier.woodSlot(corner: Dp): Modifier = this.drawBehind {
 }
 
 @Composable
-private fun RefScope.WoodRow(top: Float, title: String, isOn: Boolean, onClick: () -> Unit) {
+private fun RefScope.WoodRow(top: Float, title: String, isOn: Boolean, value: String?, onClick: () -> Unit) {
     Area(30f, top, 1088f, top + 97f, modifier = Modifier.clip(RoundedCornerShape(px(26f))).clickable(onClick = onClick)) {}
     Area(66f, top + 38f, 92f, top + 64f, Alignment.Center) {
         Box(Modifier.size(px(20f)).clip(CircleShape).background(if (isOn) OnDot else OffDot))
     }
-    Area(112f, top + 24f, 1060f, top + 76f) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Engraved(title.uppercase(), 38f, SandText, onDark = true)
-            Engraved("  ▾", 24f, SandText.copy(alpha = 0.6f), FontWeight.Normal, 0f, onDark = true)
+    Area(112f, top + 24f, 1056f, top + 76f) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            // The title takes what the value leaves and ellipsizes if a long translation needs it.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(Modifier.weight(1f, fill = false)) { Engraved(title.uppercase(), 38f, SandText, onDark = true) }
+                Engraved("  ▾", 24f, SandText.copy(alpha = 0.6f), FontWeight.Normal, 0f, onDark = true)
+            }
+            if (value != null) {
+                Box(Modifier.padding(start = px(16f))) {}
+                // The set value, so the row tells what is on without opening it.
+                Engraved(value, 36f, SandBright, FontWeight.Bold, 0.02f, onDark = true, mono = true)
+            }
         }
     }
 }
