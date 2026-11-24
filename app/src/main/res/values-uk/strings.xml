@@ -163,7 +163,6 @@
     <string name="settings_title">Налаштування</string>
     <string name="settings_station">ПІДКЛЮЧЕННЯ ДО СТАНЦІЇ</string>
     <string name="settings_serial_hint">Номер пристрою (наприклад, a1234)</string>
-    <string name="settings_new_password">Новий пароль пристрою</string>
     <string name="settings_checking">Перевірка…</string>
     <string name="settings_saved">✓ Збережено</string>
     <string name="settings_save_credentials">Зберегти нові дані</string>

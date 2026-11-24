@@ -84,7 +84,11 @@ class ChargeRepository(
 
     suspend fun login(serial: String, password: String): Result<Unit> {
         val previousSerial = authPreferences?.deviceSerial.orEmpty()
-        if (previousSerial.isNotBlank() && previousSerial != serial.trim()) {
+        val previousPassword = authPreferences?.internetPassword.orEmpty()
+        // Any change of credentials drops the old session first. With the old cookie still alive the
+        // station treats the login form as already signed in and "accepts" any password, so a changed
+        // password was never really checked.
+        if (previousSerial != serial.trim() || previousPassword != password.trim()) {
             scraper.clearSession()
         }
         DiagLog.setSecrets(serial, password, previousSerial)
