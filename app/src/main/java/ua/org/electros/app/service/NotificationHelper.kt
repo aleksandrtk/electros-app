@@ -10,6 +10,13 @@ import androidx.core.app.NotificationCompat
 import ua.org.electros.app.MainActivity
 import ua.org.electros.app.R
 
+/** What the charge notification signals; drives its colour and status-bar icon. */
+enum class ChargeIndicator(val color: Int, val icon: Int) {
+    CHARGING(0xFF2E9E4F.toInt(), R.drawable.ic_nav_bolt),
+    OUTAGE(0xFFD32F2F.toInt(), R.drawable.ic_notif_warning),
+    DONE(0xFF1E6FD9.toInt(), R.drawable.ic_notif_done)
+}
+
 class NotificationHelper(private val context: Context) {
 
     companion object {
@@ -77,7 +84,8 @@ class NotificationHelper(private val context: Context) {
         targetKwh: Double,
         statusText: String,
         targetDurationMinutes: Int = 0,
-        accumulatedChargingMs: Long = 0L
+        accumulatedChargingMs: Long = 0L,
+        indicator: ChargeIndicator = ChargeIndicator.CHARGING
     ): Notification {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -114,7 +122,11 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CHARGING)
             .setContentTitle(context.getString(R.string.notif_title, "%.1f".format(powerKw), statusText))
             .setContentText(contentText)
-            .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setSmallIcon(indicator.icon)
+            .setColor(indicator.color)
+            // A foreground-service notification may be colorized: the whole card in the shade takes
+            // the state colour (green charging, red outage), not just the small icon.
+            .setColorized(true)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(R.drawable.ic_notif_stop, context.getString(R.string.notif_action_stop), stopPendingIntent)
@@ -135,7 +147,8 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle(context.getString(R.string.notif_outage_title))
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_notif_warning)
+            .setSmallIcon(ChargeIndicator.OUTAGE.icon)
+            .setColor(ChargeIndicator.OUTAGE.color)
             .setContentIntent(createOpenAppPendingIntent(7))
             .setAutoCancel(true)
 
@@ -173,7 +186,8 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle(context.getString(R.string.notif_done_title))
             .setContentText(context.getString(R.string.notif_done_text, "%.1f".format(deliveredKwh)))
-            .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setSmallIcon(ChargeIndicator.DONE.icon)
+            .setColor(ChargeIndicator.DONE.color)
             .setContentIntent(createOpenAppPendingIntent(8))
             .setAutoCancel(true)
 
@@ -233,7 +247,8 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle(context.getString(R.string.notif_timer_done_title))
             .setContentText(context.getString(R.string.notif_timer_done_text, durLabel, "%.1f".format(deliveredKwh)))
-            .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setSmallIcon(ChargeIndicator.DONE.icon)
+            .setColor(ChargeIndicator.DONE.color)
             .setContentIntent(createOpenAppPendingIntent(10))
             .setAutoCancel(true)
 
@@ -244,7 +259,8 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setContentTitle(context.getString(R.string.notif_resumed_title))
             .setContentText(context.getString(R.string.notif_resumed_text, amperes))
-            .setSmallIcon(R.drawable.ic_nav_bolt)
+            .setSmallIcon(ChargeIndicator.CHARGING.icon)
+            .setColor(ChargeIndicator.CHARGING.color)
             .setContentIntent(createOpenAppPendingIntent(11))
             .setAutoCancel(true)
 

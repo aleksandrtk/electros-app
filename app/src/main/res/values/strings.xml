@@ -163,7 +163,6 @@
     <string name="settings_title">Settings</string>
     <string name="settings_station">STATION CONNECTION</string>
     <string name="settings_serial_hint">Device number (for example, a1234)</string>
-    <string name="settings_new_password">New device password</string>
     <string name="settings_checking">Checking…</string>
     <string name="settings_saved">✓ Saved</string>
     <string name="settings_save_credentials">Save new details</string>

@@ -18,6 +18,7 @@ import ua.org.electros.app.data.repository.ChargeRepository
 
 data class SettingsUiState(
     val deviceSerial: String,
+    val password: String = "",
     val hasCredentials: Boolean,
     val isBatteryOptimizationIgnored: Boolean = true,
     val areNotificationsEnabled: Boolean = true,
@@ -63,6 +64,7 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             deviceSerial = authPreferences.deviceSerial,
+            password = authPreferences.internetPassword,
             hasCredentials = authPreferences.hasValidCredentials()
         )
     )
@@ -92,6 +94,7 @@ class SettingsViewModel(
             authPreferences.internetPassword = trimmedPass
             _uiState.value = _uiState.value.copy(
                 deviceSerial = trimmedSerial,
+                password = trimmedPass,
                 hasCredentials = authPreferences.hasValidCredentials(),
                 credentialsSaved = true,
                 credentialsError = null
@@ -110,6 +113,7 @@ class SettingsViewModel(
             result.onSuccess {
                 _uiState.value = _uiState.value.copy(
                     deviceSerial = trimmedSerial,
+                    password = trimmedPass,
                     hasCredentials = authPreferences.hasValidCredentials(),
                     isSavingCredentials = false,
                     credentialsSaved = true,
@@ -137,6 +141,7 @@ class SettingsViewModel(
     fun reloadCredentials() {
         _uiState.value = _uiState.value.copy(
             deviceSerial = authPreferences.deviceSerial,
+            password = authPreferences.internetPassword,
             hasCredentials = authPreferences.hasValidCredentials(),
             isSavingCredentials = false,
             credentialsSaved = false,
@@ -150,6 +155,7 @@ class SettingsViewModel(
             authPreferences.clearCredentials()
             _uiState.value = _uiState.value.copy(
                 deviceSerial = "",
+                password = "",
                 hasCredentials = false,
                 credentialsSaved = false,
                 credentialsError = null
@@ -167,6 +173,7 @@ class SettingsViewModel(
             }
             _uiState.value = _uiState.value.copy(
                 deviceSerial = "",
+                password = "",
                 hasCredentials = false,
                 credentialsSaved = false,
                 credentialsError = null

@@ -192,8 +192,11 @@ class ChargeMonitorService : Service() {
         for (event in events) {
             if (event !is SupervisorEvent.UpdateOngoingNotification) DiagLog.i(TAG, "Notification: $event")
             when (event) {
-                is SupervisorEvent.ShowOutageAlert ->
+                is SupervisorEvent.ShowOutageAlert -> {
                     notificationHelper.showOutageAlert(event.deliveredKwh, event.autoResumeEnabled)
+                    // The ongoing notification turns red until power is back.
+                    showOngoing(lastOngoing, ChargeIndicator.OUTAGE)
+                }
                 is SupervisorEvent.ShowManualResumeAvailable ->
                     notificationHelper.showManualResumeAvailableAlert(event.amperage, event.deliveredKwh)
                 SupervisorEvent.CancelManualResumeAlert ->
@@ -211,20 +214,33 @@ class ChargeMonitorService : Service() {
                 is SupervisorEvent.ShowConnectionLost ->
                     notificationHelper.showConnectionLostAlert(event.lastKnownAmperes)
                 is SupervisorEvent.UpdateOngoingNotification -> {
-                    val notification = notificationHelper.buildForegroundNotification(
-                        powerKw = event.powerKw,
-                        deliveredKwh = event.deliveredKwh,
-                        targetKwh = event.targetKwh,
-                        statusText = formatHeaderStatus(event.statusText, isOnline = true).asString(this@ChargeMonitorService)
-                            .lowercase().replaceFirstChar { it.titlecase() },
-                        targetDurationMinutes = event.targetDurationMinutes,
-                        accumulatedChargingMs = event.accumulatedChargingMs
-                    )
-                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    notificationManager.notify(NotificationHelper.NOTIFICATION_ID_STATUS, notification)
+                    lastOngoing = event
+                    showOngoing(event, ChargeIndicator.CHARGING)
                 }
             }
         }
+    }
+
+    /** Last ongoing-notification content, reused to repaint it red when an outage is detected. */
+    private var lastOngoing: SupervisorEvent.UpdateOngoingNotification? = null
+
+    private fun showOngoing(event: SupervisorEvent.UpdateOngoingNotification?, indicator: ChargeIndicator) {
+        val notification = notificationHelper.buildForegroundNotification(
+            powerKw = if (indicator == ChargeIndicator.OUTAGE) 0.0 else event?.powerKw ?: 0.0,
+            deliveredKwh = event?.deliveredKwh ?: 0.0,
+            targetKwh = event?.targetKwh ?: supervisor.activeTargetKwh,
+            statusText = if (indicator == ChargeIndicator.OUTAGE) {
+                getString(R.string.notif_outage_title)
+            } else {
+                formatHeaderStatus(event?.statusText.orEmpty(), isOnline = true).asString(this@ChargeMonitorService)
+                    .lowercase().replaceFirstChar { it.titlecase() }
+            },
+            targetDurationMinutes = event?.targetDurationMinutes ?: supervisor.activeTargetDurationMinutes,
+            accumulatedChargingMs = event?.accumulatedChargingMs ?: supervisor.accumulatedChargingMs,
+            indicator = indicator
+        )
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NotificationHelper.NOTIFICATION_ID_STATUS, notification)
     }
 
     private fun handleManualStop() {

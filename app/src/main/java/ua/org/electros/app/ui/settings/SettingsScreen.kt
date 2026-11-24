@@ -28,12 +28,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,8 +60,8 @@ fun SettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var serialInput by rememberSaveable(state.deviceSerial) { mutableStateOf(state.deviceSerial) }
-    var passwordInput by rememberSaveable { mutableStateOf("") }
-    var isSerialVisible by rememberSaveable { mutableStateOf(false) }
+    // Prefilled with what is saved: the number is shown in full, the password stays hidden until "Show".
+    var passwordInput by rememberSaveable(state.password) { mutableStateOf(state.password) }
     var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
 
@@ -127,20 +124,10 @@ fun SettingsScreen(
                     },
                     label = { Text(stringResource(R.string.settings_serial_hint)) },
                     singleLine = true,
-                    visualTransformation = if (isSerialVisible) VisualTransformation.None else SerialMaskVisualTransformation,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Ascii,
                         autoCorrectEnabled = false
                     ),
-                    trailingIcon = {
-                        TextButton(onClick = { isSerialVisible = !isSerialVisible }) {
-                            Text(
-                                text = stringResource(if (isSerialVisible) R.string.hide else R.string.show),
-                                color = TextSecondaryDark,
-                                fontSize = 12.sp
-                            )
-                        }
-                    },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimaryDark,
                         unfocusedTextColor = TextPrimaryDark,
@@ -156,7 +143,7 @@ fun SettingsScreen(
                         passwordInput = it
                         viewModel.clearCredentialsFeedback()
                     },
-                    label = { Text(stringResource(R.string.settings_new_password)) },
+                    label = { Text(stringResource(R.string.login_password)) },
                     singleLine = true,
                     visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
@@ -191,9 +178,7 @@ fun SettingsScreen(
 
                 ThemedButton(
                     onClick = {
-                        viewModel.updateCredentials(serialInput, passwordInput) {
-                            passwordInput = ""
-                        }
+                        viewModel.updateCredentials(serialInput, passwordInput)
                     },
                     enabled = !state.isSavingCredentials &&
                         serialInput.isNotBlank() &&
@@ -446,23 +431,6 @@ private fun SettingRow(label: String, value: String) {
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium, color = TextSecondaryDark)
         Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TextPrimaryDark)
-    }
-}
-
-private object SerialMaskVisualTransformation : VisualTransformation {
-    override fun filter(text: AnnotatedString): TransformedText {
-        val raw = text.text
-        val visiblePrefix = when {
-            raw.length <= 2 -> 0
-            raw.length <= 5 -> 2
-            else -> 4
-        }
-        val masked = buildString(raw.length) {
-            for (i in raw.indices) {
-                append(if (i < visiblePrefix) raw[i] else '•')
-            }
-        }
-        return TransformedText(AnnotatedString(masked), OffsetMapping.Identity)
     }
 }
 
