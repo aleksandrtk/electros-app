@@ -1,0 +1,118 @@
+# Builds, signs and publishes a release whenever main gets a new versionName.
+# Bump versionName/versionCode in app/build.gradle.kts, merge to main: the APK appears in
+# GitHub Releases as electros-app-vX.Y.Z.apk and the in-app updater picks it up.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   ELECTROS_RELEASE_P12_BASE64       base64 of ~/.electros-signing/electros-release.p12
+#   ELECTROS_ROTATION_LINEAGE_BASE64  base64 of ~/.electros-signing/electros-rotation.lineage
+#   ELECTROS_RELEASE_KS_PASSWORD      the keystore password
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [app/build.gradle.kts]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      BUILD_TOOLS_VERSION: "37.0.0"
+      PLATFORM: "platforms;android-37.0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: |
+          name=$(sed -nE 's/^\s*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          [ -n "$name" ] || { echo "versionName not found" >&2; exit 1; }
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$name" >/dev/null; then
+            echo "Tag v$name already exists, nothing to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.version.outputs.skip == 'false'
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.version.outputs.skip == 'false'
+
+      - name: Install Android SDK packages
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "$PLATFORM" "build-tools;$BUILD_TOOLS_VERSION" > /dev/null
+
+      - name: Unit tests
+        if: steps.version.outputs.skip == 'false'
+        run: ./gradlew --console=plain testDebugUnitTest
+
+      # Built unsigned, before the key is on disk, so Gradle and its plugins never see it.
+      - name: Build unsigned release
+        if: steps.version.outputs.skip == 'false'
+        run: env -u ELECTROS_KEYSTORE ./gradlew --console=plain assembleRelease
+
+      - name: Sign with the release key and rotation lineage
+        if: steps.version.outputs.skip == 'false'
+        env:
+          P12_B64: ${{ secrets.ELECTROS_RELEASE_P12_BASE64 }}
+          LINEAGE_B64: ${{ secrets.ELECTROS_ROTATION_LINEAGE_BASE64 }}
+          ELECTROS_KS_PASS: ${{ secrets.ELECTROS_RELEASE_KS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "$P12_B64" ] && [ -n "$LINEAGE_B64" ] && [ -n "$ELECTROS_KS_PASS" ] \
+            || { echo "Signing secrets are missing" >&2; exit 1; }
+          BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION"
+          KEYDIR="$RUNNER_TEMP/signing"
+          mkdir -m 700 "$KEYDIR"
+          printf '%s' "$P12_B64" | base64 -d > "$KEYDIR/release.p12"
+          printf '%s' "$LINEAGE_B64" | base64 -d > "$KEYDIR/rotation.lineage"
+          UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED="$RUNNER_TEMP/aligned.apk"
+          OUT="$RUNNER_TEMP/electros-app-${{ steps.version.outputs.tag }}.apk"
+          "$BT/zipalign" -P 16 -f 4 "$UNSIGNED" "$ALIGNED"
+          # minSdk 37 verifies v3 natively, so the new key plus the lineage file is enough.
+          "$BT/apksigner" sign \
+            --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true \
+            --ks "$KEYDIR/release.p12" --ks-key-alias electros-release --ks-pass env:ELECTROS_KS_PASS \
+            --lineage "$KEYDIR/rotation.lineage" \
+            --out "$OUT" "$ALIGNED"
+          rm -rf "$KEYDIR" "$ALIGNED"
+          "$BT/apksigner" verify -v --print-certs "$OUT" > "$RUNNER_TEMP/verify.txt"
+          grep -E "certificate (DN|SHA-256)" "$RUNNER_TEMP/verify.txt" || true
+          grep -q "Verified using v3 scheme (APK Signature Scheme v3): true" "$RUNNER_TEMP/verify.txt" \
+            || { echo "v3 signature not verified" >&2; exit 1; }
+          echo "APK=$OUT" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        if: steps.version.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          prev=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          range=${prev:+$prev..}HEAD
+          git log --no-merges --format='- %s' "$range" | grep -v 'chore(release)' > notes.md || true
+          [ -s notes.md ] || echo "- Maintenance release" > notes.md
+          gh release create "$TAG" "$APK" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md

@@ -132,7 +132,11 @@ Releases are signed with the Electros release key using APK Signature Scheme v3 
 - One-time setup: `scripts/create-release-keystore.sh` creates `~/.electros-signing/electros-release.p12`
   and the rotation lineage, and stores the password in the macOS Keychain (`electros-release-keystore`).
   **Back up `~/.electros-signing/` and the password**: without them no further updates can be signed.
-- Each release: `scripts/sign-release.sh [out.apk]` builds `assembleRelease` unsigned (without access to the key password)
+- Each release (CI): bump `versionName`/`versionCode` in `app/build.gradle.kts` and merge to `main`.
+  `.github/workflows/release.yml` runs the unit tests, builds the release unsigned, signs it with the key
+  and lineage from the repository secrets `ELECTROS_RELEASE_P12_BASE64`, `ELECTROS_ROTATION_LINEAGE_BASE64`
+  and `ELECTROS_RELEASE_KS_PASSWORD`, tags `vX.Y.Z` and publishes `electros-app-vX.Y.Z.apk` to Releases.
+- Manual release (fallback): `scripts/sign-release.sh [out.apk]` builds `assembleRelease` unsigned (without access to the key password)
   and signs it with the release key plus the lineage (v3 only; the debug keystore is no longer needed).
 - Do not sign releases with `ELECTROS_KEYSTORE` alone: an APK signed by the release key without the lineage
   is rejected as an update by installs that are still on the debug key.
