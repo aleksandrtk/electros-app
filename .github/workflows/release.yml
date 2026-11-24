@@ -11,7 +11,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: [app/build.gradle.kts]
+    paths: [app/build.gradle.kts, .github/workflows/release.yml]
   workflow_dispatch:
 
 concurrency:
@@ -80,13 +80,17 @@ jobs:
           ELECTROS_KS_PASS: ${{ secrets.ELECTROS_RELEASE_KS_PASSWORD }}
         run: |
           set -euo pipefail
+          # Values pasted into secrets often end with a newline (pbcopy keeps it); Java rejects a
+          # keystore password with a control character, so strip line breaks before using it.
+          ELECTROS_KS_PASS=$(printf '%s' "$ELECTROS_KS_PASS" | tr -d '\r\n')
+          export ELECTROS_KS_PASS
           [ -n "$P12_B64" ] && [ -n "$LINEAGE_B64" ] && [ -n "$ELECTROS_KS_PASS" ] \
             || { echo "Signing secrets are missing" >&2; exit 1; }
           BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION"
           KEYDIR="$RUNNER_TEMP/signing"
           mkdir -m 700 "$KEYDIR"
-          printf '%s' "$P12_B64" | base64 -d > "$KEYDIR/release.p12"
-          printf '%s' "$LINEAGE_B64" | base64 -d > "$KEYDIR/rotation.lineage"
+          printf '%s' "$P12_B64" | tr -d ' \r\n' | base64 -d > "$KEYDIR/release.p12"
+          printf '%s' "$LINEAGE_B64" | tr -d ' \r\n' | base64 -d > "$KEYDIR/rotation.lineage"
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
           ALIGNED="$RUNNER_TEMP/aligned.apk"
           OUT="$RUNNER_TEMP/electros-app-${{ steps.version.outputs.tag }}.apk"
