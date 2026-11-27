@@ -209,6 +209,7 @@ fun DashboardScreen(
                 isOnline = telemetry?.isOnline ?: false,
                 selectedAmperes = state.selectedAmperes,
                 voltageMaxAmperage = state.voltageMaxAmperage,
+                stationLowVoltageStop = telemetry?.isLowVoltageStop == true,
                 onToggleDlb = {
                     viewModel.toggleVoltageBalancing(!state.isVoltageBalancingEnabled)
                 }
@@ -994,6 +995,7 @@ private fun StudioClassicDlbCard(
     isOnline: Boolean,
     selectedAmperes: Int,
     voltageMaxAmperage: Int,
+    stationLowVoltageStop: Boolean,
     onToggleDlb: () -> Unit
 ) {
     val view = LocalView.current
@@ -1006,7 +1008,8 @@ private fun StudioClassicDlbCard(
         stationAmperes = stationAmperes,
         lowThreshold = lowThreshold,
         highThreshold = highThreshold,
-        maxAmperage = voltageMaxAmperage
+        maxAmperage = voltageMaxAmperage,
+        stationLowVoltageStop = stationLowVoltageStop
     )
     val statusText = if (status == AutoCurrentStatus.Off) null else autoCurrentLabel(status)
     val statusColor = when (status) {

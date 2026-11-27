@@ -11,5 +11,16 @@ data class TelemetryData(
     val isChargingActive: Boolean,
     /** False for the HTTP fallback, whose energy counter is rounded to 0.1 kWh (WebSocket reports mWh). */
     val isPreciseCounter: Boolean = true
-)
+) {
+    /**
+     * The station paused charging with its own undervoltage protection (WS status 5). It resumes by
+     * itself once the voltage recovers, so this is a pause, not the end of the charge.
+     */
+    val isLowVoltageStop: Boolean
+        get() = statusText.contains(LOW_VOLTAGE_STATUS_MARKER, ignoreCase = true)
+
+    companion object {
+        const val LOW_VOLTAGE_STATUS_MARKER = "Напруга нижче"
+    }
+}
 

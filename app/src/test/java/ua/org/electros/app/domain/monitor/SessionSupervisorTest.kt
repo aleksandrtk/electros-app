@@ -274,6 +274,54 @@ class SessionSupervisorTest {
         assertThat(gateway.callLog).isEmpty()
     }
 
+    @Test
+    fun stationUndervoltageCutOff_keepsSessionOpenAndStepsCurrentDownOncePerCutOff() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "lv"),
+            slices = mutableListOf(slice("lv", startKwh = 100.0))
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = true, maxAmperage = 16)) { 10_000L }
+        supervisor.onSessionStarted("lv", targetKwh = 0.0, targetDurationMinutes = 0)
+
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 101.0, voltage = 195))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+
+        // The station's own protection cuts the charge; the idle voltage read afterwards is above 190 V.
+        val cutOff = telemetry(isOnline = true, isCharging = false, counterKwh = 101.0, voltage = 193)
+            .copy(statusText = "Напруга нижче порогового рівня")
+        gateway.nextTelemetry = Result.success(cutOff)
+        val first = supervisor.tick()
+        repeat(5) { assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING) }
+        assertThat(first.events.any { it is SupervisorEvent.ShowBalancingAlert }).isTrue()
+        assertThat(gateway.amperageCalls).containsExactly(14)
+        assertThat(gateway.finalizedStatus).isNull()
+
+        // It restarts by itself and cuts again: one more step down.
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 101.2, voltage = 194))
+        supervisor.tick()
+        gateway.nextTelemetry = Result.success(cutOff.copy(selectedCurrentAmperes = 14, consumedEnergyKwh = 101.2))
+        supervisor.tick()
+        assertThat(gateway.amperageCalls).containsExactly(14, 12).inOrder()
+    }
+
+    @Test
+    fun stationUndervoltageCutOff_withAutoCurrentOff_keepsSessionWithoutChangingCurrent() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "lv2"),
+            slices = mutableListOf(slice("lv2", startKwh = 100.0))
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = false)) { 10_000L }
+        supervisor.onSessionStarted("lv2", targetKwh = 0.0, targetDurationMinutes = 0)
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 101.0, voltage = 195))
+        supervisor.tick()
+        gateway.nextTelemetry = Result.success(
+            telemetry(isOnline = true, isCharging = false, counterKwh = 101.0, voltage = 191)
+                .copy(statusText = "Напруга нижче порогового рівня")
+        )
+        repeat(5) { assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING) }
+        assertThat(gateway.amperageCalls).isEmpty()
+    }
+
     private fun session(
         id: String,
         targetKwh: Double = 0.0,
@@ -458,7 +506,11 @@ class SessionSupervisorTest {
             session = session.copy(status = SessionStatus.CANCELLED, completedAt = 999L)
             return Result.success(Unit)
         }
-        override suspend fun setAmperage(amperes: Int): Result<Unit> = Result.success(Unit)
+        val amperageCalls = mutableListOf<Int>()
+        override suspend fun setAmperage(amperes: Int): Result<Unit> {
+            amperageCalls += amperes
+            return Result.success(Unit)
+        }
         override suspend fun updateSessionAmperage(sessionId: String, amperes: Int) {}
         override suspend fun refreshDeadManTimer(sessionId: String, currentVoltage: Int, currentDeliveredKwh: Double) {}
         override fun latestCounterOr(fallback: Double): Double =
