@@ -114,8 +114,9 @@
     <string name="limits_dlb_label">LOAD BALANCING (DLB)</string>
     <string name="limits_dlb_title">Adapt to grid voltage</string>
     <string name="limits_dlb_off">Off: the station runs at a fixed current without voltage-sag control.</string>
-    <string name="limits_dlb_explain">⚡ If the voltage drops below %1$d V, the current is lowered step by step to 6 A. From %2$d V it goes back up to %3$d A, from %4$d V up to at most %5$d A.</string>
-    <string name="limits_dlb_statuses">On the main screen next to Auto-current: “Voltage OK” means the current is not reduced; “Low” means the voltage is below the threshold and the current has been lowered; “Waiting 200V” means the current stays reduced until the voltage reaches that value; “No data” means the station is not reporting voltage yet.</string>
+    <string name="limits_dlb_explain">⚡ If the voltage drops below %1$d V, the current is lowered step by step to 6 A; if the station itself cuts the charge on low voltage, straight to 6 A. Then it goes back up 2 A at a time: %2$s.</string>
+    <string name="limits_dlb_stage">from %1$d V up to %2$d A</string>
+    <string name="limits_dlb_statuses">On the main screen next to Auto-current: “Voltage OK” means the current is not reduced; “Low” means the voltage is below the threshold and the current has been lowered; “Waiting 198V” means the current stays reduced until the voltage reaches that value; “No data” means the station is not reporting voltage yet.</string>
     <string name="limits_dlb_low">Lower current below</string>
     <string name="limits_dlb_high">Restore current above</string>
     <string name="limits_below_v">&lt; %1$d V</string>

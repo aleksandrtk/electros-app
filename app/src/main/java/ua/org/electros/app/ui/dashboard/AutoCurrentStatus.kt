@@ -36,11 +36,13 @@ internal fun resolveAutoCurrentStatus(
     // afterwards can look fine, so "voltage OK" next to "low voltage" in the header would be wrong.
     if (voltage < lowThreshold || stationLowVoltageStop) return AutoCurrentStatus.Low(voltage)
     if (isCharging && stationAmperes != null && stationAmperes < maxAmperage && highThreshold > lowThreshold) {
-        val partial = highThreshold - VoltageLoadBalancer.PARTIAL_RECOVERY_MARGIN_V
-        val floor = if (partial > lowThreshold) partial else highThreshold
-        if (voltage < floor) return AutoCurrentStatus.Waiting(floor)
-        val partialCeiling = minOf(VoltageLoadBalancer.PARTIAL_RECOVERY_AMPERAGE, maxAmperage)
-        if (voltage < highThreshold && stationAmperes >= partialCeiling) return AutoCurrentStatus.Waiting(highThreshold)
+        val stages = VoltageLoadBalancer.recoveryStages(lowThreshold, highThreshold, maxAmperage)
+        val ceiling = VoltageLoadBalancer.ceilingFor(stages, voltage) ?: 0
+        if (stationAmperes >= ceiling) {
+            // Held at this stage's ceiling: name the voltage of the next stage that allows more.
+            val next = stages.firstOrNull { it.floorV > voltage && it.ceilingA > stationAmperes }
+            if (next != null) return AutoCurrentStatus.Waiting(next.floorV)
+        }
     }
     return AutoCurrentStatus.Ok
 }

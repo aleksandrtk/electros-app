@@ -65,30 +65,44 @@ class VoltageLoadBalancerTest {
     }
 
     @Test
-    fun recovery_from200VStopsAt10A_from205VGoesTo12A() {
-        val balancer = VoltageLoadBalancer(lowThresholdV = 190, highThresholdV = 205, maxAmperage = 12)
+    fun defaults_recoverIn3Stages_193To8A_198To10A_203ToMax() {
+        assertThat(ua.org.electros.app.data.local.AppSettings().voltageHighThreshold).isEqualTo(203)
+        val balancer = VoltageLoadBalancer(maxAmperage = 16)
 
-        // 200..204 V: up to 10 A only.
-        repeat(4) { assertThat(balancer.evaluate(201, 6)).isNull() }
-        assertThat(balancer.evaluate(200, 6)).isEqualTo(8)
-        repeat(4) { assertThat(balancer.evaluate(202, 8)).isNull() }
-        assertThat(balancer.evaluate(202, 8)).isEqualTo(10)
-        repeat(10) { assertThat(balancer.evaluate(204, 10)).isNull() }
-
-        // 205 V and above: on to 12 A.
-        repeat(4) { assertThat(balancer.evaluate(205, 10)).isNull() }
-        assertThat(balancer.evaluate(206, 10)).isEqualTo(12)
+        // 190..192 V: held.
+        repeat(10) { assertThat(balancer.evaluate(192, 6)).isNull() }
+        // 193..197 V: up to 8 A only.
+        repeat(4) { assertThat(balancer.evaluate(194, 6)).isNull() }
+        assertThat(balancer.evaluate(193, 6)).isEqualTo(8)
+        repeat(10) { assertThat(balancer.evaluate(197, 8)).isNull() }
+        // 198..202 V: up to 10 A.
+        repeat(4) { assertThat(balancer.evaluate(199, 8)).isNull() }
+        assertThat(balancer.evaluate(198, 8)).isEqualTo(10)
+        repeat(10) { assertThat(balancer.evaluate(202, 10)).isNull() }
+        // 203 V and above: on to the maximum.
+        repeat(4) { assertThat(balancer.evaluate(203, 10)).isNull() }
+        assertThat(balancer.evaluate(205, 10)).isEqualTo(12)
+        repeat(4) { assertThat(balancer.evaluate(206, 12)).isNull() }
+        assertThat(balancer.evaluate(206, 12)).isEqualTo(14)
     }
 
     @Test
-    fun recovery_streakDippingBelow205_onlyAllowsThePartialCeiling() {
-        val balancer = VoltageLoadBalancer(lowThresholdV = 190, highThresholdV = 205, maxAmperage = 12)
-        listOf(207, 207, 203, 207).forEach { assertThat(balancer.evaluate(it, 10)).isNull() }
-        // The streak saw 203 V, so 10 A stays.
-        assertThat(balancer.evaluate(207, 10)).isNull()
-        // A clean streak at 205+ raises it.
-        repeat(4) { assertThat(balancer.evaluate(207, 10)).isNull() }
-        assertThat(balancer.evaluate(207, 10)).isEqualTo(12)
+    fun recovery_streakDippingBelowAStage_usesTheLowestVoltageSeen() {
+        val balancer = VoltageLoadBalancer(lowThresholdV = 190, highThresholdV = 203, maxAmperage = 12)
+        listOf(205, 205, 196, 205).forEach { assertThat(balancer.evaluate(it, 8)).isNull() }
+        // The streak saw 196 V (8 A stage), so 8 A stays.
+        assertThat(balancer.evaluate(205, 8)).isNull()
+        // A clean streak raises it.
+        repeat(4) { assertThat(balancer.evaluate(205, 8)).isNull() }
+        assertThat(balancer.evaluate(205, 8)).isEqualTo(10)
+    }
+
+    @Test
+    fun stages_followTheRestoreThreshold() {
+        assertThat(VoltageLoadBalancer.recoveryStages(190, 205, 12).map { it.floorV to it.ceilingA })
+            .containsExactly(195 to 8, 200 to 10, 205 to 12).inOrder()
+        // With the minimum 10 V gap the first stage starts right at the low threshold.
+        assertThat(VoltageLoadBalancer.recoveryStages(195, 205, 16).first().floorV).isEqualTo(195)
     }
 
     @Test

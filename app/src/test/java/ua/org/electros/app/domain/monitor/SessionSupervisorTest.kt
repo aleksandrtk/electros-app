@@ -323,20 +323,21 @@ class SessionSupervisorTest {
         supervisor.tick()
         assertThat(gateway.amperageCalls).containsExactly(6)
 
-        // Restarted at 6 A; at 196 V (deadband) the current is held.
+        // Restarted at 6 A; at 192 V (below the first stage) the current is held.
         var amps = 6
         fun charging(v: Int) = telemetry(isOnline = true, isCharging = true, counterKwh = 101.5, voltage = v)
             .copy(selectedCurrentAmperes = amps)
-        repeat(6) { gateway.nextTelemetry = Result.success(charging(196)); supervisor.tick() }
+        repeat(6) { gateway.nextTelemetry = Result.success(charging(192)); supervisor.tick() }
         assertThat(gateway.amperageCalls).containsExactly(6)
 
-        // 5 ticks at 200 V or more: +2 A, up to 10 A in the first stage.
-        repeat(5) { gateway.nextTelemetry = Result.success(charging(201)); supervisor.tick() }
+        // 5 ticks at 193 V or more: up to 8 A, then held there below 198 V.
+        repeat(5) { gateway.nextTelemetry = Result.success(charging(194)); supervisor.tick() }
         assertThat(gateway.amperageCalls).containsExactly(6, 8).inOrder()
         amps = 8
-        repeat(5) { gateway.nextTelemetry = Result.success(charging(201)); supervisor.tick() }
-        amps = 10
-        repeat(5) { gateway.nextTelemetry = Result.success(charging(201)); supervisor.tick() }
+        repeat(10) { gateway.nextTelemetry = Result.success(charging(196)); supervisor.tick() }
+        assertThat(gateway.amperageCalls).containsExactly(6, 8).inOrder()
+        // From 198 V: 10 A.
+        repeat(5) { gateway.nextTelemetry = Result.success(charging(199)); supervisor.tick() }
         assertThat(gateway.amperageCalls).containsExactly(6, 8, 10).inOrder()
     }
 

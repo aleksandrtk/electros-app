@@ -45,21 +45,17 @@ class VoltageLoadBalancer(
             return null
         }
 
-        // Recovery in two stages, one 2 A step after 5 consecutive good ticks:
-        // from partialThreshold (200 V by default) up to PARTIAL_RECOVERY_AMPERAGE (10 A),
-        // from highThresholdV (205 V by default) up to maxAmperage.
-        val partialThreshold = highThresholdV - PARTIAL_RECOVERY_MARGIN_V
-        val recoveryFloor = if (partialThreshold > lowThresholdV) partialThreshold else highThresholdV
+        // Recovery in three stages, one 2 A step after 5 consecutive good ticks (203 V restore threshold
+        // by default): from 193 V up to 8 A, from 198 V up to 10 A, from 203 V up to maxAmperage.
+        // The ceiling follows the lowest voltage seen during the streak.
+        val stages = recoveryStages(lowThresholdV, highThresholdV, maxAmperage)
+        val recoveryFloor = stages.first().floorV
         if (currentVoltage >= recoveryFloor) {
             consecutiveHighTicks++
             consecutiveLowTicks = 0
             streakMinVoltage = minOf(streakMinVoltage, currentVoltage)
             if (consecutiveHighTicks >= highVoltageRecoveryTicks) {
-                val ceiling = if (streakMinVoltage >= highThresholdV) {
-                    maxAmperage
-                } else {
-                    minOf(PARTIAL_RECOVERY_AMPERAGE, maxAmperage)
-                }
+                val ceiling = ceilingFor(stages, streakMinVoltage) ?: minAmperage
                 consecutiveHighTicks = 0
                 streakMinVoltage = Int.MAX_VALUE
                 if (currentAmperage < ceiling) {
@@ -80,11 +76,31 @@ class VoltageLoadBalancer(
         streakMinVoltage = Int.MAX_VALUE
     }
 
+    /** From [floorV] volts the current may be raised up to [ceilingA]. */
+    data class RecoveryStage(val floorV: Int, val ceilingA: Int)
+
     companion object {
-        /** The first recovery stage starts this many volts below [highThresholdV]. */
-        const val PARTIAL_RECOVERY_MARGIN_V = 5
-        /** Current the first recovery stage may raise to. */
-        const val PARTIAL_RECOVERY_AMPERAGE = 10
+        /** The 8 A stage starts this many volts below the restore threshold. */
+        const val FIRST_STAGE_MARGIN_V = 10
+        const val FIRST_STAGE_AMPERAGE = 8
+        /** The 10 A stage starts this many volts below the restore threshold. */
+        const val SECOND_STAGE_MARGIN_V = 5
+        const val SECOND_STAGE_AMPERAGE = 10
+
+        /**
+         * Recovery stages, lowest first. A stage whose floor would fall below [lowV] is dropped (the
+         * thresholds keep at least 10 V apart, so normally all three apply).
+         */
+        fun recoveryStages(lowV: Int, highV: Int, maxAmperage: Int): List<RecoveryStage> =
+            listOf(
+                RecoveryStage(highV - FIRST_STAGE_MARGIN_V, minOf(FIRST_STAGE_AMPERAGE, maxAmperage)),
+                RecoveryStage(highV - SECOND_STAGE_MARGIN_V, minOf(SECOND_STAGE_AMPERAGE, maxAmperage)),
+                RecoveryStage(highV, maxAmperage)
+            ).filterIndexed { i, stage -> i == 2 || stage.floorV >= lowV }
+
+        /** Highest current allowed at [voltage], or null below the first stage. */
+        fun ceilingFor(stages: List<RecoveryStage>, voltage: Int): Int? =
+            stages.lastOrNull { voltage >= it.floorV }?.ceilingA
     }
 }
 
