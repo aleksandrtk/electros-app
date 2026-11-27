@@ -557,7 +557,8 @@ class SessionSupervisor(
             val hasEvidence = hasChargingEvidence(totalDelivered, dbSession.lastTickAt)
             val isLimited = activeTargetKwh > 0.0 || activeTargetDurationMinutes > 0
             // The station's undervoltage cut-off is a pause: it restarts by itself when the voltage
-            // recovers, so the session is kept like a limited one instead of being closed as "car stopped".
+            // recovers, so the session is kept like a limited one instead of being closed as "car stopped",
+            // and auto-current drops to its minimum so the restart does not trip it again.
             val isLowVoltagePause = data.isLowVoltageStop
             if (isLowVoltagePause && hasEvidence) stepDownOnStationLowVoltage(sessionId, data, totalDelivered, events)
             val keepWatching = (isLimited || isLowVoltagePause) && hasEvidence && !isVehicleUnplugged(data.statusText)
@@ -872,7 +873,9 @@ class SessionSupervisor(
     /**
      * The station cut the charge on its own undervoltage protection. The sag happens under load and
      * lasts seconds, so the 10-second samples often show a voltage above the auto-current threshold.
-     * Lowering the current one step per cut-off makes the next restart sag less.
+     * The current drops straight to the auto-current minimum (6 A by default): a cut-off means the
+     * line cannot carry the load, and stepping down 2 A per cut-off would take several more trips.
+     * The usual recovery stages raise it again once the voltage holds.
      */
     private suspend fun stepDownOnStationLowVoltage(
         sessionId: String,
@@ -883,7 +886,7 @@ class SessionSupervisor(
         if (lowVoltageStepDoneForPause || !voltageLoadBalancer.isEnabled) return
         lowVoltageStepDoneForPause = true
         val prevA = data.selectedCurrentAmperes
-        val nextA = (prevA - 2).coerceAtLeast(voltageLoadBalancer.minAmperage)
+        val nextA = voltageLoadBalancer.minAmperage
         if (nextA >= prevA) return
         val voltage = data.voltageCurrent ?: 0
         val res = gateway.setAmperage(nextA)
