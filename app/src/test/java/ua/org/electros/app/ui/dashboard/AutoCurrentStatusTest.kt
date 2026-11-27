@@ -7,6 +7,12 @@ class AutoCurrentStatusTest {
     private fun status(voltage: Int?, amps: Int?, charging: Boolean = true, enabled: Boolean = true, online: Boolean = true, high: Int = 205) =
         resolveAutoCurrentStatus(enabled, online, voltage, charging, amps, lowThreshold = 190, highThreshold = high, maxAmperage = 12)
 
+    @Test fun `station undervoltage cut-off shows low even above the threshold`() =
+        assertEquals(
+            AutoCurrentStatus.Low(193),
+            resolveAutoCurrentStatus(true, true, 193, false, 10, 190, 205, 12, stationLowVoltageStop = true)
+        )
+
     @Test fun `off when disabled`() = assertEquals(AutoCurrentStatus.Off, status(230, 12, enabled = false))
     @Test fun `no data without voltage`() = assertEquals(AutoCurrentStatus.NoData, status(null, 12))
     @Test fun `no data when offline`() = assertEquals(AutoCurrentStatus.NoData, status(230, 12, online = false))

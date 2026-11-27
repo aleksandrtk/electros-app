@@ -520,6 +520,7 @@ class SessionSupervisor(
         val now = clockMs()
         if (data.isChargingActive) {
             inactiveOnlineConsecutiveTicks = 0
+            lowVoltageStepDoneForPause = false
             if (lastActiveChargingSampleAt > 0L) {
                 val deltaMs = (now - lastActiveChargingSampleAt).coerceIn(0L, 120_000L)
                 accumulatedChargingMs += deltaMs
@@ -555,7 +556,11 @@ class SessionSupervisor(
             inactiveOnlineConsecutiveTicks++
             val hasEvidence = hasChargingEvidence(totalDelivered, dbSession.lastTickAt)
             val isLimited = activeTargetKwh > 0.0 || activeTargetDurationMinutes > 0
-            val keepWatching = isLimited && hasEvidence && !isVehicleUnplugged(data.statusText)
+            // The station's undervoltage cut-off is a pause: it restarts by itself when the voltage
+            // recovers, so the session is kept like a limited one instead of being closed as "car stopped".
+            val isLowVoltagePause = data.isLowVoltageStop
+            if (isLowVoltagePause && hasEvidence) stepDownOnStationLowVoltage(sessionId, data, totalDelivered, events)
+            val keepWatching = (isLimited || isLowVoltagePause) && hasEvidence && !isVehicleUnplugged(data.statusText)
             val threshold = when {
                 !hasEvidence -> UNSTARTED_STOP_TICKS
                 keepWatching -> LIMITED_IDLE_STOP_TICKS
@@ -565,7 +570,7 @@ class SessionSupervisor(
                 DiagLog.i(
                     TAG,
                     "Not charging for $inactiveOnlineConsecutiveTicks ticks (limit $threshold, evidence=$hasEvidence, " +
-                        "limited=$isLimited, status='${data.statusText}'), closing the session"
+                        "limited=$isLimited, lowVoltage=$isLowVoltagePause, status='${data.statusText}'), closing the session"
                 )
                 // A limited session whose car is still plugged in only pauses (undervoltage, car-side
                 // pause), so the station stays armed. When finally giving up, the station is stopped
@@ -858,6 +863,46 @@ class SessionSupervisor(
                 dbSession?.totalKwhDelivered ?: 0.0
             )
             events to false
+        }
+    }
+
+    /** Set once the current was lowered for the station's current undervoltage pause. */
+    private var lowVoltageStepDoneForPause = false
+
+    /**
+     * The station cut the charge on its own undervoltage protection. The sag happens under load and
+     * lasts seconds, so the 10-second samples often show a voltage above the auto-current threshold.
+     * Lowering the current one step per cut-off makes the next restart sag less.
+     */
+    private suspend fun stepDownOnStationLowVoltage(
+        sessionId: String,
+        data: TelemetryData,
+        totalDelivered: Double,
+        events: MutableList<SupervisorEvent>
+    ) {
+        if (lowVoltageStepDoneForPause || !voltageLoadBalancer.isEnabled) return
+        lowVoltageStepDoneForPause = true
+        val prevA = data.selectedCurrentAmperes
+        val nextA = (prevA - 2).coerceAtLeast(voltageLoadBalancer.minAmperage)
+        if (nextA >= prevA) return
+        val voltage = data.voltageCurrent ?: 0
+        val res = gateway.setAmperage(nextA)
+        DiagLog.i(
+            TAG,
+            "Station undervoltage cut-off at ${voltage}V: ${prevA}A -> ${nextA}A " +
+                if (res.isSuccess) "ok" else "failed, ${res.exceptionOrNull().reason()}"
+        )
+        if (res.isSuccess) {
+            voltageLoadBalancer.reset()
+            lastKnownAmperes = nextA
+            gateway.updateSessionAmperage(sessionId, nextA)
+            if (activeTargetKwh > 0.0 || activeTargetDurationMinutes > 0) {
+                lastDeadManRefreshAtMs = clockMs()
+                gateway.refreshDeadManTimer(sessionId, if (voltage > 0) voltage else 230, totalDelivered)
+            }
+            events += SupervisorEvent.ShowBalancingAlert(prevA, nextA, voltage)
+        } else {
+            lowVoltageStepDoneForPause = false
         }
     }
 

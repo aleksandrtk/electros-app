@@ -27,11 +27,14 @@ internal fun resolveAutoCurrentStatus(
     stationAmperes: Int?,
     lowThreshold: Int,
     highThreshold: Int,
-    maxAmperage: Int
+    maxAmperage: Int,
+    stationLowVoltageStop: Boolean = false
 ): AutoCurrentStatus {
     if (!enabled) return AutoCurrentStatus.Off
     if (!isOnline || voltage == null || voltage <= 0) return AutoCurrentStatus.NoData
-    if (voltage < lowThreshold) return AutoCurrentStatus.Low(voltage)
+    // The station's own protection cut the charge on a sag under load; the idle voltage read
+    // afterwards can look fine, so "voltage OK" next to "low voltage" in the header would be wrong.
+    if (voltage < lowThreshold || stationLowVoltageStop) return AutoCurrentStatus.Low(voltage)
     if (isCharging && stationAmperes != null && stationAmperes < maxAmperage && highThreshold > lowThreshold) {
         val partial = highThreshold - VoltageLoadBalancer.PARTIAL_RECOVERY_MARGIN_V
         val floor = if (partial > lowThreshold) partial else highThreshold

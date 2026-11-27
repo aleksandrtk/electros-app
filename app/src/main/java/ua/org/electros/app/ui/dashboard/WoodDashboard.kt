@@ -590,7 +590,8 @@ private fun RefScope.WoodAutoCurrent(state: DashboardUiState, isOnline: Boolean,
             stationAmperes = telemetry?.selectedCurrentAmperes,
             lowThreshold = state.voltageLowThreshold,
             highThreshold = state.voltageHighThreshold,
-            maxAmperage = state.voltageMaxAmperage
+            maxAmperage = state.voltageMaxAmperage,
+            stationLowVoltageStop = telemetry?.isLowVoltageStop == true
         )
     )
     Area(30f, 1003f, 1088f, 1192f, modifier = Modifier.clickable(onClick = onToggle)) {}
