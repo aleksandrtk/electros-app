@@ -468,14 +468,17 @@ fun LimiterScreen(
                                 .background(SurfaceContainerHighDark)
                                 .padding(14.dp)
                         ) {
+                            val stages = VoltageLoadBalancer.recoveryStages(
+                                state.voltageLowThreshold, state.voltageHighThreshold, state.voltageMaxAmperage
+                            )
+                            val stagesText = stages.map {
+                                stringResource(R.string.limits_dlb_stage, it.floorV, it.ceilingA)
+                            }.joinToString(", ")
                             Text(
                                 text = stringResource(
                                     R.string.limits_dlb_explain,
                                     state.voltageLowThreshold,
-                                    state.voltageHighThreshold - VoltageLoadBalancer.PARTIAL_RECOVERY_MARGIN_V,
-                                    minOf(VoltageLoadBalancer.PARTIAL_RECOVERY_AMPERAGE, state.voltageMaxAmperage),
-                                    state.voltageHighThreshold,
-                                    state.voltageMaxAmperage
+                                    stagesText
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextPrimaryDark,
@@ -522,7 +525,7 @@ fun LimiterScreen(
                             )
                         }
 
-                        // High Voltage Slider (205V default; the first recovery stage starts 5V lower)
+                        // Restore threshold slider (203 V default; the 8 A and 10 A stages start 10 V and 5 V lower)
                         Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

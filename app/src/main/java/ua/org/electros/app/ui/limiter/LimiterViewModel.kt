@@ -31,7 +31,7 @@ data class LimiterUiState(
     val scheduleWrittenAt: String? = null,
     val isVoltageBalancingEnabled: Boolean = true,
     val voltageLowThreshold: Int = AppSettings.DEFAULT_VOLTAGE_LOW_THRESHOLD,
-    val voltageHighThreshold: Int = 205,
+    val voltageHighThreshold: Int = ua.org.electros.app.data.local.AppSettings.DEFAULT_VOLTAGE_HIGH_THRESHOLD,
     val voltageMaxAmperage: Int = 12
 )
 

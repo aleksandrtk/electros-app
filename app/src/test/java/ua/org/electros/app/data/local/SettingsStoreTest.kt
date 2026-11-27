@@ -53,14 +53,14 @@ class SettingsStoreTest {
             store1.setDurationTimer(enabled = true, hours = 6)
             store1.setSchedule(enabled = true, startTime = "22:00", stopTime = "05:00")
             store1.setAutoResumeAfterOutage(false)
-            store1.setVoltageLowThreshold(220) // clamped against default 205 -> 195
+            store1.setVoltageLowThreshold(220) // clamped against default 203 -> 193
             store1.setVoltageHighThreshold(215)
             store1.setVoltageMaxAmperage(14)
 
             // Optimistic state is available immediately before waiting on disk
             assertThat(store1.settingsFlow.value.preferredAmperage).isEqualTo(28)
             assertThat(store1.settingsFlow.value.targetKwhLimit).isWithin(0.01).of(36.0)
-            assertThat(store1.settingsFlow.value.voltageLowThreshold).isEqualTo(195)
+            assertThat(store1.settingsFlow.value.voltageLowThreshold).isEqualTo(193)
 
             store1.awaitIdle()
         } finally {
@@ -82,7 +82,7 @@ class SettingsStoreTest {
             assertThat(reloaded.scheduleStartTime).isEqualTo("22:00")
             assertThat(reloaded.scheduleStopTime).isEqualTo("05:00")
             assertThat(reloaded.autoResumeAfterOutage).isFalse()
-            assertThat(reloaded.voltageLowThreshold).isEqualTo(195)
+            assertThat(reloaded.voltageLowThreshold).isEqualTo(193)
             assertThat(reloaded.voltageHighThreshold).isEqualTo(215)
             assertThat(reloaded.voltageMaxAmperage).isEqualTo(14)
         } finally {
