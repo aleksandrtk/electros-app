@@ -275,7 +275,7 @@ class SessionSupervisorTest {
     }
 
     @Test
-    fun stationUndervoltageCutOff_keepsSessionOpenAndStepsCurrentDownOncePerCutOff() = runTest {
+    fun stationUndervoltageCutOff_keepsSessionOpenAndDropsCurrentToMinimum() = runTest {
         val gateway = FakeGateway(
             session = session(id = "lv"),
             slices = mutableListOf(slice("lv", startKwh = 100.0))
@@ -293,15 +293,51 @@ class SessionSupervisorTest {
         val first = supervisor.tick()
         repeat(5) { assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING) }
         assertThat(first.events.any { it is SupervisorEvent.ShowBalancingAlert }).isTrue()
-        assertThat(gateway.amperageCalls).containsExactly(14)
+        assertThat(gateway.amperageCalls).containsExactly(6)
         assertThat(gateway.finalizedStatus).isNull()
 
-        // It restarts by itself and cuts again: one more step down.
-        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 101.2, voltage = 194))
+        // It restarts by itself and cuts again while already at the minimum: nothing more to lower.
+        gateway.nextTelemetry = Result.success(
+            telemetry(isOnline = true, isCharging = true, counterKwh = 101.2, voltage = 194).copy(selectedCurrentAmperes = 6)
+        )
         supervisor.tick()
-        gateway.nextTelemetry = Result.success(cutOff.copy(selectedCurrentAmperes = 14, consumedEnergyKwh = 101.2))
+        gateway.nextTelemetry = Result.success(cutOff.copy(selectedCurrentAmperes = 6, consumedEnergyKwh = 101.2))
+        assertThat(supervisor.tick().status).isEqualTo(SessionStatus.CHARGING)
+        assertThat(gateway.amperageCalls).containsExactly(6)
+    }
+
+    @Test
+    fun stationUndervoltageCutOff_afterDropToMinimum_recoversByTheUsualStages() = runTest {
+        val gateway = FakeGateway(
+            session = session(id = "lv3"),
+            slices = mutableListOf(slice("lv3", startKwh = 100.0))
+        )
+        val supervisor = SessionSupervisor(gateway, VoltageLoadBalancer(isEnabled = true, maxAmperage = 16)) { 10_000L }
+        supervisor.onSessionStarted("lv3", targetKwh = 0.0, targetDurationMinutes = 0)
+        gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 101.0, voltage = 195))
         supervisor.tick()
-        assertThat(gateway.amperageCalls).containsExactly(14, 12).inOrder()
+        gateway.nextTelemetry = Result.success(
+            telemetry(isOnline = true, isCharging = false, counterKwh = 101.0, voltage = 193)
+                .copy(statusText = "Напруга нижче порогового рівня")
+        )
+        supervisor.tick()
+        assertThat(gateway.amperageCalls).containsExactly(6)
+
+        // Restarted at 6 A; at 196 V (deadband) the current is held.
+        var amps = 6
+        fun charging(v: Int) = telemetry(isOnline = true, isCharging = true, counterKwh = 101.5, voltage = v)
+            .copy(selectedCurrentAmperes = amps)
+        repeat(6) { gateway.nextTelemetry = Result.success(charging(196)); supervisor.tick() }
+        assertThat(gateway.amperageCalls).containsExactly(6)
+
+        // 5 ticks at 200 V or more: +2 A, up to 10 A in the first stage.
+        repeat(5) { gateway.nextTelemetry = Result.success(charging(201)); supervisor.tick() }
+        assertThat(gateway.amperageCalls).containsExactly(6, 8).inOrder()
+        amps = 8
+        repeat(5) { gateway.nextTelemetry = Result.success(charging(201)); supervisor.tick() }
+        amps = 10
+        repeat(5) { gateway.nextTelemetry = Result.success(charging(201)); supervisor.tick() }
+        assertThat(gateway.amperageCalls).containsExactly(6, 8, 10).inOrder()
     }
 
     @Test
