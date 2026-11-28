@@ -453,6 +453,19 @@ class DashboardViewModel(
         }
     }
 
+    /** Blocks charging on the idle station; the station keeps it until "Почати". */
+    fun onForbidClicked() {
+        viewModelScope.launch {
+            _isBusy.value = true
+            _errorMessage.value = null
+            DiagLog.i("Dashboard", "Charging ban pressed")
+            repository.forbidCharging().onFailure { err ->
+                _errorMessage.value = formatDashboardError(err, R.string.err_forbid)
+            }
+            _isBusy.value = false
+        }
+    }
+
     /**
      * Known station and repository failures get a translated message; anything else falls back to
      * the generic message for the action, because raw exception text is not meant for the user.

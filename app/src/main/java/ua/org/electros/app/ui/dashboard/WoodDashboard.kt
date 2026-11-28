@@ -325,7 +325,7 @@ internal fun WoodDashboard(
         val unit = maxWidth / REF_WIDTH
         val boxHeight = maxHeight
         // Warnings need the free space under the button; otherwise the boards grow to fill it.
-        val hasWarnings = state.errorMessage != null || state.isStopPending ||
+        val hasWarnings = state.errorMessage != null || state.isStopPending || state.showsChargeBanControl ||
             (state.activeSession != null && state.isOutageActive) || (telemetry != null && !isOnline)
         val extra = if (hasWarnings) 0f else
             ((boxHeight - unit * REF_PANEL_HEIGHT) / unit).coerceIn(0f, REF_PANEL_HEIGHT * MAX_STRETCH)
@@ -402,6 +402,13 @@ internal fun WoodDashboard(
                         .padding(horizontal = 14.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (state.showsChargeBanControl) {
+                        ChargeBanControl(
+                            isForbidden = telemetry?.isChargingForbidden == true,
+                            isBusy = state.isStartingOrStopping,
+                            onForbid = { viewModel.onForbidClicked() }
+                        )
+                    }
                     val errorMessage = state.errorMessage
                     if (errorMessage != null) {
                         ErrorMessageCard(message = errorMessage.asString())

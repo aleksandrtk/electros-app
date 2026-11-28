@@ -324,6 +324,7 @@ class ElectrosWebScraperTest {
         assertThat(telemetry.statusText).isEqualTo("Заборона заряджання")
         assertThat(telemetry.isOnline).isTrue()
         assertThat(telemetry.isChargingActive).isFalse()
+        assertThat(telemetry.isChargingForbidden).isTrue()
     }
 
     @Test

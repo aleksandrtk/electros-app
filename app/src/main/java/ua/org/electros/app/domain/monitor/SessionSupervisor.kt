@@ -60,7 +60,9 @@ sealed interface SupervisorEvent {
         val targetKwh: Double,
         val statusText: String,
         val targetDurationMinutes: Int,
-        val accumulatedChargingMs: Long
+        val accumulatedChargingMs: Long,
+        /** Energy is actually flowing now; only then is the notification painted green. */
+        val isCharging: Boolean = false
     ) : SupervisorEvent
 }
 
@@ -386,7 +388,8 @@ class SessionSupervisor(
             targetKwh = activeTargetKwh,
             statusText = ongoingStatusText,
             targetDurationMinutes = activeTargetDurationMinutes,
-            accumulatedChargingMs = accumulatedChargingMs
+            accumulatedChargingMs = accumulatedChargingMs,
+            isCharging = stateMachine.getState() == SessionStatus.CHARGING && data.isChargingActive
         )
         return false
     }
