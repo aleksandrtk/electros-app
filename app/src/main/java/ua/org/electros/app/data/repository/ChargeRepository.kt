@@ -509,6 +509,25 @@ class ChargeRepository(
         return false
     }
 
+    /**
+     * Puts the idle station into "Заборона заряджання" (status 4), like the developer's web page,
+     * where "Зупинити" pressed while nothing charges blocks charging until "Почати". The stop
+     * command is sent and the result is confirmed from fresh telemetry.
+     */
+    suspend fun forbidCharging(confirmDelayMs: Long = 3_000L, maxReads: Int = 3): Result<Unit> {
+        val sent = scraper.stopCharge(verifyWithTelemetry = false)
+        DiagLog.i(TAG, "Charging ban: stop " + if (sent.isSuccess) "sent" else "failed, ${sent.exceptionOrNull().reason()}")
+        if (sent.isFailure) return Result.failure(sent.exceptionOrNull() ?: IOException("Stop command failed"))
+        repeat(maxReads) {
+            if (confirmDelayMs > 0L) delay(confirmDelayMs)
+            val t = scraper.fetchTelemetry().getOrNull() ?: return@repeat
+            _telemetryState.value = t
+            DiagLog.i(TAG, "Charging ban check: ${t.toLogString()}")
+            if (t.isChargingForbidden) return Result.success(Unit)
+        }
+        return Result.failure(IllegalStateException("Станція не перейшла в «Заборона заряджання»"))
+    }
+
     private suspend fun clearTimerBeforeStop(settleMs: Long) {
         if (lastTimerSent == TIMER_OFF to TIMER_OFF) return
         val res = sendTimer(TIMER_OFF, TIMER_OFF)

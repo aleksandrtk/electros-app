@@ -318,6 +318,57 @@ class ChargeRepositoryStopTest {
         assertThat(posts.count { it.contains("set_timer") }).isEqualTo(1)
     }
 
+    @Test
+    fun forbidCharging_sendsStopWhileIdleAndConfirmsTheBanFromTelemetry() = runTest {
+        val posts = CopyOnWriteArrayList<String>()
+        var stopped = false
+        val repo = ChargeRepository(scraper = banScraper(posts) { stopped = it }, chargeDao = FakeChargeDao())
+
+        val result = repo.forbidCharging(confirmDelayMs = 0L)
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(posts).contains("action=stop")
+        assertThat(repo.telemetryState.value?.isChargingForbidden).isTrue()
+        assertThat(stopped).isTrue()
+    }
+
+    @Test
+    fun forbidCharging_failsWhenTheStationStaysIdleWithoutTheBan() = runTest {
+        val repo = ChargeRepository(scraper = scraperReturning(CONNECTED_IDLE_HTML), chargeDao = FakeChargeDao())
+
+        val result = repo.forbidCharging(confirmDelayMs = 0L, maxReads = 2)
+
+        assertThat(result.isFailure).isTrue()
+    }
+
+    private fun banScraper(posts: MutableList<String>, onStop: (Boolean) -> Unit): ElectrosWebScraper {
+        var banned = false
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val req = chain.request()
+                if (req.method == "POST") {
+                    val buffer = okio.Buffer()
+                    req.body?.writeTo(buffer)
+                    val form = buffer.readUtf8()
+                    posts += form
+                    if (form == "action=stop") { banned = true; onStop(true) }
+                }
+                val body = if (req.method == "GET" && req.url.toString().contains("protected_page.php")) {
+                    if (banned) CONNECTED_IDLE_HTML.replace("Підключено. Немає заряду", "Заборона заряджання")
+                    else CONNECTED_IDLE_HTML
+                } else "OK"
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body.toResponseBody("text/html".toMediaType()))
+                    .build()
+            })
+            .build()
+        return ElectrosWebScraper(client = client)
+    }
+
     private suspend fun seedActiveSession(
         dao: FakeChargeDao,
         status: SessionStatus,

@@ -60,9 +60,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var serialInput by rememberSaveable(state.deviceSerial) { mutableStateOf(state.deviceSerial) }
-    // Prefilled with what is saved: the number is shown in full, the password stays hidden until "Show".
+    // Prefilled with what is saved: the number is shown in full, the password stays hidden until
+    // "Show" and a fingerprint or screen-lock check. Not saveable, so it hides again on leaving.
     var passwordInput by rememberSaveable(state.password) { mutableStateOf(state.password) }
-    var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
+    var isPasswordVisible by remember { mutableStateOf(false) }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
 
     fun checkSystemStatuses() {
@@ -151,7 +152,18 @@ fun SettingsScreen(
                         autoCorrectEnabled = false
                     ),
                     trailingIcon = {
-                        TextButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                        TextButton(onClick = {
+                            when {
+                                isPasswordVisible -> isPasswordVisible = false
+                                // Nothing saved yet: what is typed is the user's own fresh input.
+                                state.password.isEmpty() -> isPasswordVisible = true
+                                else -> DeviceAuth.authenticate(
+                                    context,
+                                    onSuccess = { isPasswordVisible = true },
+                                    onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                                )
+                            }
+                        }) {
                             Text(
                                 text = stringResource(if (isPasswordVisible) R.string.hide else R.string.show),
                                 color = TextSecondaryDark,

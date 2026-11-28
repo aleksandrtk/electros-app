@@ -19,8 +19,13 @@ data class TelemetryData(
     val isLowVoltageStop: Boolean
         get() = statusText.contains(LOW_VOLTAGE_STATUS_MARKER, ignoreCase = true)
 
+    /** Charging is blocked on the station (WS status 4); "Почати" lifts it. */
+    val isChargingForbidden: Boolean
+        get() = statusText.contains(FORBIDDEN_STATUS_MARKER, ignoreCase = true)
+
     companion object {
         const val LOW_VOLTAGE_STATUS_MARKER = "Напруга нижче"
+        const val FORBIDDEN_STATUS_MARKER = "Заборона заряджання"
     }
 }
 

@@ -181,6 +181,7 @@ class SessionSupervisorTest {
         assertThat(recoverTick.status).isEqualTo(SessionStatus.CHARGING)
         val ongoingRecover = recoverTick.events.filterIsInstance<SupervisorEvent.UpdateOngoingNotification>().single()
         assertThat(ongoingRecover.deliveredKwh).isWithin(0.01).of(6.5)
+        assertThat(ongoingRecover.isCharging).isTrue()
 
         // Must NOT trigger 10.0 kWh target early at 109.0 kWh
         gateway.nextTelemetry = Result.success(telemetry(isOnline = true, isCharging = true, counterKwh = 109.0, voltage = 225))
@@ -222,6 +223,8 @@ class SessionSupervisorTest {
         val ongoing = idleRecover.events.filterIsInstance<SupervisorEvent.UpdateOngoingNotification>().single()
         assertThat(manualPrompt.deliveredKwh).isWithin(0.01).of(5.0)
         assertThat(ongoing.deliveredKwh).isWithin(0.01).of(5.0)
+        // Session open but no energy flowing: the notification must not be painted green.
+        assertThat(ongoing.isCharging).isFalse()
     }
 
     @Test

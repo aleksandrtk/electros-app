@@ -215,7 +215,7 @@ class ChargeMonitorService : Service() {
                     notificationHelper.showConnectionLostAlert(event.lastKnownAmperes)
                 is SupervisorEvent.UpdateOngoingNotification -> {
                     lastOngoing = event
-                    showOngoing(event, ChargeIndicator.CHARGING)
+                    showOngoing(event, if (event.isCharging) ChargeIndicator.CHARGING else ChargeIndicator.IDLE)
                 }
             }
         }

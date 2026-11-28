@@ -283,4 +283,9 @@
     <string name="settings_wood_theme_hint">Класична темна панель або дерев\'яна: з вирізьбленими написами чи з сучасними hi-fi деталями. Змінюється лише вигляд.</string>
     <string name="dash_unit_volts_full">ВОЛЬТ</string>
     <string name="dlb_off_short">Вимкнено</string>
+    <string name="ban_charging">ЗАБОРОНИТИ ЗАРЯДЖАННЯ</string>
+    <string name="ban_active_hint">Заряджання заборонено на станції. «Почати» знімає заборону.</string>
+    <string name="err_forbid">Не вдалося заборонити заряджання на станції.</string>
+    <string name="auth_show_password_title">Показати пароль станції</string>
+    <string name="auth_show_password_subtitle">Підтвердіть відбитком пальця або блокуванням екрана</string>
 </resources>

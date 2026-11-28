@@ -10,11 +10,17 @@ import androidx.core.app.NotificationCompat
 import ua.org.electros.app.MainActivity
 import ua.org.electros.app.R
 
-/** What the charge notification signals; drives its colour and status-bar icon. */
-enum class ChargeIndicator(val color: Int, val icon: Int) {
-    CHARGING(0xFF2E9E4F.toInt(), R.drawable.ic_nav_bolt),
-    OUTAGE(0xFFD32F2F.toInt(), R.drawable.ic_notif_warning),
-    DONE(0xFF1E6FD9.toInt(), R.drawable.ic_notif_done)
+/**
+ * What the charge notification signals; drives its colour and status-bar icon. Android draws every
+ * status-bar icon in one system colour, so the state shows there by the glyph (bolt only while
+ * energy flows) and in the shade by the card colour.
+ */
+enum class ChargeIndicator(val color: Int, val icon: Int, val colorized: Boolean) {
+    CHARGING(0xFF2E9E4F.toInt(), R.drawable.ic_nav_bolt, true),
+    /** Session open but no energy flowing: waiting for the car, a voltage pause, stopping. */
+    IDLE(0xFF607D8B.toInt(), R.drawable.ic_notif_idle, false),
+    OUTAGE(0xFFD32F2F.toInt(), R.drawable.ic_notif_warning, true),
+    DONE(0xFF1E6FD9.toInt(), R.drawable.ic_notif_done, true)
 }
 
 class NotificationHelper(private val context: Context) {
@@ -85,7 +91,7 @@ class NotificationHelper(private val context: Context) {
         statusText: String,
         targetDurationMinutes: Int = 0,
         accumulatedChargingMs: Long = 0L,
-        indicator: ChargeIndicator = ChargeIndicator.CHARGING
+        indicator: ChargeIndicator = ChargeIndicator.IDLE
     ): Notification {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -125,8 +131,8 @@ class NotificationHelper(private val context: Context) {
             .setSmallIcon(indicator.icon)
             .setColor(indicator.color)
             // A foreground-service notification may be colorized: the whole card in the shade takes
-            // the state colour (green charging, red outage), not just the small icon.
-            .setColorized(true)
+            // the state colour (green charging, red outage). Idle stays a plain card.
+            .setColorized(indicator.colorized)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(R.drawable.ic_notif_stop, context.getString(R.string.notif_action_stop), stopPendingIntent)

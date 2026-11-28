@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -262,6 +263,15 @@ fun DashboardScreen(
                 onStart = onStartCharge,
                 onStop = { viewModel.onStopClicked(context) }
             )
+
+            if (state.showsChargeBanControl) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ChargeBanControl(
+                    isForbidden = telemetry?.isChargingForbidden == true,
+                    isBusy = state.isStartingOrStopping,
+                    onForbid = { viewModel.onForbidClicked() }
+                )
+            }
         }
     }
     }
@@ -1800,6 +1810,63 @@ private fun StudioClassicActionButton(
                 letterSpacing = 1.sp
             )
         }
+    }
+}
+
+/** Online, idle and with no session of ours: the moment the station's own ban makes sense. */
+internal val DashboardUiState.showsChargeBanControl: Boolean
+    get() {
+        val t = telemetry ?: return false
+        return t.isOnline && !t.isChargingActive && !isStopPending && activeSession == null
+    }
+
+/**
+ * The developer's page blocks charging with "Зупинити" pressed while idle (status 4, "Заборона
+ * заряджання"). Here it is a separate button beside Start, and while the ban is on, a note says
+ * that Start lifts it.
+ */
+@Composable
+internal fun ChargeBanControl(isForbidden: Boolean, isBusy: Boolean, onForbid: () -> Unit) {
+    if (isForbidden) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, StudioAmberWarn.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "\uD83D\uDEAB", fontSize = 16.sp)
+            Text(
+                text = stringResource(R.string.ban_active_hint),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                color = StudioAmberWarn
+            )
+        }
+        return
+    }
+    OutlinedButton(
+        onClick = onForbid,
+        enabled = !isBusy,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, StudioAmberWarn.copy(alpha = if (isBusy) 0.3f else 0.8f)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = StudioAmberWarn,
+            disabledContentColor = TextTertiaryDark
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.ban_charging),
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            letterSpacing = 1.sp
+        )
     }
 }
 
